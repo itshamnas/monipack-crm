@@ -1,0 +1,70 @@
+{
+  "name": "Monipack CRM - Morooj Nizwa International LLC",
+  "short_name": "Monipack CRM",
+  "description": "Enterprise packaging CRM & order management system for Morooj Nizwa International LLC, Oman.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#18181B",
+  "theme_color": "#CC1A22",
+  "lang": "en",
+  "dir": "ltr",
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/icon-maskable-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icons/icon-maskable-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Customer Care Desk",
+      "short_name": "Customer Care",
+      "description": "Inbound customer intake desk and dialer",
+      "url": "/customer-care",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Official Quotations",
+      "short_name": "Quotations",
+      "description": "A4 Oman VAT quotation engine",
+      "url": "/quotations",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Leads Pipeline",
+      "short_name": "Leads",
+      "description": "Manage sales pipeline and Kanban stages",
+      "url": "/leads",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    },
+    {
+      "name": "Product Catalog",
+      "short_name": "Products",
+      "description": "Monipack, Moniclean, and Monifood catalogs",
+      "url": "/products",
+      "icons": [{ "src": "/icons/icon-192x192.png", "sizes": "192x192" }]
+    }
+  ]
+}

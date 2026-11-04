@@ -1,0 +1,156 @@
+@import "tailwindcss";
+@import "./styles/design-tokens.css";
+
+/* ==========================================================================
+   Monipack Official Brand Typeface: Nadianne Bold
+   ========================================================================== */
+@font-face {
+  font-family: 'Nadianne';
+  src: url('/fonts/NadianneBold.ttf') format('truetype'),
+       url('/fonts/nadianne-bold.ttf') format('truetype');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+.font-monipack,
+.font-nadianne {
+  font-family: 'Nadianne', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+@layer base {
+  body {
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background-color: var(--app-bg, #F3F4F6);
+    color: var(--text-main, #111827);
+  }
+}
+
+.font-cairo {
+  font-family: 'Cairo', system-ui, sans-serif;
+}
+
+/* Smooth touch handling and text rendering */
+html, body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Global sleek scrollbars for WebKit and Firefox */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 9999px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* ==========================================================================
+   Print Engine Styles for Multi-Page Quotations (A4 Overflow Architecture)
+   ========================================================================== */
+@page {
+  size: A4 portrait;
+  margin: 12mm 15mm;
+}
+
+@media print {
+  html, body {
+    background: #ffffff !important;
+    color: #111827 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Completely hide the application root and surrounding page in print */
+  .no-print,
+  #root,
+  #monipack-enterprise-root,
+  #monipack-sidebar-region,
+  #monipack-header-region,
+  aside,
+  header {
+    display: none !important;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  /* Reset overlay wrappers so content flows naturally across multiple pages */
+  .quotation-modal-overlay {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+
+  /* Natural unconstrained sheet growth */
+  .quotation-sheet {
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    min-height: auto !important;
+    height: auto !important;
+  }
+
+  /* 1. Table Pagination & Header Repetition */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+
+  thead {
+    display: table-header-group !important; /* Repeats table header on every new page */
+  }
+
+  tbody {
+    display: table-row-group !important;
+  }
+
+  tfoot {
+    display: table-footer-group !important;
+  }
+
+  tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important; /* Prevents rows from cutting across pages */
+  }
+
+  /* 2. Closing Block Integrity */
+  .print-closing-block,
+  .print\:break-inside-avoid {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important; /* Groups totals, terms, signatures & banner */
+  }
+
+  img {
+    max-width: 100% !important;
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+}
