@@ -147,9 +147,9 @@ function Overview({ summary, onOpenList }) {
             <span className="block mt-1 text-2xl font-extrabold tabular-nums">{value}</span>
           </button>
         ))}
-        <div className={`${card} p-4 bg-slate-900 border-slate-900 text-white`}>
+        <div className="rounded-3xl p-4 bg-slate-900 text-white">
           <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">Done</span>
-          <span className="block mt-1 text-2xl font-extrabold tabular-nums">{t.percentDone}%</span>
+          <span className="block mt-1 text-2xl font-extrabold tabular-nums">{t.percentDone ?? 0}%</span>
         </div>
       </div>
 

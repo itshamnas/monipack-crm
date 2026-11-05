@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, Plus, ChevronRight, X, Camera, FileText, CheckCircle2, AlertCircle, Loader2, Lock, Trash2 } from 'lucide-react';
+import { Search, Plus, ChevronRight, X, Camera, FileText, CheckCircle2, AlertCircle, Loader2, Lock, Trash2, RefreshCw, Inbox } from 'lucide-react';
 import { getApiUrl } from '../api/config.js';
 import CustomerFieldInput from '../components/customers/CustomerFieldInput.jsx';
 import { prepareUpload, FILE_LABEL_NAMES } from '../utils/fileUpload.js';
@@ -92,6 +92,21 @@ export default function CustomerLink() {
     if (stage === 'ready' && session) loadData();
   }, [stage, session, loadData]);
 
+  // Keep the list fresh: when the admin imports or transfers customers, the salesman sees them
+  // as soon as he comes back to the page (and every minute while it is open).
+  useEffect(() => {
+    if (stage !== 'ready' || !session) return undefined;
+    const refresh = () => { if (document.visibilityState === 'visible') loadData(); };
+    document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('focus', refresh);
+    const timer = setInterval(refresh, 60 * 1000);
+    return () => {
+      document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('focus', refresh);
+      clearInterval(timer);
+    };
+  }, [stage, session, loadData]);
+
   const showToast = (message, type = 'success') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 4500);
@@ -149,7 +164,13 @@ export default function CustomerLink() {
           <span className="text-xs font-semibold text-slate-500">{info?.salesmanType === 'branch' ? 'Branch' : 'Route / B2B'}</span>
         </div>
         <div className="bg-slate-900 text-white rounded-3xl p-4">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">{info?.salesmanName} · my customers</p>
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-300">{info?.salesmanName} · my customers</p>
+            <button type="button" onClick={() => loadData()} aria-label="Refresh list"
+              className="w-10 h-10 -mr-2 rounded-full flex items-center justify-center text-slate-300 hover:bg-white/10">
+              <RefreshCw className="w-4 h-4" />
+            </button>
+          </div>
           <p className="mt-1 text-3xl font-extrabold tabular-nums">
             {list.remaining} <span className="text-base font-semibold text-slate-300">remaining of {list.total}</span>
           </p>
@@ -167,7 +188,13 @@ export default function CustomerLink() {
       </header>
 
       <main className="px-5 space-y-2.5">
-        {list.remaining === 0 ? (
+        {list.total === 0 ? (
+          <div className="bg-white rounded-3xl border border-slate-200 p-6 text-center space-y-2">
+            <Inbox className="w-8 h-8 text-slate-400 mx-auto" />
+            <p className="font-bold">No customers in your list yet</p>
+            <p className="text-sm text-slate-500">Your office will add them. Tap refresh above, or add a new customer with the button below.</p>
+          </div>
+        ) : list.remaining === 0 ? (
           <div className="bg-white rounded-3xl border border-slate-200 p-6 text-center space-y-2">
             <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
             <p className="font-bold">All your customers are done. Thank you!</p>
