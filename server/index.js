@@ -1,6 +1,8 @@
+import 'dotenv/config';
 import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
@@ -10,10 +12,8 @@ import { runSeed } from './seed.js';
 import { 
   generateProductTemplate, 
   parseProductCsv, 
-  parseUniversalProductData,
-  testTallyConnection, 
-  fetchTallyStockItems 
-} from './tallyService.js';
+  parseUniversalProductData 
+} from './productImportService.js';
 import {
   generateLeadTemplate,
   parseLeadCsv
@@ -31,39 +31,67 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const app = express();
+app.set('trust proxy', 'loopback');
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'monipack-om-crm-sec-2026';
+const JWT_SECRET = process.env.JWT_SECRET || '';
 
-const allowedOrigins = [
-  'https://crm.monipack.com',
-  'https://www.crm.monipack.com',
-  'http://crm.monipack.com',
-  'http://localhost:3000',
-  'http://localhost:5000',
-  'http://localhost:5173',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:5000',
-  'http://127.0.0.1:5173'
-];
+// Production Startup Guard: JWT_SECRET must be configured and >= 32 characters
+if (process.env.NODE_ENV === 'production') {
+  if (!JWT_SECRET || JWT_SECRET.length < 32) {
+    console.error('[FATAL SECURITY ERROR] In production, JWT_SECRET must be set and at least 32 characters long.');
+    process.exit(1);
+  }
+} else if (!JWT_SECRET && process.env.NODE_ENV !== 'test') {
+  console.warn('[SECURITY WARNING] JWT_SECRET is not set in development.');
+}
+
+const rawOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean);
+const allowedOrigins = rawOrigins.length > 0 
+  ? rawOrigins 
+  : (process.env.NODE_ENV !== 'production' ? ['http://localhost:3000', 'http://localhost:5000', 'http://127.0.0.1:3000', 'http://127.0.0.1:5000'] : []);
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Requests with no Origin header (same-origin, curl, server-to-server) are allowed
     if (!origin) return callback(null, true);
-    if (
-      allowedOrigins.includes(origin) ||
-      origin.endsWith('.monipack.com') ||
-      origin.endsWith('.onrender.com')
-    ) {
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 app.options('*', cors());
-app.use(express.json({ limit: '15mb' }));
+
+// Helmet with Content Security Policy & defensive headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'"],
+      workerSrc: ["'self'"],
+      manifestSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
+
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
+// Body Parser: 1mb globally, 15mb only on specific bulk/import endpoints
+app.use(express.json({ limit: '1mb' }));
+const largeJsonParser = express.json({ limit: '15mb' });
 
 // Health Check Endpoint (useful for Render keep-alive and diagnostics)
 app.get('/api/health', (req, res) => {
@@ -78,37 +106,42 @@ app.get('/api/health', (req, res) => {
 // Ensure seed data and default users are present on startup
 runSeed();
 
-// ---------------- Security Middleware & HTTP Hardening ----------------
-
-// 1. Defensive HTTP Security Headers
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  next();
-});
-
-// 2. In-Memory Brute-Force Login Rate Limiter (Max 5 failed attempts / 15 min per IP)
-const loginAttempts = new Map(); // ip -> { count, resetAt }
+// ---------------- Security Rate Limiter (IP & Email Lockout) ----------------
+// Lockout by IP: 5 failed attempts / 15 min
+// Lockout by Email: 10 failed attempts / 15 min
+const loginAttemptsByIp = new Map(); // ip -> { count, resetAt }
+const loginAttemptsByEmail = new Map(); // email -> { count, resetAt }
 
 const checkLoginRateLimit = (req, res, next) => {
-  const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1')
-    .toString()
-    .split(',')[0]
-    .trim();
+  const clientIp = req.ip || '127.0.0.1';
+  const email = (req.body?.email || '').toLowerCase().trim();
   const now = Date.now();
-  const record = loginAttempts.get(clientIp);
 
-  if (record) {
-    if (now > record.resetAt) {
-      loginAttempts.delete(clientIp);
-    } else if (record.count >= 5) {
-      const remainingMinutes = Math.max(1, Math.ceil((record.resetAt - now) / 60000));
+  // 1. Check IP lockout (5 fails / 15 min)
+  const ipRecord = loginAttemptsByIp.get(clientIp);
+  if (ipRecord) {
+    if (now > ipRecord.resetAt) {
+      loginAttemptsByIp.delete(clientIp);
+    } else if (ipRecord.count >= 5) {
+      const remainingMinutes = Math.max(1, Math.ceil((ipRecord.resetAt - now) / 60000));
       return res.status(429).json({
-        error: `Security Lockout: Too many failed login attempts. Please wait ${remainingMinutes} minute(s) before trying again.`,
+        error: `Security Lockout: Too many failed login attempts from this network. Please wait ${remainingMinutes} minute(s) before trying again.`,
       });
+    }
+  }
+
+  // 2. Check Email lockout (10 fails / 15 min)
+  if (email) {
+    const emailRecord = loginAttemptsByEmail.get(email);
+    if (emailRecord) {
+      if (now > emailRecord.resetAt) {
+        loginAttemptsByEmail.delete(email);
+      } else if (emailRecord.count >= 10) {
+        const remainingMinutes = Math.max(1, Math.ceil((emailRecord.resetAt - now) / 60000));
+        return res.status(429).json({
+          error: `Security Lockout: Account locked due to repeated failed attempts. Please wait ${remainingMinutes} minute(s) before trying again.`,
+        });
+      }
     }
   }
 
@@ -119,27 +152,43 @@ const checkLoginRateLimit = (req, res, next) => {
 const recordFailedLogin = (clientIp, email) => {
   const now = Date.now();
   const windowMs = 15 * 60 * 1000; // 15 minutes lockout
-  const record = loginAttempts.get(clientIp) || { count: 0, resetAt: now + windowMs };
-  record.count += 1;
-  loginAttempts.set(clientIp, record);
+
+  // Increment IP counter
+  const ipRecord = loginAttemptsByIp.get(clientIp) || { count: 0, resetAt: now + windowMs };
+  ipRecord.count += 1;
+  loginAttemptsByIp.set(clientIp, ipRecord);
+
+  // Increment Email counter
+  let emailFails = 0;
+  if (email) {
+    const cleanEmail = email.toLowerCase().trim();
+    const emailRecord = loginAttemptsByEmail.get(cleanEmail) || { count: 0, resetAt: now + windowMs };
+    emailRecord.count += 1;
+    emailFails = emailRecord.count;
+    loginAttemptsByEmail.set(cleanEmail, emailRecord);
+  }
 
   db.addActivity({
     type: 'security_alert',
-    description: `Failed login attempt for ${email || 'unknown'} from IP ${clientIp} (${record.count}/5 attempts)`,
+    description: `Failed login attempt for ${email || 'unknown'} from IP ${clientIp} (IP: ${ipRecord.count}/5${email ? `, Email: ${emailFails}/10` : ''})`,
   });
 };
 
-const recordSuccessfulLogin = (clientIp) => {
-  loginAttempts.delete(clientIp);
+const recordSuccessfulLogin = (clientIp, email) => {
+  loginAttemptsByIp.delete(clientIp);
+  if (email) {
+    loginAttemptsByEmail.delete(email.toLowerCase().trim());
+  }
 };
 
 // Periodic cleanup of expired rate limit entries to prevent memory leaks (runs every 15 minutes)
 const rateLimitCleanupInterval = setInterval(() => {
   const now = Date.now();
-  for (const [ip, rec] of loginAttempts) {
-    if (now > rec.resetAt) {
-      loginAttempts.delete(ip);
-    }
+  for (const [ip, rec] of loginAttemptsByIp) {
+    if (now > rec.resetAt) loginAttemptsByIp.delete(ip);
+  }
+  for (const [email, rec] of loginAttemptsByEmail) {
+    if (now > rec.resetAt) loginAttemptsByEmail.delete(email);
   }
 }, 15 * 60 * 1000);
 if (rateLimitCleanupInterval.unref) {
@@ -205,8 +254,8 @@ app.post('/api/auth/login', checkLoginRateLimit, (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password.' });
     }
 
-    // Login succeeded: reset failure counter for this IP
-    recordSuccessfulLogin(clientIp);
+    // Login succeeded: reset failure counter for this IP and email
+    recordSuccessfulLogin(clientIp, email);
 
     const payload = {
       id: user.id,
@@ -238,18 +287,6 @@ app.post('/api/auth/login', checkLoginRateLimit, (req, res) => {
 // Current User Session
 app.get('/api/auth/me', authMiddleware, (req, res) => {
   res.json({ user: req.user });
-});
-
-// ---------------- Public Endpoints ----------------
-
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    service: 'Monipack CRM API (Secured)',
-    company: 'Morooj Nizwa International LLC',
-  });
 });
 
 // ---------------- Protected Business Endpoints ----------------
@@ -457,7 +494,7 @@ app.delete('/api/leads/:id', authMiddleware, (req, res) => {
 });
 
 // Parse uploaded Leads CSV content for preview before committing
-app.post('/api/leads/parse-csv', authMiddleware, (req, res) => {
+app.post('/api/leads/parse-csv', authMiddleware, largeJsonParser, (req, res) => {
   try {
     const csvData = req.body.csvData || req.body.csvContent;
     if (!csvData) return res.status(400).json({ error: 'No CSV data provided' });
@@ -479,7 +516,7 @@ app.post('/api/leads/parse-csv', authMiddleware, (req, res) => {
 });
 
 // Bulk Import Leads into CRM
-app.post('/api/leads/bulk-import', authMiddleware, (req, res) => {
+app.post('/api/leads/bulk-import', authMiddleware, largeJsonParser, (req, res) => {
   try {
     const { items, options } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
@@ -579,23 +616,23 @@ app.post('/api/products/bulk-delete', authMiddleware, (req, res) => {
   }
 });
 
-// Download Official Monipack / Tally CSV Template
+// Download Official Product Catalog CSV Template
 app.get('/api/products/template', authMiddleware, (req, res) => {
   try {
     const csvContent = generateProductTemplate();
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename=monipack_tally_product_template.csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=monipack_product_catalog_template.csv');
     res.send(csvContent);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// Parse uploaded product content (CSV, Excel text, or Raw Tally XML) with 2026 Variance Analysis
-app.post('/api/products/parse-csv', authMiddleware, (req, res) => {
+// Parse uploaded product CSV content with Variance Analysis
+app.post('/api/products/parse-csv', authMiddleware, largeJsonParser, (req, res) => {
   try {
     const csvData = req.body.csvData || req.body.csvContent;
-    if (!csvData) return res.status(400).json({ error: 'No product or Tally data provided' });
+    if (!csvData) return res.status(400).json({ error: 'No product CSV data provided' });
 
     const existingProducts = db.getProducts();
     const result = parseUniversalProductData(csvData, existingProducts);
@@ -606,54 +643,8 @@ app.post('/api/products/parse-csv', authMiddleware, (req, res) => {
   }
 });
 
-// Automated Tally Watchdog Push Endpoint for 2026 Scheduled Background Sync
-app.post('/api/tally/sync-push', (req, res) => {
-  try {
-    const syncKey = req.headers['x-tally-key'] || req.query.key;
-    const authHeader = req.headers.authorization;
-    const expectedKey = process.env.TALLY_SYNC_KEY || 'monipack-tally-sync-2026';
-
-    let authorized = false;
-    let syncUser = 'Automated Tally Watchdog';
-
-    if (syncKey === expectedKey) {
-      authorized = true;
-    } else if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
-        authorized = true;
-        syncUser = decoded.name || 'CRM User';
-      } catch (e) {}
-    }
-
-    if (!authorized) {
-      return res.status(401).json({ error: 'Unauthorized: Invalid Tally sync key or token.' });
-    }
-
-    const { items, options } = req.body;
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'No items provided in sync payload.' });
-    }
-
-    const result = db.bulkUpsertProducts(items, options || { updateExisting: true });
-
-    db.addActivity({
-      type: 'tally_watchdog_sync',
-      description: `Watchdog Auto-Sync: ${result.addedCount} new items, ${result.updatedCount} items refreshed by ${syncUser}`,
-    });
-
-    res.json({
-      success: true,
-      timestamp: new Date().toISOString(),
-      ...result
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // Bulk Import Products into Catalog
-app.post('/api/products/bulk-import', authMiddleware, (req, res) => {
+app.post('/api/products/bulk-import', authMiddleware, largeJsonParser, (req, res) => {
   try {
     const { items, options } = req.body;
     if (!Array.isArray(items) || items.length === 0) {
@@ -674,61 +665,6 @@ app.post('/api/products/bulk-import', authMiddleware, (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: `Import failed: ${err.message}` });
-  }
-});
-
-// Test Live Connection to TallyPrime XML Server (Port 9000)
-app.post('/api/tally/test', authMiddleware, async (req, res) => {
-  try {
-    const tallyUrl = req.body.tallyUrl || 'http://127.0.0.1:9000';
-    const status = await testTallyConnection(tallyUrl);
-    res.json(status);
-  } catch (err) {
-    res.status(500).json({ online: false, message: err.message });
-  }
-});
-
-// Fetch Live Stock Items from TallyPrime for Preview
-app.post('/api/tally/fetch', authMiddleware, async (req, res) => {
-  try {
-    const tallyUrl = req.body.tallyUrl || 'http://127.0.0.1:9000';
-    const companyName = req.body.companyName || '';
-    const items = await fetchTallyStockItems(tallyUrl, companyName);
-    res.json({
-      items,
-      count: items.length
-    });
-  } catch (err) {
-    res.status(502).json({ error: err.message });
-  }
-});
-
-// Live Sync from TallyPrime Directly into Catalog
-app.post('/api/tally/sync', authMiddleware, async (req, res) => {
-  try {
-    const tallyUrl = req.body.tallyUrl || 'http://127.0.0.1:9000';
-    const companyName = req.body.companyName || '';
-    const updateExisting = req.body.updateExisting !== false;
-
-    const items = await fetchTallyStockItems(tallyUrl, companyName);
-    if (!items || items.length === 0) {
-      return res.status(404).json({ error: 'No stock items returned from TallyPrime. Ensure your Tally company is open with Stock Items.' });
-    }
-
-    const result = db.bulkUpsertProducts(items, { updateExisting });
-
-    db.addActivity({
-      type: 'tally_sync',
-      description: `TallyPrime Live Sync: ${result.addedCount} added, ${result.updatedCount} updated by ${req.user.name}`,
-    });
-
-    res.json({
-      success: true,
-      message: `TallyPrime Sync Successful! ${result.addedCount} new items added, ${result.updatedCount} items updated.`,
-      ...result
-    });
-  } catch (err) {
-    res.status(502).json({ error: `TallyPrime Sync Failed: ${err.message}` });
   }
 });
 
@@ -1050,6 +986,14 @@ app.delete('/api/settings/branches/:id', authMiddleware, requireSuperAdmin, (req
   }
 });
 
+// Error handling middleware (e.g., CORS rejection)
+app.use((err, req, res, next) => {
+  if (err && err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: 'Not allowed by CORS' });
+  }
+  next(err);
+});
+
 // API 404 Shield: Never return HTML for unhandled /api/* routes
 app.use('/api', (req, res) => {
   res.status(404).json({ error: `API endpoint not found: ${req.method} ${req.originalUrl}` });
@@ -1079,19 +1023,25 @@ if (fs.existsSync(distPath)) {
 }
 
 // Bind to 0.0.0.0 so localhost (IPv6 ::1 and IPv4 127.0.0.1) and LAN all work reliably
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`===============================================`);
-  console.log(` Monipack CRM Server ACTIVE on port ${PORT}`);
-  console.log(` Morooj Nizwa International LLC`);
-  console.log(` Access Localhost: http://localhost:${PORT}`);
-  console.log(` Access Loopback:  http://127.0.0.1:${PORT}`);
-  console.log(`===============================================`);
-});
+let server = null;
+if (process.env.NODE_ENV !== 'test') {
+  server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`===============================================`);
+    console.log(` Monipack CRM Server ACTIVE on port ${PORT}`);
+    console.log(` Morooj Nizwa International LLC`);
+    console.log(` Access Localhost: http://localhost:${PORT}`);
+    console.log(` Access Loopback:  http://127.0.0.1:${PORT}`);
+    console.log(`===============================================`);
+  });
 
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`[CRITICAL] Port ${PORT} is already in use by another process.`);
-  } else {
-    console.error(`[CRITICAL] Server error:`, err);
-  }
-});
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[CRITICAL] Port ${PORT} is already in use by another process.`);
+    } else {
+      console.error(`[CRITICAL] Server error:`, err);
+    }
+  });
+}
+
+export { app, server };
+export default app;

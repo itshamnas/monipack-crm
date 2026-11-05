@@ -20,7 +20,7 @@ import {
   Layers,
   DollarSign
 } from 'lucide-react';
-import TallyImportModal from '../components/TallyImportModal';
+import ProductImportModal from '../components/ProductImportModal';
 
 export const DEFAULT_BRANDS = ['Monipack', 'Moniclean', 'Monifood', 'Kohe'];
 
@@ -864,8 +864,8 @@ export default function Products({
         </div>
       )}
 
-      {/* Tally / CSV Import Modal */}
-      <TallyImportModal
+      {/* Product Catalog CSV Import Modal */}
+      <ProductImportModal
         isOpen={isImportModalOpen}
         onClose={() => setIsImportModalOpen(false)}
         token={token}

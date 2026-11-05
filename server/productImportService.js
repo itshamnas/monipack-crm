@@ -1,8 +1,10 @@
-import http from 'http';
-import https from 'https';
+/**
+ * Monipack CRM - Product Catalog CSV Import & Price Variance Service
+ * Morooj Nizwa International LLC - Sultanate of Oman
+ */
 
 /**
- * Generates an official Monipack & TallyPrime compatible CSV template with sample data.
+ * Generates an official Monipack compatible CSV template with sample data.
  */
 export function generateProductTemplate() {
   const headers = [
@@ -96,7 +98,7 @@ export function generateProductTemplate() {
 }
 
 /**
- * Universal CSV Parser with intelligent header mapping for TallyPrime and standard spreadsheets.
+ * Universal CSV Parser with intelligent header mapping for product spreadsheets.
  */
 export function parseProductCsv(csvContent) {
   if (!csvContent) return [];
@@ -139,8 +141,8 @@ export function parseProductCsv(csvContent) {
   const headerCells = parseLine(rawLines[0]).map(h => h.toLowerCase().replace(/[^a-z0-9]/g, ''));
 
   // Header matching dictionary
-  const findCol = (aliases) => {
-    return headerCells.findIndex(h => aliases.some(a => h.includes(a)));
+  const findCol = (aliases, exclude = []) => {
+    return headerCells.findIndex(h => aliases.some(a => h.includes(a)) && !exclude.some(e => h.includes(e)));
   };
 
   const colSku = findCol(['sku', 'partnumber', 'partno', 'itemcode', 'code', 'barcode']);
@@ -150,7 +152,7 @@ export function parseProductCsv(csvContent) {
   const colBrand = findCol(['brand', 'make', 'manufacturer']);
   const colUnit = findCol(['unit', 'uom', 'baseunits', 'units']);
   const colPrice = findCol(['price', 'priceomr', 'rate', 'standardprice', 'sellingprice', 'mrp']);
-  const colStock = findCol(['stock', 'quantity', 'qty', 'closingbalance', 'balance', 'openingbalance']);
+  const colStock = findCol(['stock', 'quantity', 'qty', 'closingbalance', 'balance', 'openingbalance'], ['group', 'category']);
   const colDesc = findCol(['description', 'specs', 'specification', 'narration', 'remarks', 'notes']);
 
   const parsedItems = [];
@@ -207,225 +209,15 @@ export function parseProductCsv(csvContent) {
 }
 
 /**
- * Test TallyPrime connectivity over HTTP port 9000
- */
-export function testTallyConnection(tallyUrl = 'http://127.0.0.1:9000') {
-  return new Promise((resolve) => {
-    try {
-      const u = new URL(tallyUrl);
-      const req = http.request({
-        hostname: u.hostname,
-        port: u.port || 9000,
-        path: '/',
-        method: 'GET',
-        timeout: 3000
-      }, (res) => {
-        resolve({
-          online: true,
-          status: res.statusCode,
-          message: `Connected to TallyPrime at ${tallyUrl} (HTTP ${res.statusCode})`
-        });
-      });
-
-      req.on('timeout', () => {
-        req.destroy();
-        resolve({
-          online: false,
-          message: `TallyPrime connection timed out at ${tallyUrl}. Ensure TallyPrime is open and port 9000 is enabled in F1: Help -> Settings -> Connectivity.`
-        });
-      });
-
-      req.on('error', (err) => {
-        resolve({
-          online: false,
-          message: `Cannot reach TallyPrime at ${tallyUrl} (${err.code || err.message}). Please verify TallyPrime is running.`
-        });
-      });
-
-      req.end();
-    } catch (e) {
-      resolve({
-        online: false,
-        message: `Invalid Tally URL: ${e.message}`
-      });
-    }
-  });
-}
-
-/**
- * Fetch Stock Items directly from TallyPrime XML Server
- */
-export function fetchTallyStockItems(tallyUrl = 'http://127.0.0.1:9000', companyName = '') {
-  return new Promise((resolve, reject) => {
-    try {
-      const u = new URL(tallyUrl);
-
-      // Standard Tally XML Envelope for Stock Items
-      const tallyXmlPayload = `
-<ENVELOPE>
-  <HEADER>
-    <TALLYREQUEST>Export Data</TALLYREQUEST>
-  </HEADER>
-  <BODY>
-    <EXPORTDATA>
-      <REQUESTDESC>
-        <REPORTNAME>List of Accounts</REPORTNAME>
-        <STATICVARIABLES>
-          <SVEXPORTFORMAT>$$SysName:XML</SVEXPORTFORMAT>
-          <ACCOUNTTYPE>Stock Items</ACCOUNTTYPE>
-          ${companyName ? `<SVCURRENTCOMPANY>${companyName}</SVCURRENTCOMPANY>` : ''}
-        </STATICVARIABLES>
-      </REQUESTDESC>
-    </EXPORTDATA>
-  </BODY>
-</ENVELOPE>
-`.trim();
-
-      const req = http.request({
-        hostname: u.hostname,
-        port: u.port || 9000,
-        path: '/',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/xml;charset=utf-8',
-          'Content-Length': Buffer.byteLength(tallyXmlPayload),
-        },
-        timeout: 10000,
-      }, (res) => {
-        let xmlData = '';
-        res.setEncoding('utf8');
-        res.on('data', chunk => xmlData += chunk);
-        res.on('end', () => {
-          try {
-            const parsed = parseTallyXml(xmlData);
-            resolve(parsed);
-          } catch (err) {
-            reject(new Error(`Failed to parse Tally response: ${err.message}`));
-          }
-        });
-      });
-
-      req.on('timeout', () => {
-        req.destroy();
-        reject(new Error(`TallyPrime timed out while fetching stock data at ${tallyUrl}`));
-      });
-
-      req.on('error', (err) => {
-        reject(new Error(`TallyPrime network error: ${err.message}. Is TallyPrime listening on port ${u.port || 9000}?`));
-      });
-
-      req.write(tallyXmlPayload);
-      req.end();
-    } catch (e) {
-      reject(e);
-    }
-  });
-}
-
-/**
- * Helper to clean XML values: unescape entities, strip CDATA tags, and trim
- */
-export function cleanXmlValue(text) {
-  if (!text) return '';
-  return text
-    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/gi, '$1')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&apos;/g, "'")
-    .replace(/&#x27;/gi, "'")
-    .trim();
-}
-
-/**
- * Parse TallyPrime XML response into Monipack CRM Product format
- */
-export function parseTallyXml(xml) {
-  if (!xml || typeof xml !== 'string') return [];
-
-  const items = [];
-  // Match each <STOCKITEM ...> ... </STOCKITEM> block
-  const itemRegex = /<STOCKITEM[\s\S]*?<\/STOCKITEM>/gi;
-  let match;
-
-  while ((match = itemRegex.exec(xml)) !== null) {
-    const block = match[0];
-
-    const getTag = (tag) => {
-      const r = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
-      const m = block.match(r);
-      return m ? cleanXmlValue(m[1]) : '';
-    };
-
-    let name = getTag('NAME');
-    if (!name) {
-      const nameAttr = block.match(/<STOCKITEM[^>]*\sNAME="([^"]+)"/i) || block.match(/<STOCKITEM[^>]*\sNAME='([^']+)'/i);
-      if (nameAttr) name = cleanXmlValue(nameAttr[1]);
-    }
-    if (!name) {
-      const langMatch = block.match(/<LANGUAGENAME\.LIST>[\s\S]*?<NAME>([^<]+)<\/NAME>/i);
-      if (langMatch) name = cleanXmlValue(langMatch[1]);
-    }
-    if (!name) continue;
-
-    const parent = getTag('PARENT') || 'Packaging Products';
-    const baseUnits = getTag('BASEUNITS') || 'CTN';
-    const partNo = getTag('PARTNUMBER') || getTag('GUID') || `MNP-${Math.floor(1000 + Math.random() * 9000)}`;
-    const description = getTag('DESCRIPTION') || getTag('NARRATION') || '';
-    
-    // Parse Rate / Standard Price
-    let rawRate = getTag('STANDARDPRICE') || getTag('RATE') || '0';
-    rawRate = rawRate.replace(/[^\d.]/g, '');
-    const priceOMR = parseFloat(rawRate) || 0;
-
-    // Parse Closing Balance
-    let rawBalance = getTag('CLOSINGBALANCE') || getTag('OPENINGBALANCE') || '0';
-    rawBalance = rawBalance.replace(/[^\d.-]/g, '');
-    const stock = parseInt(rawBalance, 10) || 0;
-
-    // Auto determine brand
-    let brand = 'Monipack';
-    if (parent.toLowerCase().includes('clean') || name.toLowerCase().includes('moniclean')) brand = 'Moniclean';
-    else if (parent.toLowerCase().includes('food') || name.toLowerCase().includes('monifood')) brand = 'Monifood';
-    else if (parent.toLowerCase().includes('kohe') || name.toLowerCase().includes('kohe')) brand = 'Kohe';
-
-    items.push({
-      sku: partNo,
-      name,
-      nameAr: getTag('ALIAS') || '',
-      category: parent,
-      brand,
-      unit: baseUnits,
-      priceOMR,
-      stock,
-      description,
-      source: 'tally_live_xml'
-    });
-  }
-
-  return items;
-}
-
-/**
- * Universal Product Importer with Smart Variance Analysis for 2026
- * Accepts raw Tally XML (Alt + E export) or standard CSV/Excel,
- * and performs real-time comparison against existing catalog items.
+ * Universal Product Importer with Smart Variance Analysis
+ * Accepts standard CSV/Excel text and performs real-time comparison against existing catalog items.
  */
 export function parseUniversalProductData(content, existingProducts = []) {
   if (!content || typeof content !== 'string') {
     return { items: [], count: 0, newCount: 0, priceChangedCount: 0, lowStockCount: 0, formatDetected: 'Empty' };
   }
 
-  const isXml = content.includes('<ENVELOPE') || content.includes('<STOCKITEM') || content.includes('<?xml');
-  let rawItems = [];
-
-  if (isXml) {
-    rawItems = parseTallyXml(content);
-  } else {
-    rawItems = parseProductCsv(content);
-  }
+  const rawItems = parseProductCsv(content);
 
   let newCount = 0;
   let priceChangedCount = 0;
@@ -469,7 +261,7 @@ export function parseUniversalProductData(content, existingProducts = []) {
       isLowStock,
       isOutOfStock,
       existingId: existing ? existing.id : null,
-      source: isXml ? 'tally_xml_drop' : item.source || 'csv_drop'
+      source: item.source || 'csv_drop'
     };
   });
 
@@ -479,6 +271,6 @@ export function parseUniversalProductData(content, existingProducts = []) {
     newCount,
     priceChangedCount,
     lowStockCount,
-    formatDetected: isXml ? 'Tally Native XML (Alt + E)' : 'CSV / Excel Spreadsheet'
+    formatDetected: 'CSV Spreadsheet'
   };
 }

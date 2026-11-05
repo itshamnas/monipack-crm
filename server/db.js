@@ -847,37 +847,26 @@ class Database {
       this.data.users = [];
     }
 
-    // 1. Super Administrator (Full Control + Exporting)
-    if (!this.getUserByEmail('administrator@monipack.com')) {
-      const salt = bcrypt.genSaltSync(10);
-      this.data.users.push({
-        id: 'user_super_admin',
-        name: 'Monipack Administrator',
-        email: 'administrator@monipack.com',
-        role: 'super_admin',
-        canExport: true,
-        passwordHash: bcrypt.hashSync('Admin@Monipack2026!', salt),
-        createdAt: new Date().toISOString(),
-      });
-      console.log('Seeded Super Administrator account: administrator@monipack.com');
-    }
+    // Seed a super admin ONLY if there are zero users, using SEED_ADMIN_EMAIL and SEED_ADMIN_PASSWORD from environment
+    if (this.data.users.length === 0) {
+      const seedEmail = process.env.SEED_ADMIN_EMAIL?.trim();
+      const seedPassword = process.env.SEED_ADMIN_PASSWORD;
 
-    // 2. Admin (Full Control EXCEPT Exporting)
-    if (!this.getUserByEmail('admin@monipack.com')) {
-      const salt = bcrypt.genSaltSync(10);
-      this.data.users.push({
-        id: 'user_admin',
-        name: 'Monipack Admin',
-        email: 'admin@monipack.com',
-        role: 'admin',
-        canExport: false,
-        passwordHash: bcrypt.hashSync('Manager@Monipack2026!', salt),
-        createdAt: new Date().toISOString(),
-      });
-      console.log('Seeded Admin account (No Export): admin@monipack.com');
+      if (seedEmail && seedPassword) {
+        const salt = bcrypt.genSaltSync(10);
+        this.data.users.push({
+          id: 'user_super_admin',
+          name: 'Monipack Administrator',
+          email: seedEmail.toLowerCase(),
+          role: 'super_admin',
+          canExport: true,
+          passwordHash: bcrypt.hashSync(seedPassword, salt),
+          createdAt: new Date().toISOString(),
+        });
+        console.log(`Seeded initial Super Administrator account: ${seedEmail}`);
+        this.save();
+      }
     }
-
-    this.save();
   }
 
   // --- Settings & Audit ---

@@ -1,27 +1,12 @@
 // Monipack CRM - Centralized API Configuration
-// Supports same-origin (cPanel/Localhost) and cross-origin (Render.com/Cloud Backend)
+// Production uses same-origin relative URLs (""). Development supports Vite proxy or VITE_API_URL.
 
-/**
- * Priority:
- * 1. window.__MONIPACK_API_URL__ (runtime override, can be edited directly in cPanel index.html without rebuild)
- * 2. localStorage.getItem('monipack_backend_url') (browser runtime override)
- * 3. import.meta.env.VITE_API_URL (baked at build time via .env.production / .env.development)
- */
 export function getBaseUrl() {
-  if (typeof window !== 'undefined') {
-    if (window.__MONIPACK_API_URL__ && typeof window.__MONIPACK_API_URL__ === 'string' && window.__MONIPACK_API_URL__.trim()) {
-      return window.__MONIPACK_API_URL__.trim().replace(/\/+$/, '');
-    }
-    const localOverride = localStorage.getItem('monipack_backend_url');
-    if (localOverride) {
-      return localOverride.trim().replace(/\/+$/, '');
-    }
-    const hostname = window.location.hostname;
-    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.') || hostname.startsWith('10.')) {
-      return '';
-    }
+  if (import.meta.env.DEV) {
+    return (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
   }
-  return (import.meta.env.VITE_API_URL || '').trim().replace(/\/+$/, '');
+  // In production, the API base URL is always the relative path "" (same origin, calls go to /api)
+  return '';
 }
 
 export const API_BASE_URL = getBaseUrl();
