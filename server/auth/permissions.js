@@ -34,6 +34,8 @@ const ALL_PERMISSIONS = [
   'users.manage',
   'audit.view',
   'backup.download',
+  'customers.view',
+  'customers.manage',
 ];
 
 const ROLE_PERMISSIONS = {
@@ -46,6 +48,7 @@ const ROLE_PERMISSIONS = {
     'products.view', 'products.manage',
     'branches.view',
     'audit.view',
+    'customers.view',
   ],
   customer_care: [
     'dashboard.view',

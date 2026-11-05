@@ -3,6 +3,8 @@ import pool, { query } from '../db/pool.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
+import fs from 'fs';
+import os from 'os';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -38,6 +40,9 @@ export function verifyTestSafety() {
 // Verify safety immediately on load
 verifyTestSafety();
 
+// Uploaded customer photos go to a throw-away folder during tests, never the real uploads folder
+process.env.UPLOAD_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'monipack-test-uploads-'));
+
 // Bring the TEST database up to date with every migration before any test runs,
 // so a new migration never needs a separate manual step for the test database.
 function migrateTestDb() {
@@ -56,6 +61,11 @@ export async function resetTestDb() {
   verifyTestSafety();
   await query(`
     TRUNCATE TABLE
+      link_access_log,
+      customer_transfers,
+      customer_submissions,
+      customer_files,
+      customers,
       quotation_items,
       quotations,
       lead_activities,
@@ -73,6 +83,11 @@ export async function resetTestDb() {
   `);
 
   await query('ALTER SEQUENCE quotation_number_seq RESTART WITH 1000');
+
+  // Customer form fields: drop test-added fields and restore the default rules
+  await query('DELETE FROM customer_fields WHERE is_core = false AND key NOT IN (\'whatsapp\',\'contact_number\',\'email\',\'route\',\'segment\',\'address\',\'postal_code\',\'location\',\'photos\')');
+  await query(`UPDATE customer_fields SET is_hidden = false,
+    required_branch = key IN ('mobile','cr_number'), required_route_b2b = key IN ('mobile','cr_number')`);
 
   // Insert default pipeline stages and categories needed by the app
   const defaultStages = [

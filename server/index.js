@@ -25,6 +25,7 @@ import {
   generateLeadTemplate,
   parseLeadCsv
 } from './leadImportService.js';
+import { registerCustomerRoutes } from './customers/routes.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -68,7 +69,7 @@ app.use(cors({
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Link-Session']
 }));
 app.options('*', cors());
 
@@ -92,12 +93,22 @@ app.use(helmet({
 }));
 
 app.use((req, res, next) => {
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  // geolocation is allowed for our own pages: salesmen use "Use my current location" on the customer link page
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=(self)');
   next();
 });
 
-// Body Parser: 1mb globally, 15mb only on specific bulk/import endpoints
-app.use(express.json({ limit: '1mb' }));
+// Body Parser: 1mb globally, 15mb only on specific bulk/import/upload endpoints.
+// The global parser must SKIP those routes, otherwise it rejects large bodies before the route's own parser runs.
+const LARGE_BODY_ROUTES = [
+  /^\/api\/leads\/(parse-csv|bulk-import)$/,
+  /^\/api\/products\/(parse-csv|bulk-import)$/,
+  /^\/api\/customers\/import(\/parse)?$/,
+  /^\/api\/customers\/[^/]+\/files$/,
+  /^\/api\/link\/[^/]+\/customers\/[^/]+\/files$/,
+];
+const smallJsonParser = express.json({ limit: '1mb' });
+app.use((req, res, next) => (LARGE_BODY_ROUTES.some((re) => re.test(req.path)) ? next() : smallJsonParser(req, res, next)));
 const largeJsonParser = express.json({ limit: '15mb' });
 
 // Wrap async route handlers - uncaught errors go to the central error handler
@@ -895,7 +906,7 @@ app.get('/api/users', authMiddleware, requirePermission('users.manage'), asyncHa
 }));
 
 // Salesmen list (for linking logins and for assignment)
-app.get('/api/salesmen', authMiddleware, requirePermission('users.manage', 'leads.assign'), asyncHandler(async (req, res) => {
+app.get('/api/salesmen', authMiddleware, requirePermission('users.manage', 'leads.assign', 'customers.view'), asyncHandler(async (req, res) => {
   res.json(await db.getSalesmen());
 }));
 
@@ -1129,6 +1140,9 @@ app.delete('/api/settings/branches/:id', authMiddleware, requirePermission('sett
   });
   res.json({ message: 'Branch deleted successfully' });
 }));
+
+// ---- Customer Data Collection (salesman links + admin) ----
+registerCustomerRoutes(app, { authMiddleware, requirePermission, asyncHandler, largeJsonParser, JWT_SECRET, db });
 
 // ---- Central Error Handlers ----
 

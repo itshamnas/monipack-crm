@@ -1,0 +1,914 @@
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Users, Link2, Copy, RefreshCw, MessageCircle, Power, KeyRound, Upload, Download, Search, CheckCircle2,
+  AlertTriangle, FileText, Printer, ArrowRightLeft, Plus, X, Eye, EyeOff, Archive, Loader2,
+} from 'lucide-react';
+import CustomerFieldInput from '../components/customers/CustomerFieldInput.jsx';
+import { FILE_LABEL_NAMES, prepareUpload } from '../utils/fileUpload.js';
+
+const STATUS = {
+  not_started: { label: 'Not started', cls: 'bg-slate-100 text-slate-700 border-slate-200' },
+  submitted: { label: 'Submitted', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+  complete: { label: 'Complete', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
+  pending_approval: { label: 'Pending approval', cls: 'bg-blue-50 text-blue-800 border-blue-200' },
+};
+const TYPE_LABEL = { branch: 'Branch', route_b2b: 'Route / B2B' };
+
+const card = 'bg-white rounded-3xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)]';
+const btn = 'inline-flex items-center justify-center gap-1.5 min-h-[36px] px-3 rounded-full text-xs font-bold transition active:scale-[0.97] disabled:opacity-50';
+const btnDark = `${btn} bg-slate-900 text-white hover:bg-slate-800`;
+const btnRed = `${btn} bg-[#CC1A22] text-white hover:bg-[#A3141B]`;
+const btnLight = `${btn} bg-white text-slate-800 border border-slate-300 hover:bg-slate-50`;
+
+const slug = (s) => String(s || 'salesman').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'salesman';
+const linkUrl = (l) => (l.linkToken ? `${window.location.origin}/c/${slug(l.name)}-${l.linkToken}` : '');
+const fmt = (d) => (d ? new Date(d).toLocaleString() : '—');
+
+function StatusBadge({ status }) {
+  const s = STATUS[status] || STATUS.not_started;
+  return <span className={`inline-flex px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${s.cls}`}>{s.label}</span>;
+}
+
+async function downloadBlob(authFetch, url, filename) {
+  const res = await authFetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Download failed');
+  }
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+
+export default function Customers({ authFetch, showToast, canManage }) {
+  const [tab, setTab] = useState('overview');
+  const [summary, setSummary] = useState(null);
+  const [links, setLinks] = useState([]);
+  const [fields, setFields] = useState([]);
+  const [listFilter, setListFilter] = useState({ salesmanId: 'all', status: 'all', search: '', missing: '' });
+  const [openId, setOpenId] = useState(null);
+
+  const loadSummary = useCallback(async () => {
+    const [s, f, l] = await Promise.all([
+      authFetch('/api/customers/summary'),
+      authFetch('/api/customer-fields'),
+      canManage ? authFetch('/api/customer-links') : Promise.resolve(null),
+    ]);
+    if (s.ok) setSummary(await s.json());
+    if (f.ok) setFields(await f.json());
+    if (l && l.ok) setLinks(await l.json());
+  }, [authFetch, canManage]);
+
+  useEffect(() => { loadSummary().catch(() => showToast('Could not load customer data', 'error')); }, [loadSummary]);
+
+  const salesmenOptions = useMemo(() => {
+    const src = links.length ? links : (summary?.salesmen || []);
+    return src.map((s) => ({ id: s.salesmanId, name: s.name, type: s.type }));
+  }, [links, summary]);
+
+  const tabs = [
+    ['overview', 'Progress'],
+    ['list', 'Customers'],
+    ...(canManage ? [['links', 'Salesman links'], ['import', 'Import'], ['fields', 'Fields']] : []),
+  ];
+
+  return (
+    <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5 pb-24 md:pb-8">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Customer data collection</p>
+          <h1 className="text-2xl font-extrabold text-slate-900">Customers</h1>
+        </div>
+        {canManage && (
+          <button type="button" className={btnLight}
+            onClick={() => downloadBlob(authFetch, '/api/customers/export', `monipack_customers_${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => showToast(e.message, 'error'))}>
+            <Download className="w-4 h-4" /> Export Excel (CSV)
+          </button>
+        )}
+      </div>
+
+      <div role="tablist" aria-label="Customer sections" className="flex flex-wrap gap-1 p-1 bg-white border border-slate-200 rounded-full w-fit">
+        {tabs.map(([id, label]) => (
+          <button key={id} role="tab" aria-selected={tab === id} type="button" onClick={() => setTab(id)}
+            className={`min-h-[40px] px-4 rounded-full text-xs font-bold transition ${tab === id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'overview' && (
+        <Overview summary={summary} onOpenList={(f) => { setListFilter({ salesmanId: 'all', status: 'all', search: '', missing: '', ...f }); setTab('list'); }} />
+      )}
+      {tab === 'list' && (
+        <CustomerList authFetch={authFetch} showToast={showToast} canManage={canManage} filter={listFilter}
+          setFilter={setListFilter} salesmen={salesmenOptions} fields={fields} onOpen={setOpenId} onChanged={loadSummary} />
+      )}
+      {tab === 'links' && canManage && (
+        <LinksTab authFetch={authFetch} showToast={showToast} links={links} summary={summary} onChanged={loadSummary} />
+      )}
+      {tab === 'import' && canManage && (
+        <ImportTab authFetch={authFetch} showToast={showToast} onDone={() => { loadSummary(); setTab('overview'); }} />
+      )}
+      {tab === 'fields' && canManage && (
+        <FieldsTab authFetch={authFetch} showToast={showToast} fields={fields} onChanged={loadSummary} />
+      )}
+
+      {openId && (
+        <CustomerDetail id={openId} authFetch={authFetch} showToast={showToast} canManage={canManage}
+          fields={fields} salesmen={salesmenOptions} onClose={() => setOpenId(null)} onChanged={loadSummary} />
+      )}
+    </div>
+  );
+}
+
+// ---------------- Progress overview ----------------
+function Overview({ summary, onOpenList }) {
+  if (!summary) return <div className={`${card} p-8 text-center text-sm text-slate-500`}>Loading…</div>;
+  const t = summary.totals;
+  const kpis = [
+    ['Total customers', t.total, null],
+    ['Not started', t.not_started, 'not_started'],
+    ['Submitted', t.submitted, 'submitted'],
+    ['Complete', t.complete, 'complete'],
+    ['Pending approval', t.pending_approval, 'pending_approval'],
+  ];
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
+        {kpis.map(([label, value, status]) => (
+          <button key={label} type="button" onClick={() => status && onOpenList({ status })}
+            className={`${card} p-4 text-left ${status ? 'hover:border-slate-400' : 'cursor-default'}`}>
+            <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+            <span className="block mt-1 text-2xl font-extrabold tabular-nums">{value}</span>
+          </button>
+        ))}
+        <div className="rounded-3xl p-4 bg-slate-900 text-white">
+          <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">Done</span>
+          <span className="block mt-1 text-2xl font-extrabold tabular-nums">{t.percentDone ?? 0}%</span>
+        </div>
+      </div>
+
+      <section className={`${card} overflow-hidden`} aria-labelledby="prog-h">
+        <div className="px-5 py-4 border-b border-slate-100">
+          <h2 id="prog-h" className="text-base font-bold">Progress by salesman</h2>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+              <tr>
+                {['Salesman', 'Type', 'Assigned', 'Remaining', 'Submitted', 'Complete', 'Pending', 'Last activity', ''].map((h) => (
+                  <th key={h} className="text-left font-bold px-4 py-2.5 whitespace-nowrap">{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {summary.salesmen.length === 0 && (
+                <tr><td colSpan={9} className="px-4 py-6 text-center text-slate-500">No customers yet. Import your list in the Import tab.</td></tr>
+              )}
+              {summary.salesmen.map((s) => {
+                const pct = s.assigned ? Math.round(((s.assigned - s.remaining) / s.assigned) * 100) : 0;
+                return (
+                  <tr key={s.salesmanId}>
+                    <td className="px-4 py-3 font-semibold">
+                      {s.name}
+                      <div className="mt-1 h-1.5 w-28 rounded-full bg-slate-100" aria-hidden="true">
+                        <div className="h-1.5 rounded-full bg-[#CC1A22]" style={{ width: `${pct}%` }} />
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">{TYPE_LABEL[s.type] || s.type}</td>
+                    <td className="px-4 py-3 tabular-nums">{s.assigned}</td>
+                    <td className="px-4 py-3 tabular-nums font-bold">{s.remaining}</td>
+                    <td className="px-4 py-3 tabular-nums">{s.submitted}</td>
+                    <td className="px-4 py-3 tabular-nums">{s.complete}</td>
+                    <td className="px-4 py-3 tabular-nums">{s.pending}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmt(s.lastActivity)}</td>
+                    <td className="px-4 py-3">
+                      <button type="button" className={btnLight} onClick={() => onOpenList({ salesmanId: s.salesmanId })}>View</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className={`${card} p-5 space-y-3`} aria-labelledby="miss-h">
+        <h2 id="miss-h" className="text-base font-bold">Missing details (submitted customers)</h2>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          {summary.missing.map((m) => (
+            <button key={m.key} type="button" disabled={!m.count} onClick={() => onOpenList({ missing: m.key })}
+              className="flex items-center justify-between min-h-[44px] px-4 rounded-2xl bg-slate-50 hover:bg-slate-100 disabled:hover:bg-slate-50 text-sm">
+              <span className="font-semibold text-slate-700">{m.label}</span>
+              <span className={`tabular-nums font-extrabold ${m.count ? 'text-[#CC1A22]' : 'text-slate-400'}`}>{m.count}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+// ---------------- Customer list ----------------
+function CustomerList({ authFetch, showToast, canManage, filter, setFilter, salesmen, fields, onOpen, onChanged }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState([]);
+  const [transferTo, setTransferTo] = useState('');
+  const [adding, setAdding] = useState(false);
+  const fieldLabel = useMemo(() => Object.fromEntries(fields.map((f) => [f.key, f.label])), [fields]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const qs = new URLSearchParams();
+    Object.entries(filter).forEach(([k, v]) => { if (v && v !== 'all') qs.set(k, v); });
+    const res = await authFetch(`/api/customers?${qs.toString()}`);
+    if (res.ok) setRows(await res.json());
+    setLoading(false);
+    setSelected([]);
+  }, [authFetch, filter]);
+
+  useEffect(() => { load().catch(() => setLoading(false)); }, [load]);
+
+  const transfer = async () => {
+    if (!transferTo || !selected.length) return;
+    const res = await authFetch('/api/customers/transfer', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ids: selected, toSalesmanId: transferTo }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) { showToast(`${body.moved} customer(s) transferred.`); load(); onChanged(); } else showToast(body.error || 'Transfer failed', 'error');
+  };
+
+  const allChecked = rows.length > 0 && selected.length === rows.length;
+
+  return (
+    <div className="space-y-3">
+      <div className={`${card} p-3 flex flex-wrap items-center gap-2`}>
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
+          <label htmlFor="cust-search" className="sr-only">Search</label>
+          <input id="cust-search" type="search" placeholder="Name, mobile, CR or VAT" value={filter.search}
+            onChange={(e) => setFilter({ ...filter, search: e.target.value })}
+            className="w-full h-10 pl-9 pr-3 rounded-full border border-slate-300 text-sm" />
+        </div>
+        <label className="sr-only" htmlFor="cust-sm">Salesman</label>
+        <select id="cust-sm" value={filter.salesmanId} onChange={(e) => setFilter({ ...filter, salesmanId: e.target.value })}
+          className="h-10 px-3 rounded-full border border-slate-300 text-sm bg-white">
+          <option value="all">All salesmen</option>
+          <option value="unassigned">Unassigned</option>
+          {salesmen.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+        </select>
+        <label className="sr-only" htmlFor="cust-st">Status</label>
+        <select id="cust-st" value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })}
+          className="h-10 px-3 rounded-full border border-slate-300 text-sm bg-white">
+          <option value="all">All statuses</option>
+          {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+        {filter.missing && (
+          <button type="button" className={btnLight} onClick={() => setFilter({ ...filter, missing: '' })}>
+            Missing: {fieldLabel[filter.missing] || filter.missing} <X className="w-3.5 h-3.5" />
+          </button>
+        )}
+        {canManage && (
+          <button type="button" className={btnRed} onClick={() => setAdding(true)}><Plus className="w-4 h-4" /> Add customer</button>
+        )}
+      </div>
+
+      {canManage && selected.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 p-3 rounded-2xl bg-slate-900 text-white">
+          <span className="text-sm font-bold">{selected.length} selected</span>
+          <label htmlFor="cust-transfer" className="sr-only">Transfer to</label>
+          <select id="cust-transfer" value={transferTo} onChange={(e) => setTransferTo(e.target.value)}
+            className="h-9 px-3 rounded-full text-sm text-slate-900 bg-white">
+            <option value="">Transfer to…</option>
+            {salesmen.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+          <button type="button" className={btnRed} disabled={!transferTo} onClick={transfer}><ArrowRightLeft className="w-4 h-4" /> Transfer</button>
+          <button type="button" className={`${btn} text-white hover:bg-white/10`} onClick={() => setSelected([])}>Clear</button>
+        </div>
+      )}
+
+      <div className={`${card} overflow-x-auto`}>
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+            <tr>
+              {canManage && (
+                <th className="px-3 py-2.5 w-10">
+                  <input type="checkbox" aria-label="Select all" checked={allChecked}
+                    onChange={() => setSelected(allChecked ? [] : rows.map((r) => r.id))} />
+                </th>
+              )}
+              {['Customer', 'Salesman', 'Status', 'Mobile', 'CR', 'Missing', 'Photos'].map((h) => (
+                <th key={h} className="text-left font-bold px-3 py-2.5 whitespace-nowrap">{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {loading && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500"><Loader2 className="w-5 h-5 animate-spin inline" /> Loading…</td></tr>}
+            {!loading && rows.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500">No customers match these filters.</td></tr>}
+            {!loading && rows.map((c) => (
+              <tr key={c.id} className="hover:bg-slate-50">
+                {canManage && (
+                  <td className="px-3 py-2.5">
+                    <input type="checkbox" aria-label={`Select ${c.name}`} checked={selected.includes(c.id)}
+                      onChange={() => setSelected((s) => (s.includes(c.id) ? s.filter((x) => x !== c.id) : [...s, c.id]))} />
+                  </td>
+                )}
+                <td className="px-3 py-2.5">
+                  <button type="button" className="font-semibold text-slate-900 hover:text-[#CC1A22] text-left" onClick={() => onOpen(c.id)}>{c.name}</button>
+                  {c.reviewNote && c.status === 'pending_approval' && (
+                    <p className="text-[11px] text-blue-800 max-w-xs truncate" title={c.reviewNote}>{c.reviewNote}</p>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{c.salesmanName || 'Unassigned'}</td>
+                <td className="px-3 py-2.5"><StatusBadge status={c.status} /></td>
+                <td className="px-3 py-2.5 tabular-nums whitespace-nowrap">{c.mobile || '—'}</td>
+                <td className="px-3 py-2.5 tabular-nums">{c.noCr ? <span className="text-amber-700 font-semibold">No CR</span> : c.crNumber || '—'}</td>
+                <td className="px-3 py-2.5">
+                  {c.status === 'not_started' ? <span className="text-xs text-slate-400">waiting for salesman</span> : (
+                    <div className="flex flex-wrap gap-1 max-w-xs">
+                      {c.missing.slice(0, 4).map((k) => (
+                        <span key={k} className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-800 text-[10px] font-bold">{fieldLabel[k] || k}</span>
+                      ))}
+                      {c.missing.length > 4 && <span className="text-[10px] text-slate-500">+{c.missing.length - 4}</span>}
+                      {c.missing.length === 0 && <CheckCircle2 className="w-4 h-4 text-emerald-600" aria-label="Nothing missing" />}
+                    </div>
+                  )}
+                </td>
+                <td className="px-3 py-2.5 tabular-nums">{c.photoCount}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {adding && (
+        <AddCustomerModal authFetch={authFetch} showToast={showToast} salesmen={salesmen}
+          onClose={() => setAdding(false)} onSaved={() => { setAdding(false); load(); onChanged(); }} />
+      )}
+    </div>
+  );
+}
+
+function AddCustomerModal({ authFetch, showToast, salesmen, onClose, onSaved }) {
+  const [name, setName] = useState('');
+  const [salesmanId, setSalesmanId] = useState('');
+  const [mobile, setMobile] = useState('');
+  const [error, setError] = useState('');
+  const save = async (e) => {
+    e.preventDefault();
+    setError('');
+    const res = await authFetch('/api/customers', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, salesmanId, mobile }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) { showToast(`${body.name} added to ${body.salesmanName}'s list.`); onSaved(); }
+    else setError(body.fields ? Object.values(body.fields).join(' ') : body.error || 'Could not add customer');
+  };
+  return (
+    <Modal title="Add customer" onClose={onClose}>
+      <form onSubmit={save} className="space-y-3">
+        <TextInput id="ac-name" label="Customer name" value={name} onChange={setName} required />
+        <div className="space-y-1">
+          <label htmlFor="ac-sm" className="block text-sm font-semibold">Salesman</label>
+          <select id="ac-sm" required value={salesmanId} onChange={(e) => setSalesmanId(e.target.value)}
+            className="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm">
+            <option value="">Choose…</option>
+            {salesmen.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+          </select>
+        </div>
+        <TextInput id="ac-mobile" label="Mobile (optional)" value={mobile} onChange={setMobile} type="tel" />
+        {error && <p role="alert" className="text-sm font-semibold text-rose-700">{error}</p>}
+        <button type="submit" className={`${btnRed} w-full min-h-[44px]`}>Add to salesman's list</button>
+      </form>
+    </Modal>
+  );
+}
+
+// ---------------- Customer detail ----------------
+function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen, onClose, onChanged }) {
+  const [c, setC] = useState(null);
+  const [values, setValues] = useState({});
+  const [noCr, setNoCr] = useState(false);
+  const [noCrReason, setNoCrReason] = useState('');
+  const [name, setName] = useState('');
+  const [errors, setErrors] = useState({});
+  const [thumbs, setThumbs] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [transferTo, setTransferTo] = useState('');
+
+  const load = useCallback(async () => {
+    const res = await authFetch(`/api/customers/${id}`);
+    if (!res.ok) { showToast('Customer not found', 'error'); onClose(); return; }
+    const data = await res.json();
+    setC(data);
+    setName(data.name);
+    setNoCr(data.noCr);
+    setNoCrReason(data.noCrReason);
+    setValues({ mobile: data.mobile, cr_number: data.crNumber, vat_number: data.vatNumber, ...data.data });
+  }, [authFetch, id]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Load photo thumbnails with the login token (files are never public)
+  useEffect(() => {
+    if (!c) return undefined;
+    let alive = true;
+    const urls = [];
+    c.files.filter((f) => f.mime === 'image/jpeg').forEach(async (f) => {
+      const res = await authFetch(`/api/customers/${c.id}/files/${f.id}`);
+      if (!res.ok || !alive) return;
+      const url = URL.createObjectURL(await res.blob());
+      urls.push(url);
+      setThumbs((t) => ({ ...t, [f.id]: url }));
+    });
+    return () => { alive = false; urls.forEach((u) => URL.revokeObjectURL(u)); };
+  }, [c, authFetch]);
+
+  if (!c) return <Modal title="Customer" onClose={onClose}><p className="text-sm text-slate-500"><Loader2 className="w-4 h-4 animate-spin inline" /> Loading…</p></Modal>;
+
+  const type = c.salesmanType || 'branch';
+  const editFields = fields.filter((f) => f.type !== 'photo' && !f.isHidden);
+
+  const save = async () => {
+    setBusy(true);
+    setErrors({});
+    const data = {};
+    editFields.forEach((f) => { if (!['mobile', 'cr_number', 'vat_number'].includes(f.key) && values[f.key]) data[f.key] = values[f.key]; });
+    const res = await authFetch(`/api/customers/${c.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, mobile: values.mobile, crNumber: noCr ? '' : values.cr_number, vatNumber: values.vat_number, noCr, noCrReason, data }),
+    });
+    const body = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (res.ok) { showToast('Customer saved.'); load(); onChanged(); }
+    else { setErrors(body.fields || {}); showToast(body.error || 'Could not save', 'error'); }
+  };
+
+  const action = async (path, method = 'POST', bodyObj, okMsg) => {
+    const res = await authFetch(path, { method, headers: { 'Content-Type': 'application/json' }, body: bodyObj ? JSON.stringify(bodyObj) : undefined });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) { showToast(okMsg); onChanged(); return true; }
+    showToast(body.error || 'Something went wrong', 'error');
+    return false;
+  };
+
+  const uploadAdminFile = async (file, label) => {
+    try {
+      const p = await prepareUpload(file);
+      if (await action(`/api/customers/${c.id}/files`, 'POST', { base64: p.base64, label, name: p.name }, 'Document added.')) load();
+    } catch (err) { showToast(err.message, 'error'); }
+  };
+
+  const printProfile = (version) => {
+    const snap = c.submissions[c.submissions.length - 1]?.snapshot; // first (original) submission
+    const src = version === 'submitted' && snap
+      ? { name: snap.name || c.name, mobile: snap.mobile, crNumber: snap.crNumber, noCr: snap.noCr, noCrReason: snap.noCrReason, vatNumber: snap.vatNumber, data: snap.data || {} }
+      : { name: c.name, mobile: c.mobile, crNumber: c.crNumber, noCr: c.noCr, noCrReason: c.noCrReason, vatNumber: c.vatNumber, data: c.data };
+    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+    const rowsHtml = editFields.map((f) => {
+      let v = f.key === 'mobile' ? src.mobile : f.key === 'cr_number' ? (src.noCr ? `No CR – ${src.noCrReason}` : src.crNumber) : f.key === 'vat_number' ? src.vatNumber : src.data[f.key];
+      return `<tr><th>${esc(f.label)}</th><td>${esc(v) || '—'}</td></tr>`;
+    }).join('');
+    const imgs = c.files.filter((f) => thumbs[f.id]).map((f) => `<figure><img src="${thumbs[f.id]}"><figcaption>${esc(FILE_LABEL_NAMES[f.label])}</figcaption></figure>`).join('');
+    const w = window.open('', '_blank');
+    if (!w) { showToast('Allow pop-ups to print', 'error'); return; }
+    w.document.write(`<!doctype html><html dir="auto"><head><meta charset="utf-8"><title>${esc(src.name)}</title>
+      <style>@page{size:A4;margin:14mm}body{font-family:Arial,'Cairo',sans-serif;color:#0f172a}h1{margin:0 0 4px}p.m{color:#475569;margin:0 0 16px;font-size:12px}
+      table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #e2e8f0;padding:7px 9px;text-align:left;vertical-align:top}th{width:35%;background:#f8fafc}
+      figure{page-break-before:always;margin:0;text-align:center}img{max-width:100%;max-height:250mm}figcaption{font-size:12px;color:#475569;margin-top:6px}</style></head>
+      <body><h1>${esc(src.name)}</h1><p class="m">${version === 'submitted' && snap ? `As submitted by ${esc(snap.submittedBy || c.salesmanName)} on ${esc(fmt(c.submissions[c.submissions.length - 1].submittedAt))}` : `Current details · Salesman: ${esc(c.salesmanName || '—')}`} · Customer #${esc(c.id)}</p>
+      <table>${rowsHtml}</table>${imgs}<script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
+    w.document.close();
+  };
+
+  return (
+    <Modal title={c.name} onClose={onClose} wide>
+      <div className="space-y-5">
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusBadge status={c.status} />
+          <span className="text-xs text-slate-500">Salesman: <strong>{c.salesmanName || 'Unassigned'}</strong> ({TYPE_LABEL[type]}) · Source: {c.source} · Submitted: {fmt(c.submittedAt)}</span>
+        </div>
+        {c.reviewNote && <p className="p-3 rounded-2xl bg-blue-50 text-blue-900 text-sm"><AlertTriangle className="w-4 h-4 inline mr-1" />{c.reviewNote}</p>}
+
+        {canManage && c.status === 'pending_approval' && (
+          <button type="button" className={btnRed} onClick={async () => { if (await action(`/api/customers/${c.id}/approve`, 'POST', null, 'Customer approved.')) load(); }}>
+            <CheckCircle2 className="w-4 h-4" /> Approve customer
+          </button>
+        )}
+
+        <section className="grid md:grid-cols-2 gap-4">
+          {canManage && <TextInput id="cd-name" label="Customer name" value={name} onChange={setName} />}
+          {editFields.map((f) => {
+            if (f.key === 'cr_number') {
+              return (
+                <div key={f.key} className="space-y-2">
+                  {!noCr && <CustomerFieldInput field={f} value={values[f.key]} onChange={(v) => setValues({ ...values, [f.key]: v })} error={errors[f.key]} required />}
+                  {type === 'branch' && (
+                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={noCr} onChange={(e) => setNoCr(e.target.checked)} disabled={!canManage} /> No CR</label>
+                  )}
+                  {noCr && <TextInput id="cd-nocr" label="Reason for no CR" value={noCrReason} onChange={setNoCrReason} />}
+                  {errors.no_cr_reason && <p className="text-xs text-rose-700">{errors.no_cr_reason}</p>}
+                </div>
+              );
+            }
+            return (
+              <CustomerFieldInput key={f.key} field={f} value={values[f.key]} onChange={(v) => setValues({ ...values, [f.key]: v })}
+                error={errors[f.key]} required={type === 'branch' ? f.requiredBranch : f.requiredRouteB2b} />
+            );
+          })}
+        </section>
+        {canManage && <button type="button" className={btnDark} disabled={busy} onClick={save}>{busy ? 'Saving…' : 'Save changes'}</button>}
+
+        <section className="space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h3 className="font-bold">Documents & photos ({c.files.length})</h3>
+            <div className="flex flex-wrap gap-2">
+              {c.files.some((f) => f.mime === 'image/jpeg') && (
+                <button type="button" className={btnLight}
+                  onClick={() => downloadBlob(authFetch, `/api/customers/${c.id}/documents.pdf`, `${slug(c.name)}_documents.pdf`).catch((e) => showToast(e.message, 'error'))}>
+                  <FileText className="w-4 h-4" /> All photos as one PDF
+                </button>
+              )}
+              {canManage && (
+                <label className={`${btnLight} cursor-pointer`}>
+                  <Upload className="w-4 h-4" /> Add document
+                  <input type="file" accept="image/*,application/pdf" className="sr-only" onChange={(e) => { if (e.target.files[0]) uploadAdminFile(e.target.files[0], 'other'); e.target.value = ''; }} />
+                </label>
+              )}
+            </div>
+          </div>
+          {c.files.length === 0 ? <p className="text-sm text-slate-500">No documents yet.</p> : (
+            <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+              {c.files.map((f) => (
+                <li key={f.id} className="rounded-2xl border border-slate-200 overflow-hidden bg-white">
+                  <div className="aspect-[4/3] bg-slate-50 flex items-center justify-center">
+                    {thumbs[f.id] ? <img src={thumbs[f.id]} alt={FILE_LABEL_NAMES[f.label]} className="w-full h-full object-cover" /> : <FileText className="w-8 h-8 text-slate-400" />}
+                  </div>
+                  <div className="p-2 space-y-1.5">
+                    <p className="text-xs font-bold">{FILE_LABEL_NAMES[f.label]}</p>
+                    <p className="text-[10px] text-slate-500">{fmt(f.uploadedAt)} · {f.uploadedVia}</p>
+                    <button type="button" className={`${btnDark} w-full`}
+                      onClick={() => downloadBlob(authFetch, `/api/customers/${c.id}/files/${f.id}/pdf`, `${slug(c.name)}_${f.label}.pdf`).catch((e) => showToast(e.message, 'error'))}>
+                      <Download className="w-3.5 h-3.5" /> PDF
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+          <button type="button" className={btnLight} onClick={() => printProfile('current')}><Printer className="w-4 h-4" /> Print profile (current)</button>
+          {c.submissions.length > 0 && (
+            <button type="button" className={btnLight} onClick={() => printProfile('submitted')}><Printer className="w-4 h-4" /> Print as submitted</button>
+          )}
+        </section>
+
+        {canManage && (
+          <section className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-100">
+            <label htmlFor="cd-transfer" className="text-sm font-semibold">Transfer to</label>
+            <select id="cd-transfer" value={transferTo} onChange={(e) => setTransferTo(e.target.value)} className="h-10 px-3 rounded-full border border-slate-300 text-sm bg-white">
+              <option value="">Choose salesman…</option>
+              {salesmen.filter((s) => s.id !== c.salesmanId).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <button type="button" className={btnDark} disabled={!transferTo}
+              onClick={async () => { if (await action('/api/customers/transfer', 'POST', { ids: [c.id], toSalesmanId: transferTo }, 'Customer transferred.')) load(); }}>
+              <ArrowRightLeft className="w-4 h-4" /> Transfer
+            </button>
+            <button type="button" className={`${btn} text-rose-700 hover:bg-rose-50 ml-auto`}
+              onClick={async () => { if (window.confirm(`Archive ${c.name}?`) && await action(`/api/customers/${c.id}`, 'DELETE', null, 'Customer archived.')) onClose(); }}>
+              <Archive className="w-4 h-4" /> Archive
+            </button>
+          </section>
+        )}
+
+        {c.transfers.length > 0 && (
+          <section className="text-xs text-slate-500 space-y-1">
+            <h3 className="font-bold text-slate-700 text-sm">Transfer history</h3>
+            {c.transfers.map((t, i) => <p key={i}>{fmt(t.at)}: {t.from || 'Unassigned'} → {t.to} (by {t.by || '—'})</p>)}
+          </section>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+// ---------------- Salesman links ----------------
+function LinksTab({ authFetch, showToast, links, summary, onChanged }) {
+  const [pinFor, setPinFor] = useState(null);
+  const [pin, setPin] = useState('');
+  const [creating, setCreating] = useState(false);
+  const progress = useMemo(() => Object.fromEntries((summary?.salesmen || []).map((s) => [s.salesmanId, s])), [summary]);
+
+  const call = async (l, body, msg) => {
+    const res = await authFetch(`/api/salesmen/${l.salesmanId}/link`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) { showToast(msg); onChanged(); return data; }
+    showToast(data.error || 'Could not update link', 'error');
+    return null;
+  };
+
+  const setType = async (l, type) => {
+    const res = await authFetch(`/api/salesmen/${l.salesmanId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type }) });
+    if (res.ok) { showToast(`${l.name} is now ${TYPE_LABEL[type]}.`); onChanged(); } else showToast('Could not change type', 'error');
+  };
+
+  const copy = async (l) => {
+    try { await navigator.clipboard.writeText(linkUrl(l)); showToast('Link copied.'); } catch { window.prompt('Copy this link:', linkUrl(l)); }
+  };
+
+  const whatsapp = (l) => {
+    const p = progress[l.salesmanId];
+    const text = `Hello ${l.name}, please complete your customer details in Monipack CRM${p ? ` (${p.remaining} remaining)` : ''}: ${linkUrl(l)}`;
+    const phone = String(l.phone || '').replace(/\D/g, '');
+    window.open(`https://api.whatsapp.com/send?${phone ? `phone=${phone}&` : ''}text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className={`${card} p-4 text-sm text-slate-600 flex flex-wrap items-center justify-between gap-3`}>
+        <p className="max-w-2xl">
+          Each salesman gets a <strong>secret link</strong> that shows only his customers. <strong>Reset</strong> makes the old link stop working at once.
+          A <strong>PIN</strong> (4–6 digits) adds protection. Only <strong>Branch</strong> salesmen may tick “No CR”.
+        </p>
+        <button type="button" className={btnRed} onClick={() => setCreating(true)}><Plus className="w-4 h-4" /> New salesman</button>
+      </div>
+      <div className={`${card} overflow-x-auto`}>
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+            <tr>{['Salesman', 'Type', 'Link', 'PIN', 'Last opened', 'Actions'].map((h) => <th key={h} className="text-left font-bold px-4 py-2.5">{h}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {links.map((l) => (
+              <tr key={l.salesmanId}>
+                <td className="px-4 py-3 font-semibold whitespace-nowrap">{l.name}</td>
+                <td className="px-4 py-3">
+                  <label className="sr-only" htmlFor={`type-${l.salesmanId}`}>Type for {l.name}</label>
+                  <select id={`type-${l.salesmanId}`} value={l.type} onChange={(e) => setType(l, e.target.value)} className="h-9 px-2 rounded-full border border-slate-300 text-xs bg-white">
+                    <option value="branch">Branch</option>
+                    <option value="route_b2b">Route / B2B</option>
+                  </select>
+                </td>
+                <td className="px-4 py-3">
+                  {l.linkEnabled ? (
+                    <span className="inline-flex items-center gap-1 text-emerald-700 font-bold text-xs"><Link2 className="w-3.5 h-3.5" /> On</span>
+                  ) : <span className="text-xs text-slate-500">Off</span>}
+                </td>
+                <td className="px-4 py-3 text-xs">{l.hasPin ? 'Set' : '—'}</td>
+                <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmt(l.linkLastUsedAt)}</td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-1.5">
+                    {!l.linkEnabled && <button type="button" className={btnRed} onClick={() => call(l, { action: 'enable' }, `Link switched on for ${l.name}.`)}><Power className="w-3.5 h-3.5" /> Switch on</button>}
+                    {l.linkEnabled && (
+                      <>
+                        <button type="button" className={btnDark} onClick={() => copy(l)}><Copy className="w-3.5 h-3.5" /> Copy</button>
+                        <button type="button" className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`} onClick={() => whatsapp(l)}><MessageCircle className="w-3.5 h-3.5" /> WhatsApp</button>
+                        <button type="button" className={btnLight} onClick={() => window.confirm(`Reset ${l.name}'s link? The old link stops working immediately.`) && call(l, { action: 'regenerate' }, 'New link created. Send it to the salesman.')}><RefreshCw className="w-3.5 h-3.5" /> Reset</button>
+                        <button type="button" className={btnLight} onClick={() => { setPinFor(l); setPin(''); }}><KeyRound className="w-3.5 h-3.5" /> PIN</button>
+                        <button type="button" className={`${btn} text-rose-700 hover:bg-rose-50`} onClick={() => call(l, { action: 'disable' }, `Link switched off for ${l.name}.`)}><Power className="w-3.5 h-3.5" /> Off</button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {pinFor && (
+        <Modal title={`PIN for ${pinFor.name}`} onClose={() => setPinFor(null)}>
+          <form className="space-y-3" onSubmit={async (e) => { e.preventDefault(); if (await call(pinFor, { pin }, pin ? 'PIN set. Tell the salesman his PIN.' : 'PIN removed.')) setPinFor(null); }}>
+            <TextInput id="pin-input" label="New PIN (4–6 digits). Leave empty to remove the PIN." value={pin} onChange={(v) => setPin(v.replace(/\D/g, '').slice(0, 6))} inputMode="numeric" />
+            <button type="submit" className={`${btnRed} w-full min-h-[44px]`}>{pin ? 'Save PIN' : 'Remove PIN'}</button>
+          </form>
+        </Modal>
+      )}
+      {creating && <NewSalesmanModal authFetch={authFetch} showToast={showToast} onClose={() => setCreating(false)} onSaved={() => { setCreating(false); onChanged(); }} />}
+    </div>
+  );
+}
+
+function NewSalesmanModal({ authFetch, showToast, onClose, onSaved }) {
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [type, setType] = useState('route_b2b');
+  const save = async (e) => {
+    e.preventDefault();
+    const res = await authFetch('/api/salesmen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, phone, type }) });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) { showToast(`${body.name} added.`); onSaved(); } else showToast(body.error || 'Could not add salesman', 'error');
+  };
+  return (
+    <Modal title="New salesman" onClose={onClose}>
+      <form onSubmit={save} className="space-y-3">
+        <TextInput id="ns-name" label="Name" value={name} onChange={setName} required />
+        <TextInput id="ns-phone" label="WhatsApp number (for sending the link)" value={phone} onChange={setPhone} type="tel" />
+        <div className="space-y-1">
+          <label htmlFor="ns-type" className="block text-sm font-semibold">Type</label>
+          <select id="ns-type" value={type} onChange={(e) => setType(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm">
+            <option value="branch">Branch (retail outlet) – may tick “No CR”</option>
+            <option value="route_b2b">Route / B2B – CR always required</option>
+          </select>
+        </div>
+        <button type="submit" className={`${btnRed} w-full min-h-[44px]`}>Add salesman</button>
+      </form>
+    </Modal>
+  );
+}
+
+// ---------------- Import ----------------
+const TEMPLATE = '﻿Customer Name,Salesman,Mobile,CR Number,VAT Number,Route,Segment,Address\nAl Noor Catering,Salim Al Hadhrami,91234567,,,,Restaurant,\n';
+
+function ImportTab({ authFetch, showToast, onDone }) {
+  const [result, setResult] = useState(null);
+  const [busy, setBusy] = useState(false);
+
+  const readFile = async (file) => {
+    if (!file) return;
+    if (!/\.(csv|txt)$/i.test(file.name)) {
+      showToast('Save the sheet as CSV first: Excel → Save As → CSV UTF-8, or Google Sheets → File → Download → CSV.', 'error');
+      return;
+    }
+    setBusy(true);
+    const text = await file.text();
+    const res = await authFetch('/api/customers/import/parse', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ csvData: text }) });
+    const body = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (res.ok) setResult(body); else showToast(body.error || 'Could not read the file', 'error');
+  };
+
+  const doImport = async () => {
+    setBusy(true);
+    const res = await authFetch('/api/customers/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ rows: result.rows.filter((r) => r.valid) }) });
+    const body = await res.json().catch(() => ({}));
+    setBusy(false);
+    if (res.ok) { showToast(`${body.added} customers imported. ${body.skippedDuplicate} duplicates skipped.`); onDone(); }
+    else showToast(body.error || 'Import failed', 'error');
+  };
+
+  const valid = result?.rows.filter((r) => r.valid).length || 0;
+
+  return (
+    <div className="space-y-3">
+      <div className={`${card} p-5 space-y-3`}>
+        <h2 className="font-bold">Import customer list</h2>
+        <ol className="list-decimal pl-5 text-sm text-slate-600 space-y-1">
+          <li>Columns needed: <strong>Customer Name</strong> and <strong>Salesman</strong> (exactly as the salesman's name in the CRM). Other columns are optional: Mobile, CR Number, VAT Number, Route, Segment, Address…</li>
+          <li>From Google Sheets: <em>File → Download → Comma-separated values (.csv)</em>. From Excel: <em>Save As → CSV UTF-8</em>.</li>
+          <li>Upload the CSV, check the preview, then click Import. Customers already in the CRM (same name for the same salesman, or same mobile / CR / VAT) are skipped.</li>
+        </ol>
+        <div className="flex flex-wrap gap-2">
+          <a className={btnLight} href={`data:text/csv;charset=utf-8,${encodeURIComponent(TEMPLATE)}`} download="monipack_customer_import_template.csv">
+            <Download className="w-4 h-4" /> Download template
+          </a>
+          <label className={`${btnRed} cursor-pointer`}>
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />} Choose CSV file
+            <input type="file" accept=".csv,text/csv,.txt" className="sr-only" onChange={(e) => { readFile(e.target.files[0]); e.target.value = ''; }} />
+          </label>
+        </div>
+      </div>
+
+      {result && (
+        <div className={`${card} p-5 space-y-3`}>
+          {result.errors.length > 0 ? (
+            <p role="alert" className="text-sm font-semibold text-rose-700">{result.errors.join(' ')}</p>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm"><strong className="text-emerald-700">{valid} ready</strong> · <strong className="text-rose-700">{result.rows.length - valid} with problems</strong> (these will be skipped)</p>
+                <button type="button" className={btnRed} disabled={!valid || busy} onClick={doImport}>Import {valid} customers</button>
+              </div>
+              <div className="overflow-x-auto max-h-[420px] overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50 sticky top-0"><tr>{['Line', 'Customer', 'Salesman', 'Mobile', 'CR', 'Problem'].map((h) => <th key={h} className="text-left px-3 py-2">{h}</th>)}</tr></thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {result.rows.map((r) => (
+                      <tr key={r.line} className={r.valid ? '' : 'bg-rose-50'}>
+                        <td className="px-3 py-1.5 tabular-nums">{r.line}</td>
+                        <td className="px-3 py-1.5">{r.name}</td>
+                        <td className="px-3 py-1.5">{r.salesmanName}</td>
+                        <td className="px-3 py-1.5 tabular-nums">{r.mobile}</td>
+                        <td className="px-3 py-1.5 tabular-nums">{r.crNumber}</td>
+                        <td className="px-3 py-1.5 text-rose-700">{r.problems.join(', ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------- Field manager ----------------
+function FieldsTab({ authFetch, showToast, fields, onChanged }) {
+  const [newField, setNewField] = useState({ label: '', type: 'text', options: '' });
+  const [optionDrafts, setOptionDrafts] = useState({});
+
+  const patch = async (f, body, msg) => {
+    const res = await authFetch(`/api/customer-fields/${f.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) { showToast(msg); onChanged(); } else showToast(data.error || 'Could not save', 'error');
+  };
+
+  const add = async (e) => {
+    e.preventDefault();
+    const options = newField.type === 'dropdown' ? newField.options.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const res = await authFetch('/api/customer-fields', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newField, options }) });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) { showToast(`Field "${data.label}" added.`); setNewField({ label: '', type: 'text', options: '' }); onChanged(); }
+    else showToast(data.error || 'Could not add field', 'error');
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className={`${card} overflow-x-auto`}>
+        <table className="w-full text-sm">
+          <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
+            <tr>{['Field', 'Type', 'Required: Branch', 'Required: Route/B2B', 'Shown', 'Dropdown options'].map((h) => <th key={h} className="text-left font-bold px-4 py-2.5 whitespace-nowrap">{h}</th>)}</tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {fields.map((f) => {
+              const locked = f.key === 'mobile' || f.key === 'cr_number';
+              return (
+                <tr key={f.id} className={f.isHidden ? 'opacity-60' : ''}>
+                  <td className="px-4 py-3 font-semibold">{f.label}{locked && <span className="ml-1 text-[10px] text-slate-500">(always required)</span>}</td>
+                  <td className="px-4 py-3 text-slate-600">{f.type}</td>
+                  <td className="px-4 py-3"><input type="checkbox" aria-label={`${f.label} required for branch`} checked={f.requiredBranch} disabled={locked} onChange={() => patch(f, { requiredBranch: !f.requiredBranch }, 'Saved.')} /></td>
+                  <td className="px-4 py-3"><input type="checkbox" aria-label={`${f.label} required for route/B2B`} checked={f.requiredRouteB2b} disabled={locked} onChange={() => patch(f, { requiredRouteB2b: !f.requiredRouteB2b }, 'Saved.')} /></td>
+                  <td className="px-4 py-3">
+                    <button type="button" disabled={locked} className={btnLight} onClick={() => patch(f, { isHidden: !f.isHidden }, f.isHidden ? `${f.label} shown again.` : `${f.label} hidden (data kept).`)}>
+                      {f.isHidden ? <><EyeOff className="w-3.5 h-3.5" /> Hidden</> : <><Eye className="w-3.5 h-3.5" /> Shown</>}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3">
+                    {f.type === 'dropdown' ? (
+                      <div className="flex gap-1.5 items-center min-w-[260px]">
+                        <label htmlFor={`opt-${f.id}`} className="sr-only">Options for {f.label}</label>
+                        <input id={`opt-${f.id}`} type="text" className="flex-1 h-9 px-3 rounded-full border border-slate-300 text-xs"
+                          value={optionDrafts[f.id] ?? f.options.join(', ')} onChange={(e) => setOptionDrafts({ ...optionDrafts, [f.id]: e.target.value })} placeholder="Option 1, Option 2" />
+                        <button type="button" className={btnDark} onClick={() => patch(f, { options: (optionDrafts[f.id] ?? f.options.join(', ')).split(',').map((s) => s.trim()).filter(Boolean) }, 'Options saved.')}>Save</button>
+                      </div>
+                    ) : <span className="text-xs text-slate-400">—</span>}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <form onSubmit={add} className={`${card} p-5 flex flex-wrap items-end gap-3`}>
+        <TextInput id="nf-label" label="New field name" value={newField.label} onChange={(v) => setNewField({ ...newField, label: v })} required />
+        <div className="space-y-1">
+          <label htmlFor="nf-type" className="block text-sm font-semibold">Type</label>
+          <select id="nf-type" value={newField.type} onChange={(e) => setNewField({ ...newField, type: e.target.value })} className="h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm">
+            {['text', 'number', 'phone', 'email', 'dropdown', 'date', 'textarea'].map((t) => <option key={t} value={t}>{t}</option>)}
+          </select>
+        </div>
+        {newField.type === 'dropdown' && (
+          <TextInput id="nf-options" label="Options (comma separated)" value={newField.options} onChange={(v) => setNewField({ ...newField, options: v })} />
+        )}
+        <button type="submit" className={`${btnRed} min-h-[44px]`}><Plus className="w-4 h-4" /> Add field</button>
+      </form>
+    </div>
+  );
+}
+
+// ---------------- Small shared pieces ----------------
+function Modal({ title, onClose, children, wide }) {
+  return (
+    <div className="fixed inset-0 z-50 bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
+      <div className={`w-full ${wide ? 'sm:max-w-4xl' : 'sm:max-w-md'} max-h-[94vh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl`}>
+        <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between">
+          <h2 className="text-lg font-bold truncate pr-3">{title}</h2>
+          <button type="button" onClick={onClose} aria-label="Close" className="w-11 h-11 rounded-full flex items-center justify-center hover:bg-slate-100"><X className="w-5 h-5" /></button>
+        </div>
+        <div className="p-5">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function TextInput({ id, label, value, onChange, type = 'text', required, inputMode }) {
+  return (
+    <div className="space-y-1 flex-1 min-w-[180px]">
+      <label htmlFor={id} className="block text-sm font-semibold">{label}</label>
+      <input id={id} type={type} inputMode={inputMode} required={required} value={value ?? ''} onChange={(e) => onChange(e.target.value)}
+        className="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-[#CC1A22]" />
+    </div>
+  );
+}

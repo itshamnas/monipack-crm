@@ -15,7 +15,8 @@ import {
   Headphones,
   X,
   LogOut,
-  ChevronDown
+  ChevronDown,
+  ContactRound
 } from 'lucide-react';
 
 /**
@@ -61,7 +62,10 @@ export default function Sidebar({
     },
   ];
 
+  const canViewCustomers = Boolean(currentUser?.permissions?.includes('customers.view'));
+
   const networkOperations = [
+    ...(canViewCustomers ? [{ id: 'customers', label: 'Customer Data', icon: ContactRound }] : []),
     { id: 'products', label: 'Product Catalog', icon: Package },
     { 
       id: 'branches', 
