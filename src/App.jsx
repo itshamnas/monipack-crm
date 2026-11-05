@@ -13,6 +13,7 @@ import Settings from './pages/Settings.jsx';
 import Login from './pages/Login.jsx';
 import ChangePassword from './pages/ChangePassword.jsx';
 import CustomerCare from './pages/CustomerCare.jsx';
+import Customers from './pages/Customers.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import MobileBottomNav from './components/layout/MobileBottomNav.jsx';
 import OfflineBanner from './components/pwa/OfflineBanner.jsx';
@@ -187,6 +188,9 @@ export default function App() {
   // (Must stay above the early returns below - React hooks cannot run conditionally.)
   useEffect(() => {
     if (activeTab === 'settings' && currentUser && !currentUser.permissions?.includes('settings.manage')) {
+      setActiveTab('dashboard');
+    }
+    if (activeTab === 'customers' && currentUser && !currentUser.permissions?.includes('customers.view')) {
       setActiveTab('dashboard');
     }
   }, [activeTab, currentUser]);
@@ -473,6 +477,11 @@ export default function App() {
 
   // Page Title mapping (with responsive shortTitle for mobile viewports)
   const titles = {
+    customers: {
+      title: 'Customer Data Collection',
+      shortTitle: 'Customers',
+      subtitle: 'Salesman links, progress, missing details and customer documents'
+    },
     dashboard: { 
       title: 'Executive Sales Dashboard', 
       shortTitle: 'Dashboard', 
@@ -663,6 +672,10 @@ export default function App() {
             onSelectBranch={(b) => setSelectedBranch(b)}
             onNavigate={setActiveTab}
           />
+        )}
+
+        {activeTab === 'customers' && can('customers.view') && (
+          <Customers authFetch={authFetch} showToast={showToast} canManage={can('customers.manage')} />
         )}
 
         {activeTab === 'settings' && can('settings.manage') && (
