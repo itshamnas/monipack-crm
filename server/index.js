@@ -660,7 +660,7 @@ app.post('/api/quotations', authMiddleware, asyncHandler(async (req, res) => {
   if (req.body.items && !Array.isArray(req.body.items)) {
     return res.status(400).json({ error: 'Quotation items must be provided as an array.' });
   }
-  const quote = await db.createQuotation(req.body);
+  const quote = await db.createQuotation(req.body, { changedBy: req.user.name });
   await db.addActivity({
     leadId: quote.leadId,
     leadName: quote.customerName,
@@ -671,7 +671,7 @@ app.post('/api/quotations', authMiddleware, asyncHandler(async (req, res) => {
 }));
 
 app.put('/api/quotations/:id', authMiddleware, asyncHandler(async (req, res) => {
-  const updated = await db.updateQuotation(req.params.id, req.body);
+  const updated = await db.updateQuotation(req.params.id, req.body, { changedBy: req.user.name });
   if (!updated) return res.status(404).json({ error: 'Quotation not found' });
   await db.addActivity({
     type: 'quotation',

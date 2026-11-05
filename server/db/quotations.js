@@ -38,7 +38,46 @@ export async function getQuotationById(id) {
   return quotationToApi(row, items);
 }
 
-export async function createQuotation(quoteInput) {
+async function syncLeadQuotationStatus(client, leadId, grandTotalOMR, changedBy) {
+  if (!leadId) return;
+  const numLeadId = parseInt(leadId, 10);
+  if (isNaN(numLeadId)) return;
+
+  const { rows } = await client.query(
+    'SELECT id, status, deal_value FROM leads WHERE id = $1 AND archived_at IS NULL FOR UPDATE',
+    [numLeadId]
+  );
+  if (!rows[0]) return;
+  const lead = rows[0];
+
+  const currentStatus = lead.status;
+  const canAdvanceStatus = currentStatus === 'new' || currentStatus === 'contacted';
+  const newStatus = canAdvanceStatus ? 'quotation_sent' : currentStatus;
+
+  const canUpdateDealValue = currentStatus !== 'won' && currentStatus !== 'lost';
+  const newDealValue = canUpdateDealValue ? grandTotalOMR : Number(lead.deal_value);
+
+  const statusChanged = canAdvanceStatus && currentStatus !== newStatus;
+  const dealValueChanged = canUpdateDealValue && Number(lead.deal_value) !== Number(grandTotalOMR);
+
+  if (statusChanged || dealValueChanged) {
+    await client.query(
+      `UPDATE leads SET status = $1, deal_value = $2, updated_at = now()
+       WHERE id = $3 AND archived_at IS NULL`,
+      [newStatus, newDealValue, numLeadId]
+    );
+  }
+
+  if (statusChanged) {
+    await client.query(
+      `INSERT INTO lead_stage_history (lead_id, from_status, to_status, changed_by)
+       VALUES ($1, $2, $3, $4)`,
+      [numLeadId, currentStatus, newStatus, changedBy || 'System']
+    );
+  }
+}
+
+export async function createQuotation(quoteInput, options = {}) {
   const client = await getClient();
   try {
     await client.query('BEGIN');
@@ -113,13 +152,9 @@ export async function createQuotation(quoteInput) {
       insertedItems.push(iRows[0]);
     }
 
-    // If linked to a lead, update lead status and deal value (within same transaction)
+    // If linked to a lead, sync lead status and deal value (within same transaction)
     if (leadId) {
-      await client.query(
-        `UPDATE leads SET status = 'quotation_sent', deal_value = $1, updated_at = now()
-         WHERE id = $2 AND archived_at IS NULL`,
-        [grandTotalOMR, leadId]
-      );
+      await syncLeadQuotationStatus(client, leadId, grandTotalOMR, options.changedBy || quoteInput.salesRep);
     }
 
     await client.query('COMMIT');
@@ -132,7 +167,7 @@ export async function createQuotation(quoteInput) {
   }
 }
 
-export async function updateQuotation(id, updates) {
+export async function updateQuotation(id, updates, options = {}) {
   const client = await getClient();
   try {
     await client.query('BEGIN');
@@ -194,6 +229,10 @@ export async function updateQuotation(id, updates) {
       ? (parseInt(updates.leadId, 10) || null)
       : row.lead_id;
 
+    const termsJson = updates.terms !== undefined
+      ? JSON.stringify(updates.terms)
+      : (typeof row.terms === 'string' ? row.terms : (row.terms ? JSON.stringify(row.terms) : null));
+
     const { rows: uRows } = await client.query(
       `UPDATE quotations SET
          customer_name = $1, address = $2, attn = $3, date = $4, validity_days = $5,
@@ -210,18 +249,15 @@ export async function updateQuotation(id, updates) {
         updates.salesRep !== undefined ? updates.salesRep : row.sales_rep,
         updates.status !== undefined ? updates.status : row.status,
         subtotalOMR, enableVat, vatRate, vatAmountOMR, grandTotalOMR,
-        updates.terms !== undefined ? JSON.stringify(updates.terms) : row.terms,
+        termsJson,
         leadId,
         row.id,
       ]
     );
 
-    // Update linked lead's deal value
+    // If linked to a lead, sync lead status and deal value (within same transaction)
     if (leadId) {
-      await client.query(
-        'UPDATE leads SET deal_value = $1, updated_at = now() WHERE id = $2 AND archived_at IS NULL',
-        [grandTotalOMR, leadId]
-      );
+      await syncLeadQuotationStatus(client, leadId, grandTotalOMR, options.changedBy || updates.salesRep || row.sales_rep);
     }
 
     await client.query('COMMIT');

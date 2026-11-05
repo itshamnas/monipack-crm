@@ -210,4 +210,181 @@ describe('PostgreSQL Migration Verification Suite', () => {
       expect(getLeadRes.body.salesman).toBe('Fixture Salesman One');
     }
   });
+
+  // 7. BUG 2 (a) lead in 'contacted' -> becomes 'quotation_sent' on quotation create, changed_by equals test user
+  it('BUG 2 (a): lead in contacted -> becomes quotation_sent on quotation create, changed_by equals logged-in user', async () => {
+    // 1. Create a lead with status 'contacted'
+    const leadRes = await request(app)
+      .post('/api/leads')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        name: 'Contacted Lead Packaging Co',
+        category: 'Custom Boxes',
+        mobile: '91112233',
+        status: 'contacted',
+        dealValue: 50.000,
+      });
+    expect(leadRes.status).toBe(201);
+    const leadId = leadRes.body.id;
+    const numLeadId = parseInt(leadId, 10);
+
+    // 2. Create a quotation linked to this lead
+    const quoteRes = await request(app)
+      .post('/api/quotations')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        leadId,
+        customerName: 'Contacted Lead Packaging Co',
+        salesRep: 'Fixture Salesman One',
+        items: [{ item: 'Custom Printed Box', quantity: 100, unitPriceOMR: 1.500 }],
+      });
+    expect(quoteRes.status).toBe(201);
+    const grandTotal = quoteRes.body.grandTotalOMR;
+
+    // 3. Check lead status updated to quotation_sent and dealValue updated
+    const getLeadRes = await request(app)
+      .get(`/api/leads/${leadId}`)
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(getLeadRes.status).toBe(200);
+    expect(getLeadRes.body.status).toBe('quotation_sent');
+    expect(getLeadRes.body.dealValue).toBe(grandTotal);
+
+    // 4. Verify lead_stage_history entry has changed_by = logged-in user's name
+    const { rows: history } = await query(
+      'SELECT * FROM lead_stage_history WHERE lead_id = $1 AND to_status = $2 ORDER BY changed_at DESC',
+      [numLeadId, 'quotation_sent']
+    );
+    expect(history.length).toBeGreaterThanOrEqual(1);
+    expect(history[0].from_status).toBe('contacted');
+    expect(history[0].to_status).toBe('quotation_sent');
+    expect(history[0].changed_by).toBe('Fixture Imported User');
+  });
+
+  // 8. BUG 2 (b) lead in 'won' -> stays 'won', dealValue is not overwritten
+  it('BUG 2 (b): lead in won -> stays won when quotation created/updated, dealValue not overwritten', async () => {
+    // 1. Create a lead with status 'won' and fixed dealValue
+    const leadRes = await request(app)
+      .post('/api/leads')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        name: 'Won Deal Loyal Corp',
+        category: 'Food Containers',
+        mobile: '92223344',
+        status: 'won',
+        dealValue: 750.000,
+      });
+    expect(leadRes.status).toBe(201);
+    const leadId = leadRes.body.id;
+    const numLeadId = parseInt(leadId, 10);
+
+    const { rows: historyBefore } = await query(
+      'SELECT COUNT(*) AS cnt FROM lead_stage_history WHERE lead_id = $1',
+      [numLeadId]
+    );
+    const countBefore = parseInt(historyBefore[0].cnt, 10);
+
+    // 2. Create quotation linked to won lead with different amount
+    const quoteRes = await request(app)
+      .post('/api/quotations')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        leadId,
+        customerName: 'Won Deal Loyal Corp',
+        items: [{ item: 'Add-on Trays', quantity: 50, unitPriceOMR: 2.000 }],
+      });
+    expect(quoteRes.status).toBe(201);
+
+    // 3. Check lead status is STILL 'won' and dealValue is STILL 750
+    const getLeadRes = await request(app)
+      .get(`/api/leads/${leadId}`)
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(getLeadRes.status).toBe(200);
+    expect(getLeadRes.body.status).toBe('won');
+    expect(getLeadRes.body.dealValue).toBe(750);
+
+    // 4. Update quotation and verify lead still remains 'won' and dealValue still unchanged
+    const quoteId = quoteRes.body.id;
+    const updateQuoteRes = await request(app)
+      .put(`/api/quotations/${quoteId}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        items: [{ item: 'Add-on Trays Premium', quantity: 100, unitPriceOMR: 5.000 }],
+      });
+    expect(updateQuoteRes.status).toBe(200);
+
+    const getLeadAfterUpdate = await request(app)
+      .get(`/api/leads/${leadId}`)
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(getLeadAfterUpdate.body.status).toBe('won');
+    expect(getLeadAfterUpdate.body.dealValue).toBe(750);
+
+    // 5. Verify no new stage transition was written into lead_stage_history
+    const { rows: historyAfter } = await query(
+      'SELECT COUNT(*) AS cnt FROM lead_stage_history WHERE lead_id = $1',
+      [numLeadId]
+    );
+    expect(parseInt(historyAfter[0].cnt, 10)).toBe(countBefore);
+  });
+
+  // 9. BUG 2 (c) lead in 'sample_sent' -> stays 'sample_sent', dealValue is updated
+  it('BUG 2 (c): lead in sample_sent -> stays sample_sent when quotation created/updated, dealValue updated', async () => {
+    // 1. Create a lead with status 'sample_sent'
+    const leadRes = await request(app)
+      .post('/api/leads')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        name: 'Sample Sent Testing LLC',
+        category: 'Bio Bowls',
+        mobile: '93334455',
+        status: 'sample_sent',
+        dealValue: 120.000,
+      });
+    expect(leadRes.status).toBe(201);
+    const leadId = leadRes.body.id;
+    const numLeadId = parseInt(leadId, 10);
+
+    // 2. Create quotation linked to sample_sent lead
+    const quoteRes = await request(app)
+      .post('/api/quotations')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        leadId,
+        customerName: 'Sample Sent Testing LLC',
+        items: [{ item: 'Bio Bowls 500ml', quantity: 200, unitPriceOMR: 1.250 }],
+      });
+    expect(quoteRes.status).toBe(201);
+    const quotationId = quoteRes.body.id;
+    const grandTotal = quoteRes.body.grandTotalOMR;
+
+    // 3. Verify lead status remains 'sample_sent' (did not regress to quotation_sent!), dealValue updated
+    const getLeadRes = await request(app)
+      .get(`/api/leads/${leadId}`)
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(getLeadRes.status).toBe(200);
+    expect(getLeadRes.body.status).toBe('sample_sent');
+    expect(getLeadRes.body.dealValue).toBe(grandTotal);
+
+    // 4. Verify no lead_stage_history row for quotation_sent was created
+    const { rows: historyRows } = await query(
+      'SELECT * FROM lead_stage_history WHERE lead_id = $1 AND to_status = $2',
+      [numLeadId, 'quotation_sent']
+    );
+    expect(historyRows.length).toBe(0);
+
+    // 5. Update the quotation and verify status still stays sample_sent and dealValue updates
+    const updateQuoteRes = await request(app)
+      .put(`/api/quotations/${quotationId}`)
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        items: [{ item: 'Bio Bowls 500ml', quantity: 400, unitPriceOMR: 1.250 }],
+      });
+    expect(updateQuoteRes.status).toBe(200);
+    const newGrandTotal = updateQuoteRes.body.grandTotalOMR;
+
+    const getLeadAfterUpdate = await request(app)
+      .get(`/api/leads/${leadId}`)
+      .set('Authorization', `Bearer ${authToken}`);
+    expect(getLeadAfterUpdate.body.status).toBe('sample_sent');
+    expect(getLeadAfterUpdate.body.dealValue).toBe(newGrandTotal);
+  });
 });
