@@ -38,6 +38,20 @@ export function verifyTestSafety() {
 // Verify safety immediately on load
 verifyTestSafety();
 
+// Bring the TEST database up to date with every migration before any test runs,
+// so a new migration never needs a separate manual step for the test database.
+function migrateTestDb() {
+  const runnerPath = path.resolve(__dirname, '../migrations/runner.js');
+  const proc = spawnSync('node', [runnerPath], {
+    env: { ...process.env, NODE_ENV: 'test' },
+    encoding: 'utf-8',
+  });
+  if (proc.status !== 0) {
+    throw new Error(`[TEST SETUP] Migrating the test database failed:\n${proc.stderr || proc.stdout}`);
+  }
+}
+migrateTestDb();
+
 export async function resetTestDb() {
   verifyTestSafety();
   await query(`
