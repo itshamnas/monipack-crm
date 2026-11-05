@@ -29,6 +29,7 @@ export default function CustomerLink() {
   const [pinError, setPinError] = useState('');
   const [fields, setFields] = useState([]);
   const [list, setList] = useState({ total: 0, remaining: 0, customers: [] });
+  const [listState, setListState] = useState('loading'); // loading | ok | error
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState(null); // customer object, or { isNew: true }
   const [toast, setToast] = useState(null);
@@ -83,9 +84,13 @@ export default function CustomerLink() {
   };
 
   const loadData = useCallback(async () => {
-    const [f, c] = await Promise.all([api('/fields'), api('/customers')]);
-    if (f.ok) setFields(f.body);
-    if (c.ok) setList(c.body);
+    try {
+      const [f, c] = await Promise.all([api('/fields'), api('/customers')]);
+      if (f.ok) setFields(f.body);
+      if (c.ok) { setList(c.body); setListState('ok'); } else if (c.status !== 401) setListState('error');
+    } catch {
+      setListState('error');
+    }
   }, [api]);
 
   useEffect(() => {
@@ -188,7 +193,16 @@ export default function CustomerLink() {
       </header>
 
       <main className="px-5 space-y-2.5">
-        {list.total === 0 ? (
+        {listState === 'loading' ? (
+          <p className="text-center text-sm text-slate-500 py-8"><Loader2 className="w-5 h-5 animate-spin inline mr-1" /> Loading your customers…</p>
+        ) : listState === 'error' ? (
+          <div role="alert" className="bg-white rounded-3xl border border-rose-200 p-6 text-center space-y-3">
+            <AlertCircle className="w-8 h-8 text-rose-600 mx-auto" />
+            <p className="font-bold">Could not load your customers</p>
+            <p className="text-sm text-slate-500">Check your internet connection and try again.</p>
+            <button type="button" onClick={() => loadData()} className="h-11 px-5 rounded-full bg-slate-900 text-white font-bold text-sm">Try again</button>
+          </div>
+        ) : list.total === 0 ? (
           <div className="bg-white rounded-3xl border border-slate-200 p-6 text-center space-y-2">
             <Inbox className="w-8 h-8 text-slate-400 mx-auto" />
             <p className="font-bold">No customers in your list yet</p>
