@@ -73,6 +73,7 @@ export default function Leads({
   onEditLead,
   onUpdateLead,
   onDeleteLead,
+  canImport = true,
   onUpdateStatus,
   onOpenWhatsApp,
   onCreateQuoteFromLead,
@@ -537,6 +538,7 @@ export default function Leads({
           )}
 
           {/* Import Leads button */}
+          {canImport && (
           <button
             onClick={() => setShowImportModal(true)}
             className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-xs transition active:scale-95 cursor-pointer"
@@ -545,6 +547,7 @@ export default function Leads({
             <FileSpreadsheet className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Import Leads (CSV)</span>
           </button>
+          )}
 
           {/* Single Consolidated Primary Action: + New Lead (bg-[#CC1A22]) */}
           <button
@@ -899,6 +902,7 @@ export default function Leads({
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
+                    {onDeleteLead && (
                     <button
                       onClick={() => onDeleteLead(lead.id)}
                       title="Delete"
@@ -906,6 +910,7 @@ export default function Leads({
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1035,6 +1040,7 @@ export default function Leads({
                         >
                           <Edit2 className="w-3.5 h-3.5" />
                         </button>
+                        {onDeleteLead && (
                         <button
                           onClick={() => onDeleteLead(lead.id)}
                           title="Delete"
@@ -1042,6 +1048,7 @@ export default function Leads({
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1359,7 +1366,8 @@ export default function Leads({
             </button>
           ))}
 
-          {/* Delete Lead Button: Full Width at Menu Base */}
+          {/* Delete Lead Button: Full Width at Menu Base (only for roles allowed to archive) */}
+          {onDeleteLead && (
           <div className="border-t border-slate-100 mt-1 pt-1">
             <button
               type="button"
@@ -1376,6 +1384,7 @@ export default function Leads({
               <span>Delete Lead</span>
             </button>
           </div>
+          )}
         </div>,
         document.body
       )}

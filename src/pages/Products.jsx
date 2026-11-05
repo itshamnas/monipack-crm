@@ -33,7 +33,8 @@ export default function Products({
   onBulkDeleteProducts, 
   onRefresh, 
   token, 
-  showToast 
+  showToast,
+  canManage = true,
 }) {
   const [selectedBrand, setSelectedBrand] = useState('All Brands');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
@@ -234,6 +235,7 @@ export default function Products({
             </button>
           </div>
 
+          {canManage && (<>
           <button
             onClick={() => setIsImportModalOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 sm:px-3.5 sm:py-2 bg-white hover:bg-slate-50 text-slate-800 text-xs font-bold rounded-lg border border-slate-300 shadow-2xs transition active:scale-95"
@@ -249,6 +251,7 @@ export default function Products({
             <Plus className="w-3.5 h-3.5" />
             <span>+ Product</span>
           </button>
+          </>)}
         </div>
       </div>
 
@@ -319,7 +322,7 @@ export default function Products({
       </div>
 
       {/* Floating Selection Action Bar */}
-      {selectedIds.length > 0 && (
+      {canManage && selectedIds.length > 0 && (
         <div className="bg-slate-900 text-white p-3.5 rounded-xl shadow-lg flex items-center justify-between animate-in fade-in slide-in-from-top-2">
           <div className="flex items-center gap-3">
             <span className="w-7 h-7 rounded-lg bg-red-600 text-white font-bold text-xs flex items-center justify-center">
@@ -436,7 +439,8 @@ export default function Products({
                       Stock: {p.stock}
                     </span>
 
-                    {/* Quick Action Buttons */}
+                    {/* Quick Action Buttons (only for roles that manage the catalog) */}
+                    {canManage && (<>
                     <button
                       onClick={() => setEditingProduct({ ...p })}
                       className="p-1.5 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-md transition"
@@ -451,6 +455,7 @@ export default function Products({
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
+                    </>)}
                   </div>
                 </div>
               </div>
@@ -529,6 +534,7 @@ export default function Products({
                       </td>
                       <td className="py-2.5 px-3 text-center">
                         <div className="flex items-center justify-center gap-1">
+                          {canManage && (<>
                           <button
                             onClick={() => setEditingProduct({ ...p })}
                             className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-200 rounded transition"
@@ -543,6 +549,7 @@ export default function Products({
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
+                          </>)}
                         </div>
                       </td>
                     </tr>

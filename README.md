@@ -109,3 +109,19 @@ npm start
 - **Backend**: Node.js, Express REST API, CORS, Helmet security headers.
 - **Database**: PostgreSQL with connection pooling (`pg`), SQL migrations, database sequences, and ACID transactions.
 - **Testing**: Vitest, Supertest.
+
+## Users & roles
+
+Every person has their own login. Permissions are enforced on the server (`server/auth/permissions.js`); the screens only hide what a role cannot use.
+
+| Role | Can do |
+|---|---|
+| Super Admin | Everything: users, settings, backups, exports, audit log |
+| Manager | All leads (create, assign, archive, import), all quotations, product catalog, audit log. CSV export only if "Allow export" is ticked |
+| Customer Care | All leads: create, qualify, assign, import. Create quotations. No delete, export, products or settings |
+| Salesman | Only leads assigned to his own salesman record: update stage, log calls, create/update quotations. New enquiries he adds are assigned to himself |
+
+- A salesman login must be linked to a record in the salesmen table (Settings → Staff Accounts → Add Staff User).
+- New users and admin password resets get a **temporary password**; the person must choose a new one (min. 10 characters) at first login.
+- Deactivating a user, changing their role or resetting their password signs them out immediately.
+- Users are never deleted, only deactivated, so history and the audit log stay complete.

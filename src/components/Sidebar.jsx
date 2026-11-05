@@ -1,4 +1,5 @@
 import React from 'react';
+import { roleLabel } from '../auth/roles.js';
 import BrandWordmark from './BrandWordmark';
 import InstallPromptButton from './pwa/InstallPromptButton.jsx';
 import { 
@@ -35,7 +36,7 @@ export default function Sidebar({
   onCloseMobileDrawer,
   onLogout
 }) {
-  const isSuperAdmin = currentUser?.role === 'super_admin';
+  const canOpenSettings = Boolean(currentUser?.permissions?.includes('settings.manage'));
 
   const coreOperations = [
     { id: 'dashboard', label: 'Executive Dashboard', icon: LayoutDashboard },
@@ -70,7 +71,7 @@ export default function Sidebar({
     },
   ];
 
-  const systemOperations = isSuperAdmin
+  const systemOperations = canOpenSettings
     ? [{ id: 'settings', label: 'System Settings', icon: Settings }]
     : [];
 
@@ -331,7 +332,7 @@ export default function Sidebar({
                   <BrandWordmark>{currentUser.name || 'monipack user'}</BrandWordmark>
                 </p>
                 <p className="text-[10px] font-semibold text-slate-400 capitalize truncate">
-                  {currentUser.role === 'super_admin' ? 'Super Administrator' : (currentUser.role || 'Sales Admin')}
+                  {roleLabel(currentUser.role)}
                 </p>
               </div>
             </div>

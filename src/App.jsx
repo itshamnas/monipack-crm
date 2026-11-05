@@ -11,6 +11,7 @@ import Products from './pages/Products.jsx';
 import Branches from './pages/Branches.jsx';
 import Settings from './pages/Settings.jsx';
 import Login from './pages/Login.jsx';
+import ChangePassword from './pages/ChangePassword.jsx';
 import CustomerCare from './pages/CustomerCare.jsx';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import MobileBottomNav from './components/layout/MobileBottomNav.jsx';
@@ -57,12 +58,26 @@ export default function App() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const handleLoginSuccess = (newToken, newUser) => {
+  // Permission check for showing/hiding actions (the server enforces the same rules)
+  const can = (permission) => Boolean(currentUser?.permissions?.includes(permission));
+
+  const saveSession = (newToken, newUser) => {
     setToken(newToken);
     setCurrentUser(newUser);
     localStorage.setItem('monipack_auth_token', newToken);
     localStorage.setItem('monipack_auth_user', JSON.stringify(newUser));
-    showToast(`Welcome back, ${newUser.name}!`);
+  };
+
+  const handleLoginSuccess = (newToken, newUser) => {
+    saveSession(newToken, newUser);
+    if (!newUser?.mustChangePassword) {
+      showToast(`Welcome back, ${newUser.name}!`);
+    }
+  };
+
+  const handlePasswordChanged = (newToken, newUser) => {
+    saveSession(newToken, newUser);
+    showToast('Password saved. Welcome!');
   };
 
   const handleLogout = (showToastNotice = true) => {
@@ -89,6 +104,13 @@ export default function App() {
         handleLogout(false);
         throw new Error('Session expired. Please log in.');
       }
+      if (res.status === 403) {
+        const body = await res.clone().json().catch(() => ({}));
+        if (body.code === 'PASSWORD_CHANGE_REQUIRED') {
+          setCurrentUser((u) => (u ? { ...u, mustChangePassword: true } : u));
+          throw new Error('Please set a new password first.');
+        }
+      }
       return res;
     },
     [token]
@@ -96,7 +118,7 @@ export default function App() {
 
   // Fetch all CRM data
   const fetchData = useCallback(async () => {
-    if (!token) return;
+    if (!token || currentUser?.mustChangePassword) return;
     setLoading(true);
     try {
       const [statsRes, leadsRes, prodsRes, quotesRes, branchesRes, configRes] = await Promise.all([
@@ -128,13 +150,46 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [token, authFetch]);
+  }, [token, authFetch, currentUser?.mustChangePassword]);
+
+  // Refresh the signed-in user's role and permissions from the server (older saved sessions have none)
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    fetch(getApiUrl('/api/auth/me'), { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.status === 401) {
+          handleLogout(false);
+          return;
+        }
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user) {
+            setCurrentUser(data.user);
+            localStorage.setItem('monipack_auth_user', JSON.stringify(data.user));
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   useEffect(() => {
     if (token) {
       fetchData();
     }
   }, [token, fetchData]);
+
+  // Security guard: only users allowed to manage settings can open the Settings page.
+  // (Must stay above the early returns below - React hooks cannot run conditionally.)
+  useEffect(() => {
+    if (activeTab === 'settings' && currentUser && !currentUser.permissions?.includes('settings.manage')) {
+      setActiveTab('dashboard');
+    }
+  }, [activeTab, currentUser]);
 
   useEffect(() => {
     window.__monipackNavigate = (tab) => setActiveTab(tab);
@@ -401,6 +456,21 @@ export default function App() {
     );
   }
 
+  // Temporary password: the user must choose their own before using the CRM
+  if (currentUser.mustChangePassword) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <OfflineBanner />
+        <ChangePassword
+          token={token}
+          user={currentUser}
+          onPasswordChanged={handlePasswordChanged}
+          onLogout={handleLogout}
+        />
+      </div>
+    );
+  }
+
   // Page Title mapping (with responsive shortTitle for mobile viewports)
   const titles = {
     dashboard: { 
@@ -439,13 +509,6 @@ export default function App() {
       subtitle: 'User accounts, company legal details, audit logs, and backups' 
     },
   };
-
-  // Enforce security guard: admin cannot open settings
-  useEffect(() => {
-    if (activeTab === 'settings' && currentUser?.role !== 'super_admin') {
-      setActiveTab('dashboard');
-    }
-  }, [activeTab, currentUser]);
 
   return (
     <>
@@ -527,7 +590,8 @@ export default function App() {
             onCreateQuoteFromLead={handleCreateQuoteFromLead}
             onNewLead={handleOpenNewLead}
             onEditLead={handleEditLead}
-            onDeleteLead={handleDeleteLead}
+            onDeleteLead={can('leads.archive') ? handleDeleteLead : null}
+            canImport={can('leads.import')}
             showToast={showToast}
             onNavigateToPipeline={() => setActiveTab('leads')}
             onRefresh={fetchData}
@@ -552,7 +616,8 @@ export default function App() {
             onNewLead={handleOpenNewLead}
             onEditLead={handleEditLead}
             onUpdateLead={handleUpdateLead}
-            onDeleteLead={handleDeleteLead}
+            onDeleteLead={can('leads.archive') ? handleDeleteLead : null}
+            canImport={can('leads.import')}
             onUpdateStatus={handleUpdateStatus}
             onOpenWhatsApp={(lead) => setWhatsAppLead(lead)}
             onCreateQuoteFromLead={handleCreateQuoteFromLead}
@@ -571,7 +636,7 @@ export default function App() {
             onClearPrefilledLead={() => setPrefilledLeadForQuote(null)}
             onCreateQuotation={handleCreateQuotation}
             onUpdateQuotation={handleUpdateQuotation}
-            onDeleteQuotation={handleDeleteQuotation}
+            onDeleteQuotation={can('quotations.archive') ? handleDeleteQuotation : null}
             onRefresh={fetchData}
           />
         )}
@@ -587,6 +652,7 @@ export default function App() {
             onRefresh={fetchData}
             token={token}
             showToast={showToast}
+            canManage={can('products.manage')}
           />
         )}
 
@@ -599,7 +665,7 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'settings' && currentUser?.role === 'super_admin' && (
+        {activeTab === 'settings' && can('settings.manage') && (
           <Settings
             authFetch={authFetch}
             showToast={showToast}
@@ -619,7 +685,7 @@ export default function App() {
           setEditingLead(null);
         }}
         onSave={handleSaveLead}
-        onDeleteLead={handleDeleteLead}
+        onDeleteLead={can('leads.archive') ? handleDeleteLead : null}
         lead={editingLead}
         branches={branches}
         categories={categories}

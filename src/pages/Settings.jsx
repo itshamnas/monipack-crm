@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { ROLE_LABELS, roleLabel } from '../auth/roles.js';
 import { 
   Settings as SettingsIcon, 
   Users, 
@@ -56,12 +57,9 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
 
   // New User State
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [newUser, setNewUser] = useState({
-    name: '',
-    email: '',
-    password: '',
-    role: 'admin',
-  });
+  const emptyNewUser = { name: '', email: '', password: '', role: 'customer_care', salesmanId: '', canExport: false };
+  const [newUser, setNewUser] = useState(emptyNewUser);
+  const [salesmen, setSalesmen] = useState([]);
 
   // Reset Staff Password State
   const [resetPasswordModal, setResetPasswordModal] = useState(null);
@@ -76,9 +74,19 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
         authFetch('/api/users'),
         authFetch('/api/audit-logs'),
         authFetch('/api/config'),
+        authFetch('/api/salesmen'),
       ]);
 
-      const [settingsRes, usersRes, logsRes, configRes] = results;
+      const [settingsRes, usersRes, logsRes, configRes, salesmenRes] = results;
+
+      if (salesmenRes.status === 'fulfilled' && salesmenRes.value.ok) {
+        try {
+          const list = await salesmenRes.value.json();
+          if (Array.isArray(list)) setSalesmen(list);
+        } catch (e) {
+          console.warn('Error parsing salesmen:', e);
+        }
+      }
 
       if (settingsRes.status === 'fulfilled' && settingsRes.value.ok) {
         try {
@@ -287,8 +295,18 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
   };
 
   // --- User Account Handlers ---
+  const PASSWORD_MIN = 10;
+
   const handleCreateUser = async (e) => {
     e.preventDefault();
+    if (newUser.password.length < PASSWORD_MIN) {
+      showToast(`Temporary password must be at least ${PASSWORD_MIN} characters`, 'error');
+      return;
+    }
+    if (newUser.role === 'salesman' && !newUser.salesmanId) {
+      showToast('Choose which salesman this login belongs to', 'error');
+      return;
+    }
     try {
       const res = await authFetch('/api/users', {
         method: 'POST',
@@ -297,12 +315,12 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
       });
 
       if (res.ok) {
-        showToast(`User account for ${newUser.name} created!`);
+        showToast(`Account for ${newUser.name} created. They must change the password at first login.`);
         setIsAddUserOpen(false);
-        setNewUser({ name: '', email: '', password: '', role: 'admin' });
+        setNewUser(emptyNewUser);
         loadData();
       } else {
-        const err = await res.json();
+        const err = await res.json().catch(() => ({}));
         showToast(err.error || 'Failed to create user', 'error');
       }
     } catch {
@@ -310,29 +328,42 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
     }
   };
 
-  const handleDeleteUser = async (id, email) => {
-    if (email === 'administrator@monipack.com') {
-      alert('The primary Super Administrator account cannot be deleted.');
-      return;
-    }
-    if (!window.confirm(`Are you sure you want to delete user ${email}?`)) return;
-
+  // Change role / active status / export / linked salesman for an existing user
+  const handleUpdateUser = async (u, changes, successMessage) => {
     try {
-      const res = await authFetch(`/api/users/${id}`, { method: 'DELETE' });
+      const res = await authFetch(`/api/users/${u.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(changes),
+      });
       if (res.ok) {
-        showToast(`User ${email} deleted.`);
+        showToast(successMessage);
         loadData();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        showToast(err.error || 'Could not update this user', 'error');
       }
     } catch {
-      showToast('Failed to delete user', 'error');
+      showToast('Could not update this user', 'error');
     }
+  };
+
+  const handleToggleActive = (u) => {
+    if (u.isActive && !window.confirm(`Deactivate ${u.name}? They will be signed out immediately and cannot log in until reactivated.`)) return;
+    handleUpdateUser(u, { isActive: !u.isActive }, u.isActive ? `${u.name} deactivated.` : `${u.name} reactivated.`);
+  };
+
+  const handleChangeRole = (u, role) => {
+    if (role === u.role) return;
+    if (!window.confirm(`Change ${u.name}'s role to ${roleLabel(role)}? They will be signed out and must log in again.`)) return;
+    handleUpdateUser(u, { role }, `${u.name} is now ${roleLabel(role)}.`);
   };
 
   const handleUpdatePassword = async (e) => {
     e.preventDefault();
     if (!resetPasswordModal || !resetPasswordInput) return;
-    if (resetPasswordInput.length < 6) {
-      showToast('Password must be at least 6 characters', 'error');
+    if (resetPasswordInput.length < PASSWORD_MIN) {
+      showToast(`Password must be at least ${PASSWORD_MIN} characters`, 'error');
       return;
     }
     try {
@@ -342,7 +373,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
         body: JSON.stringify({ password: resetPasswordInput }),
       });
       if (res.ok) {
-        showToast(`Password updated successfully for ${resetPasswordModal.name}!`);
+        showToast(`Temporary password set for ${resetPasswordModal.name}. They must change it at next login.`);
         setResetPasswordModal(null);
         setResetPasswordInput('');
         loadData();
@@ -786,8 +817,9 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                     <th className="py-3 px-4 font-bold">User Name</th>
                     <th className="py-3 px-4 font-bold">Email</th>
                     <th className="py-3 px-4 font-bold">Role</th>
+                    <th className="py-3 px-4 font-bold">Status</th>
                     <th className="py-3 px-4 font-bold">Export Capability</th>
-                    <th className="py-3 px-4 font-bold">Created Date</th>
+                    <th className="py-3 px-4 font-bold">Last Login</th>
                     <th className="py-3 px-4 font-bold text-center">Action</th>
                   </tr>
                 </thead>
@@ -802,18 +834,51 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-600">{u.email}</td>
                       <td className="py-3 px-4">
-                        {u.role === 'super_admin' ? (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">
-                            👑 Administrator (Full Control)
+                        {u.role === 'salesman' || String(u.id) === String(currentUser?.id) ? (
+                          <span className="inline-flex flex-col">
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-800 border border-slate-200 w-fit">
+                              {roleLabel(u.role)}
+                            </span>
+                            {u.role === 'salesman' && (
+                              <span className="text-[10px] text-slate-500 mt-0.5">Linked to: {u.salesmanName || 'not linked'}</span>
+                            )}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
-                            🛡️ Admin (Manager)
-                          </span>
+                          <select
+                            aria-label={`Role for ${u.name}`}
+                            value={u.role}
+                            onChange={(e) => handleChangeRole(u, e.target.value)}
+                            className="text-[11px] font-semibold border border-slate-300 rounded-lg px-2 py-1 bg-white"
+                          >
+                            <option value="super_admin">{ROLE_LABELS.super_admin}</option>
+                            <option value="manager">{ROLE_LABELS.manager}</option>
+                            <option value="customer_care">{ROLE_LABELS.customer_care}</option>
+                          </select>
                         )}
                       </td>
                       <td className="py-3 px-4">
-                        {u.canExport ? (
+                        {u.isActive ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-200">Active</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">Deactivated</span>
+                        )}
+                        {u.mustChangePassword && u.isActive && (
+                          <span className="block text-[10px] text-amber-700 mt-0.5">Must set new password</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4">
+                        {u.role === 'manager' ? (
+                          <label className="inline-flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(u.canExport)}
+                              onChange={() => handleUpdateUser(u, { canExport: !u.canExport }, u.canExport ? `Export removed for ${u.name}.` : `Export allowed for ${u.name}.`)}
+                            />
+                            <span className={u.canExport ? 'text-emerald-700 font-bold' : 'text-slate-500'}>
+                              {u.canExport ? 'Export allowed' : 'Export restricted'}
+                            </span>
+                          </label>
+                        ) : u.canExport ? (
                           <span className="text-emerald-700 font-bold flex items-center gap-1">
                             <Check className="w-3.5 h-3.5" />
                             CSV Export Allowed
@@ -826,7 +891,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                         )}
                       </td>
                       <td className="py-3 px-4 text-slate-500 font-mono text-[11px]">
-                        {new Date(u.createdAt).toLocaleDateString()}
+                        {u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : 'Never'}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -837,18 +902,20 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                               setResetPasswordInput('');
                             }}
                             className="p-1.5 rounded-md text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition"
-                            title="Reset Staff Password"
+                            title="Set temporary password"
+                            aria-label={`Set temporary password for ${u.name}`}
                           >
                             <KeyRound className="w-3.5 h-3.5" />
                           </button>
-                          {u.email !== 'administrator@monipack.com' && (
+                          {String(u.id) !== String(currentUser?.id) && (
                             <button
                               type="button"
-                              onClick={() => handleDeleteUser(u.id, u.email)}
-                              className="p-1.5 rounded-md text-red-500 hover:text-red-700 hover:bg-red-50 transition"
-                              title="Delete User"
+                              onClick={() => handleToggleActive(u)}
+                              className={`px-2 py-1 rounded-md text-[10px] font-bold transition ${
+                                u.isActive ? 'text-red-600 hover:bg-red-50' : 'text-emerald-700 hover:bg-emerald-50'
+                              }`}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              {u.isActive ? 'Deactivate' : 'Reactivate'}
                             </button>
                           )}
                         </div>
@@ -1287,10 +1354,11 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Initial Password</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Temporary Password (min. 10 characters)</label>
                 <input
                   type="password"
                   required
+                  minLength={10}
                   placeholder="••••••••••••"
                   value={newUser.password}
                   onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
@@ -1302,13 +1370,48 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Security Role</label>
                 <select
                   value={newUser.role}
-                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
+                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value, salesmanId: '', canExport: false })}
                   className="w-full text-xs border border-slate-300 rounded-lg p-2.5"
                 >
-                  <option value="admin">Admin (Full Control - Export Restricted)</option>
-                  <option value="super_admin">Administrator (Full Control + Export)</option>
+                  <option value="customer_care">Customer Care – create &amp; assign enquiries</option>
+                  <option value="salesman">Salesman – only his own leads &amp; quotations</option>
+                  <option value="manager">Manager – all leads, reports, products</option>
+                  <option value="super_admin">Super Admin – everything incl. users &amp; settings</option>
                 </select>
+                <p className="mt-1 text-[10px] text-slate-500">The person must change this temporary password at first login.</p>
               </div>
+
+              {newUser.role === 'salesman' && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">Salesman record</label>
+                  <select
+                    required
+                    value={newUser.salesmanId}
+                    onChange={(e) => setNewUser({ ...newUser, salesmanId: e.target.value })}
+                    className="w-full text-xs border border-slate-300 rounded-lg p-2.5"
+                  >
+                    <option value="">Choose salesman…</option>
+                    {salesmen
+                      .filter((sm) => !usersList.some((u) => String(u.salesmanId) === String(sm.id)))
+                      .map((sm) => (
+                        <option key={sm.id} value={sm.id}>{sm.name}</option>
+                      ))}
+                  </select>
+                  <p className="mt-1 text-[10px] text-slate-500">This login will see only the leads assigned to this salesman.</p>
+                </div>
+              )}
+
+              {newUser.role === 'manager' && (
+                <label className="flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={newUser.canExport}
+                    onChange={(e) => setNewUser({ ...newUser, canExport: e.target.checked })}
+                  />
+                  Allow confidential CSV export of leads
+                </label>
+              )}
+
 
               <div className="pt-3 border-t border-slate-200 flex justify-end gap-2">
                 <button
@@ -1356,11 +1459,11 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                 <p className="text-xs text-slate-600 mb-3">
                   Set a new password for <span className="font-bold text-slate-900">{resetPasswordModal.name}</span> (<span className="font-mono text-slate-700">{resetPasswordModal.email}</span>).
                 </p>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">New Password (min. 6 characters)</label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Temporary Password (min. 10 characters)</label>
                 <input
                   type="password"
                   required
-                  minLength={6}
+                  minLength={10}
                   placeholder="Enter new secure password"
                   value={resetPasswordInput}
                   onChange={(e) => setResetPasswordInput(e.target.value)}

@@ -1,10 +1,19 @@
 import { query, getClient } from './pool.js';
 import { quotationToApi } from './utils.js';
 
-export async function getQuotations() {
-  const { rows } = await query(
-    'SELECT * FROM quotations WHERE archived_at IS NULL ORDER BY created_at DESC'
-  );
+/**
+ * @param {{ salesmanId?: string|number }} filters - salesmanId limits to quotations of that salesman's leads
+ */
+export async function getQuotations(filters = {}) {
+  let sql = 'SELECT q.* FROM quotations q WHERE q.archived_at IS NULL';
+  const params = [];
+  if (filters.salesmanId !== undefined) {
+    const sid = parseInt(filters.salesmanId, 10);
+    params.push(isNaN(sid) ? -1 : sid);
+    sql += ' AND q.lead_id IN (SELECT id FROM leads WHERE salesman_id = $1)';
+  }
+  sql += ' ORDER BY q.created_at DESC';
+  const { rows } = await query(sql, params);
 
   const quotations = [];
   for (const row of rows) {

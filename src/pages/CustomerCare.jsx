@@ -43,6 +43,7 @@ export default function CustomerCare({
   token,
   onEditLead,
   onDeleteLead,
+  canImport = true,
 }) {
   const [search, setSearch] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('all');
@@ -349,6 +350,7 @@ export default function CustomerCare({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
+          {canImport && (
           <button
             onClick={() => setShowImportModal(true)}
             className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-2xs transition active:scale-95"
@@ -357,6 +359,7 @@ export default function CustomerCare({
             <FileSpreadsheet className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Import Campaign Leads</span>
           </button>
+          )}
 
           <button
             onClick={onNewLead}
@@ -489,6 +492,7 @@ export default function CustomerCare({
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
+                    {onDeleteLead && (
                     <button
                       type="button"
                       onClick={() => handleDeleteLeadClick(lead)}
@@ -497,6 +501,7 @@ export default function CustomerCare({
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
+                    )}
                   </div>
                 </div>
 

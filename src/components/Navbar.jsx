@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { roleLabel } from '../auth/roles.js';
 import BrandLogo from './BrandLogo';
 import BrandWordmark from './BrandWordmark';
 import InstallPromptButton from './pwa/InstallPromptButton.jsx';
@@ -172,7 +173,7 @@ export default function Navbar({
               ) : (
                 <span className="inline-flex items-center gap-1 text-[10px] font-extrabold text-amber-700 bg-amber-50 px-1.5 py-0.2 rounded-full border border-amber-200">
                   <ShieldAlert className="w-3 h-3 text-amber-600" />
-                  Sales Admin
+                  {roleLabel(currentUser?.role)}
                 </span>
               )}
             </div>

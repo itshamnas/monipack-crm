@@ -22,9 +22,15 @@ const db = {
   getUsers: users.getUsers,
   getUserByEmail: users.getUserByEmail,
   getUserById: users.getUserById,
+  getUserAuthState: users.getUserAuthState,
+  getPublicUserById: users.getPublicUserById,
   createUser: users.createUser,
+  updateUser: users.updateUser,
+  deactivateUser: users.deactivateUser,
   deleteUser: users.deleteUser,
   updateUserPassword: users.updateUserPassword,
+  recordLogin: users.recordLogin,
+  countActiveSuperAdmins: users.countActiveSuperAdmins,
   initUsers: users.initUsers,
 
   // Branches
