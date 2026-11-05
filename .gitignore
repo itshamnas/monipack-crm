@@ -2,7 +2,8 @@ node_modules
 dist
 .env
 .env.*
-server/data/*.json
+!.env.example
+server/data/
 uploads/
 *.log
 scratch/

@@ -1,19 +1,18 @@
+import 'dotenv/config';
 import fs from 'fs';
 import express from 'express';
 import cors from 'cors';
+import helmet from 'helmet';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
-import db from './db.js';
-import { runSeed } from './seed.js';
-import { 
-  generateProductTemplate, 
-  parseProductCsv, 
-  parseUniversalProductData,
-  testTallyConnection, 
-  fetchTallyStockItems 
-} from './tallyService.js';
+import db from './db/index.js';
+import {
+  generateProductTemplate,
+  parseProductCsv,
+  parseUniversalProductData
+} from './productImportService.js';
 import {
   generateLeadTemplate,
   parseLeadCsv
@@ -31,39 +30,72 @@ process.on('unhandledRejection', (reason, promise) => {
 });
 
 const app = express();
+app.set('trust proxy', 'loopback');
 const PORT = process.env.PORT || 5000;
-const JWT_SECRET = process.env.JWT_SECRET || 'monipack-om-crm-sec-2026';
+const JWT_SECRET = process.env.JWT_SECRET || '';
 
-const allowedOrigins = [
-  'https://crm.monipack.com',
-  'https://www.crm.monipack.com',
-  'http://crm.monipack.com',
-  'http://localhost:3000',
-  'http://localhost:5000',
-  'http://localhost:5173',
-  'http://127.0.0.1:3000',
-  'http://127.0.0.1:5000',
-  'http://127.0.0.1:5173'
-];
+// Production Startup Guard: JWT_SECRET must be configured and >= 32 characters
+if (process.env.NODE_ENV === 'production') {
+  if (!JWT_SECRET || JWT_SECRET.length < 32) {
+    console.error('[FATAL SECURITY ERROR] In production, JWT_SECRET must be set and at least 32 characters long.');
+    process.exit(1);
+  }
+} else if (!JWT_SECRET && process.env.NODE_ENV !== 'test') {
+  console.warn('[SECURITY WARNING] JWT_SECRET is not set in development.');
+}
+
+const rawOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean);
+const allowedOrigins = rawOrigins.length > 0
+  ? rawOrigins
+  : (process.env.NODE_ENV !== 'production' ? ['http://localhost:3000', 'http://localhost:5000', 'http://127.0.0.1:3000', 'http://127.0.0.1:5000'] : []);
 
 app.use(cors({
   origin: (origin, callback) => {
+    // Requests with no Origin header (same-origin, curl, server-to-server) are allowed
     if (!origin) return callback(null, true);
-    if (
-      allowedOrigins.includes(origin) ||
-      origin.endsWith('.monipack.com') ||
-      origin.endsWith('.onrender.com')
-    ) {
+    if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
-    return callback(null, true);
+    return callback(new Error('Not allowed by CORS'));
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
 }));
 app.options('*', cors());
-app.use(express.json({ limit: '15mb' }));
+
+// Helmet with Content Security Policy & defensive headers
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      scriptSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "data:", "https://fonts.gstatic.com"],
+      imgSrc: ["'self'", "data:", "blob:"],
+      connectSrc: ["'self'"],
+      workerSrc: ["'self'"],
+      manifestSrc: ["'self'"],
+      frameSrc: ["'none'"],
+      objectSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false,
+}));
+
+app.use((req, res, next) => {
+  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+  next();
+});
+
+// Body Parser: 1mb globally, 15mb only on specific bulk/import endpoints
+app.use(express.json({ limit: '1mb' }));
+const largeJsonParser = express.json({ limit: '15mb' });
+
+// Wrap async route handlers - uncaught errors go to the central error handler
+const asyncHandler = (fn) => (req, res, next) => {
+  Promise.resolve(fn(req, res, next)).catch(next);
+};
 
 // Health Check Endpoint (useful for Render keep-alive and diagnostics)
 app.get('/api/health', (req, res) => {
@@ -75,40 +107,51 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Ensure seed data and default users are present on startup
-runSeed();
+// Initialize default users if database is empty (async, non-blocking)
+(async () => {
+  try {
+    await db.initUsers();
+  } catch (err) {
+    console.error('[Startup] Failed to init users:', err.message);
+  }
+})();
 
-// ---------------- Security Middleware & HTTP Hardening ----------------
-
-// 1. Defensive HTTP Security Headers
-app.use((req, res, next) => {
-  res.setHeader('X-Content-Type-Options', 'nosniff');
-  res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('X-XSS-Protection', '1; mode=block');
-  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
-  next();
-});
-
-// 2. In-Memory Brute-Force Login Rate Limiter (Max 5 failed attempts / 15 min per IP)
-const loginAttempts = new Map(); // ip -> { count, resetAt }
+// ---------------- Security Rate Limiter (IP & Email Lockout) ----------------
+// Lockout by IP: 5 failed attempts / 15 min
+// Lockout by Email: 10 failed attempts / 15 min
+const loginAttemptsByIp = new Map(); // ip -> { count, resetAt }
+const loginAttemptsByEmail = new Map(); // email -> { count, resetAt }
 
 const checkLoginRateLimit = (req, res, next) => {
-  const clientIp = (req.headers['x-forwarded-for'] || req.socket.remoteAddress || '127.0.0.1')
-    .toString()
-    .split(',')[0]
-    .trim();
+  const clientIp = req.ip || '127.0.0.1';
+  const email = (req.body?.email || '').toLowerCase().trim();
   const now = Date.now();
-  const record = loginAttempts.get(clientIp);
 
-  if (record) {
-    if (now > record.resetAt) {
-      loginAttempts.delete(clientIp);
-    } else if (record.count >= 5) {
-      const remainingMinutes = Math.max(1, Math.ceil((record.resetAt - now) / 60000));
+  // 1. Check IP lockout (5 fails / 15 min)
+  const ipRecord = loginAttemptsByIp.get(clientIp);
+  if (ipRecord) {
+    if (now > ipRecord.resetAt) {
+      loginAttemptsByIp.delete(clientIp);
+    } else if (ipRecord.count >= 5) {
+      const remainingMinutes = Math.max(1, Math.ceil((ipRecord.resetAt - now) / 60000));
       return res.status(429).json({
-        error: `Security Lockout: Too many failed login attempts. Please wait ${remainingMinutes} minute(s) before trying again.`,
+        error: `Security Lockout: Too many failed login attempts from this network. Please wait ${remainingMinutes} minute(s) before trying again.`,
       });
+    }
+  }
+
+  // 2. Check Email lockout (10 fails / 15 min)
+  if (email) {
+    const emailRecord = loginAttemptsByEmail.get(email);
+    if (emailRecord) {
+      if (now > emailRecord.resetAt) {
+        loginAttemptsByEmail.delete(email);
+      } else if (emailRecord.count >= 10) {
+        const remainingMinutes = Math.max(1, Math.ceil((emailRecord.resetAt - now) / 60000));
+        return res.status(429).json({
+          error: `Security Lockout: Account locked due to repeated failed attempts. Please wait ${remainingMinutes} minute(s) before trying again.`,
+        });
+      }
     }
   }
 
@@ -116,30 +159,52 @@ const checkLoginRateLimit = (req, res, next) => {
   next();
 };
 
-const recordFailedLogin = (clientIp, email) => {
+const recordFailedLogin = async (clientIp, email) => {
   const now = Date.now();
   const windowMs = 15 * 60 * 1000; // 15 minutes lockout
-  const record = loginAttempts.get(clientIp) || { count: 0, resetAt: now + windowMs };
-  record.count += 1;
-  loginAttempts.set(clientIp, record);
 
-  db.addActivity({
-    type: 'security_alert',
-    description: `Failed login attempt for ${email || 'unknown'} from IP ${clientIp} (${record.count}/5 attempts)`,
-  });
+  // Increment IP counter
+  const ipRecord = loginAttemptsByIp.get(clientIp) || { count: 0, resetAt: now + windowMs };
+  ipRecord.count += 1;
+  loginAttemptsByIp.set(clientIp, ipRecord);
+
+  // Increment Email counter
+  let emailFails = 0;
+  if (email) {
+    const cleanEmail = email.toLowerCase().trim();
+    const emailRecord = loginAttemptsByEmail.get(cleanEmail) || { count: 0, resetAt: now + windowMs };
+    emailRecord.count += 1;
+    emailFails = emailRecord.count;
+    loginAttemptsByEmail.set(cleanEmail, emailRecord);
+  }
+
+  try {
+    await db.addAuditEntry({
+      type: 'security_alert',
+      targetEmail: email || 'unknown',
+      ipAddress: clientIp,
+      description: `Failed login attempt for ${email || 'unknown'} from IP ${clientIp} (IP: ${ipRecord.count}/5${email ? `, Email: ${emailFails}/10` : ''})`,
+    });
+  } catch (err) {
+    console.error('[Audit] Failed to log failed login:', err.message);
+  }
 };
 
-const recordSuccessfulLogin = (clientIp) => {
-  loginAttempts.delete(clientIp);
+const recordSuccessfulLogin = (clientIp, email) => {
+  loginAttemptsByIp.delete(clientIp);
+  if (email) {
+    loginAttemptsByEmail.delete(email.toLowerCase().trim());
+  }
 };
 
 // Periodic cleanup of expired rate limit entries to prevent memory leaks (runs every 15 minutes)
 const rateLimitCleanupInterval = setInterval(() => {
   const now = Date.now();
-  for (const [ip, rec] of loginAttempts) {
-    if (now > rec.resetAt) {
-      loginAttempts.delete(ip);
-    }
+  for (const [ip, rec] of loginAttemptsByIp) {
+    if (now > rec.resetAt) loginAttemptsByIp.delete(ip);
+  }
+  for (const [email, rec] of loginAttemptsByEmail) {
+    if (now > rec.resetAt) loginAttemptsByEmail.delete(email);
   }
 }, 15 * 60 * 1000);
 if (rateLimitCleanupInterval.unref) {
@@ -184,189 +249,173 @@ const requireSuperAdmin = (req, res, next) => {
 // ---------------- Authentication Endpoints ----------------
 
 // Login with Rate Limiting and Audit Security
-app.post('/api/auth/login', checkLoginRateLimit, (req, res) => {
+app.post('/api/auth/login', checkLoginRateLimit, asyncHandler(async (req, res) => {
+  const { email, password } = req.body;
+  const clientIp = req.clientIp || '127.0.0.1';
+
+  if (!email || !password) {
+    return res.status(400).json({ error: 'Email and password are required.' });
+  }
+
+  const user = await db.getUserByEmail(email);
+  if (!user) {
+    await recordFailedLogin(clientIp, email);
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+
+  const isMatch = bcrypt.compareSync(password, user.password_hash);
+  if (!isMatch) {
+    await recordFailedLogin(clientIp, email);
+    return res.status(401).json({ error: 'Invalid email or password.' });
+  }
+
+  // Login succeeded: reset failure counter for this IP and email
+  recordSuccessfulLogin(clientIp, email);
+
+  const payload = {
+    id: String(user.id),
+    name: user.name,
+    email: user.email,
+    role: user.role, // 'super_admin' or 'admin'
+    canExport: user.can_export === true,
+  };
+
+  const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
+
+  // Log login activity to audit_log
   try {
-    const { email, password } = req.body;
-    const clientIp = req.clientIp || '127.0.0.1';
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Email and password are required.' });
-    }
-
-    const user = db.getUserByEmail(email);
-    if (!user) {
-      recordFailedLogin(clientIp, email);
-      return res.status(401).json({ error: 'Invalid email or password.' });
-    }
-
-    const isMatch = bcrypt.compareSync(password, user.passwordHash);
-    if (!isMatch) {
-      recordFailedLogin(clientIp, email);
-      return res.status(401).json({ error: 'Invalid email or password.' });
-    }
-
-    // Login succeeded: reset failure counter for this IP
-    recordSuccessfulLogin(clientIp);
-
-    const payload = {
-      id: user.id,
-      name: user.name,
-      email: user.email,
-      role: user.role, // 'super_admin' or 'admin'
-      canExport: user.canExport === true,
-    };
-
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
-
-    // Log login activity
-    db.addActivity({
+    await db.addAuditEntry({
       type: 'login',
-      description: user.name.toLowerCase().includes('admin') 
-        ? `${user.name} signed in` 
+      userId: user.id,
+      userName: user.name,
+      description: user.name.toLowerCase().includes('admin')
+        ? `${user.name} signed in`
         : `${user.name} (${user.role === 'super_admin' ? 'Administrator' : 'Admin'}) signed in`,
     });
-
-    res.json({
-      token,
-      user: payload,
-    });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Audit] Failed to log login:', err.message);
   }
-});
+
+  res.json({
+    token,
+    user: payload,
+  });
+}));
 
 // Current User Session
 app.get('/api/auth/me', authMiddleware, (req, res) => {
   res.json({ user: req.user });
 });
 
-// ---------------- Public Endpoints ----------------
-
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    service: 'Monipack CRM API (Secured)',
-    company: 'Morooj Nizwa International LLC',
-  });
-});
-
 // ---------------- Protected Business Endpoints ----------------
 
 // Analytics (Dashboard)
-app.get('/api/analytics', authMiddleware, (req, res) => {
-  try {
-    const stats = db.getAnalytics();
-    res.json(stats);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+app.get('/api/analytics', authMiddleware, asyncHandler(async (req, res) => {
+  const stats = await db.getAnalytics();
+  res.json(stats);
+}));
 
 // Export Leads CSV - STRICTLY RESTRICTED to Administrator
-app.get('/api/leads/export', authMiddleware, requireExportPermission, (req, res) => {
+app.get('/api/leads/export', authMiddleware, requireExportPermission, asyncHandler(async (req, res) => {
+  const { status, category, branch, search, scope } = req.query;
+
+  const filterOptions = scope === 'all' ? {} : {
+    status: (status && status !== 'all' && status !== 'All Stages') ? status : undefined,
+    category: (category && category !== 'all' && category !== 'All Categories') ? category : undefined,
+    branch: (branch && branch !== 'all' && branch !== 'All Oman Branches') ? branch : undefined,
+    search: (search && search.trim()) ? search.trim() : undefined,
+  };
+
+  const leads = await db.getLeads(filterOptions);
+
+  const escapeCsv = (val) => {
+    if (val === null || val === undefined) return '""';
+    let str = String(val);
+    // Neutralize spreadsheet formula injection (CWE-1236)
+    if (/^[=+\-@\t\r]/.test(str)) {
+      str = `'${str}`;
+    }
+    str = str.replace(/"/g, '""');
+    return `"${str}"`;
+  };
+
+  // Stage labels mapping for readable presentation
+  const stageMap = {
+    new: 'STEP 1: Qualification & Intake',
+    contacted: 'STEP 2: Analyze & Assign',
+    quotation_sent: 'STEP 3: Quotation Follow-Up',
+    sample_sent: 'STEP 4: Sample & Negotiation',
+    won: 'STEP 5: Converted (Won)',
+    lost: 'STEP 6: Lost / Closed'
+  };
+
+  // Build comprehensive CSV headers
+  const headers = [
+    'Lead ID',
+    'Company / Client Name',
+    'Product Category',
+    'Country Code',
+    'Mobile Number',
+    'Full Phone (Call/WhatsApp)',
+    'Email Address',
+    'Customer Location / Wilayat',
+    'Assigned Oman Branch',
+    'Assigned Sales Representative',
+    'Commercial Pipeline Stage',
+    'Estimated Value (OMR)',
+    'Quantity / Volume Required',
+    'Customer Care Notes & Discussions',
+    'Not Converted Reason',
+    'Created Date',
+    'Last Updated'
+  ];
+
+  const rows = leads.map((l) => [
+    escapeCsv(l.id),
+    escapeCsv(l.name),
+    escapeCsv(l.category),
+    escapeCsv(l.countryCode || '+968'),
+    escapeCsv(l.mobile || ''),
+    escapeCsv(l.phone || (l.mobile ? `${l.countryCode || '+968'} ${l.mobile}` : '')),
+    escapeCsv(l.email || ''),
+    escapeCsv(l.customerLocation || l.branch || 'Oman'),
+    escapeCsv(l.branch || 'Ghala'),
+    escapeCsv(l.salesman || 'Unassigned'),
+    escapeCsv(stageMap[l.status] || l.status || 'New'),
+    Number(l.dealValue || 0).toFixed(3),
+    escapeCsv(l.quantity || ''),
+    escapeCsv(l.notes || ''),
+    escapeCsv(l.lostReason || ''),
+    escapeCsv(l.date || l.createdAt || ''),
+    escapeCsv(l.updatedAt || ''),
+  ]);
+
+  // Prepend UTF-8 BOM (\uFEFF) for 100% Arabic and symbol fidelity in Excel and Google Sheets
+  const csvData = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
+
   try {
-    const { status, category, branch, search, scope } = req.query;
-
-    const filterOptions = scope === 'all' ? {} : {
-      status: (status && status !== 'all' && status !== 'All Stages') ? status : undefined,
-      category: (category && category !== 'all' && category !== 'All Categories') ? category : undefined,
-      branch: (branch && branch !== 'all' && branch !== 'All Oman Branches') ? branch : undefined,
-      search: (search && search.trim()) ? search.trim() : undefined,
-    };
-
-    const leads = db.getLeads(filterOptions);
-
-    const escapeCsv = (val) => {
-      if (val === null || val === undefined) return '""';
-      let str = String(val);
-      // Neutralize spreadsheet formula injection (CWE-1236)
-      if (/^[=+\-@\t\r]/.test(str)) {
-        str = `'${str}`;
-      }
-      str = str.replace(/"/g, '""');
-      return `"${str}"`;
-    };
-
-    // Stage labels mapping for readable presentation
-    const stageMap = {
-      new: 'STEP 1: Qualification & Intake',
-      contacted: 'STEP 2: Analyze & Assign',
-      quotation_sent: 'STEP 3: Quotation Follow-Up',
-      sample_sent: 'STEP 4: Sample & Negotiation',
-      won: 'STEP 5: Converted (Won)',
-      lost: 'STEP 6: Lost / Closed'
-    };
-
-    // Build comprehensive CSV headers
-    const headers = [
-      'Lead ID',
-      'Company / Client Name',
-      'Product Category',
-      'Country Code',
-      'Mobile Number',
-      'Full Phone (Call/WhatsApp)',
-      'Email Address',
-      'Customer Location / Wilayat',
-      'Assigned Oman Branch',
-      'Assigned Sales Representative',
-      'Commercial Pipeline Stage',
-      'Estimated Value (OMR)',
-      'Quantity / Volume Required',
-      'Customer Care Notes & Discussions',
-      'Not Converted Reason',
-      'Created Date',
-      'Last Updated'
-    ];
-
-    const rows = leads.map((l) => [
-      escapeCsv(l.id),
-      escapeCsv(l.name),
-      escapeCsv(l.category),
-      escapeCsv(l.countryCode || '+968'),
-      escapeCsv(l.mobile || ''),
-      escapeCsv(l.phone || (l.mobile ? `${l.countryCode || '+968'} ${l.mobile}` : '')),
-      escapeCsv(l.email || ''),
-      escapeCsv(l.customerLocation || l.city || l.branch || 'Oman'),
-      escapeCsv(l.branch || 'Ghala'),
-      escapeCsv(l.salesman || 'Unassigned'),
-      escapeCsv(stageMap[l.status] || l.status || 'New'),
-      Number(l.dealValue || 0).toFixed(3),
-      escapeCsv(l.quantity || ''),
-      escapeCsv(l.notes || ''),
-      escapeCsv(l.lostReason || ''),
-      escapeCsv(l.date || l.createdAt || ''),
-      escapeCsv(l.updatedAt || ''),
-    ]);
-
-    // Prepend UTF-8 BOM (\uFEFF) for 100% Arabic and symbol fidelity in Excel and Google Sheets
-    const csvData = '\uFEFF' + [headers.join(','), ...rows.map((r) => r.join(','))].join('\r\n');
-
-    db.addActivity({
+    await db.addAuditEntry({
       type: 'security',
+      userId: req.user.id,
+      userName: req.user.name,
       description: `CONFIDENTIAL EXPORT: Administrator (${req.user.email}) exported ${leads.length} leads to CSV (Scope: ${scope === 'all' ? 'All Records' : 'Filtered View'})`,
     });
-
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    const filenameScope = scope === 'all' ? 'all' : (filterOptions.branch ? filterOptions.branch.replace(/\s+/g, '_') : 'filtered');
-    res.setHeader('Content-Disposition', `attachment; filename=monipack_leads_${filenameScope}_${new Date().toISOString().slice(0, 10)}.csv`);
-    res.send(csvData);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Audit] Failed to log export:', err.message);
   }
-});
+
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  const filenameScope = scope === 'all' ? 'all' : (filterOptions.branch ? String(filterOptions.branch).replace(/\s+/g, '_') : 'filtered');
+  res.setHeader('Content-Disposition', `attachment; filename=monipack_leads_${filenameScope}_${new Date().toISOString().slice(0, 10)}.csv`);
+  res.send(csvData);
+}));
 
 // Leads List
-app.get('/api/leads', authMiddleware, (req, res) => {
-  try {
-    const { status, category, branch, search } = req.query;
-    const leads = db.getLeads({ status, category, branch, search });
-    res.json(leads);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+app.get('/api/leads', authMiddleware, asyncHandler(async (req, res) => {
+  const { status, category, branch, search } = req.query;
+  const leads = await db.getLeads({ status, category, branch, search });
+  res.json(leads);
+}));
 
 // Download Official Leads CSV Template (Public endpoint, supports ?type=minimal or ?type=standard)
 app.get('/api/leads/template', (req, res) => {
@@ -380,134 +429,123 @@ app.get('/api/leads/template', (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
     res.send(csvContent);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    console.error('[Template]', err);
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
-app.get('/api/leads/:id', authMiddleware, (req, res) => {
-  const lead = db.getLeadById(req.params.id);
+app.get('/api/leads/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const lead = await db.getLeadById(req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
   res.json(lead);
-});
+}));
 
-app.post('/api/leads', authMiddleware, (req, res) => {
-  try {
-    const { name, mobile, phone } = req.body;
-    if (!name || typeof name !== 'string' || name.trim().length < 2) {
-      return res.status(400).json({ error: 'Company or Client Name must be at least 2 characters long.' });
-    }
-    const created = db.createLead(req.body);
-    db.addActivity({
-      leadId: created.id,
-      leadName: created.name,
+app.post('/api/leads', authMiddleware, asyncHandler(async (req, res) => {
+  const { name } = req.body;
+  if (!name || typeof name !== 'string' || name.trim().length < 2) {
+    return res.status(400).json({ error: 'Company or Client Name must be at least 2 characters long.' });
+  }
+  const created = await db.createLead(req.body);
+  await db.addActivity({
+    leadId: created.id,
+    leadName: created.name,
+    type: 'status_change',
+    description: `New lead created by ${req.user.name}: ${created.name} (${created.category})`,
+  });
+  // Record initial stage in history
+  await db.recordStageChange({
+    leadId: created.id,
+    fromStatus: null,
+    toStatus: created.status || 'new',
+    changedBy: req.user.name,
+  });
+  res.status(201).json(created);
+}));
+
+app.patch('/api/leads/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const prev = await db.getLeadById(req.params.id);
+  if (!prev) return res.status(404).json({ error: 'Lead not found' });
+
+  const updated = await db.updateLead(req.params.id, req.body, { changedBy: req.user.name });
+  if (!updated) return res.status(404).json({ error: 'Lead not found' });
+
+  if (req.body.status && req.body.status !== prev.status) {
+    await db.addActivity({
+      leadId: updated.id,
+      leadName: updated.name,
       type: 'status_change',
-      description: `New lead created by ${req.user.name}: ${created.name} (${created.category})`,
+      description: `Stage changed from "${prev.status}" to "${req.body.status}" by ${req.user.name}`,
     });
-    res.status(201).json(created);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
   }
-});
 
-app.patch('/api/leads/:id', authMiddleware, (req, res) => {
-  try {
-    const prev = db.getLeadById(req.params.id);
-    if (!prev) return res.status(404).json({ error: 'Lead not found' });
-
-    const updated = db.updateLead(req.params.id, req.body);
-
-    if (req.body.status && req.body.status !== prev.status) {
-      db.addActivity({
-        leadId: updated.id,
-        leadName: updated.name,
-        type: 'status_change',
-        description: `Stage changed from "${prev.status}" to "${req.body.status}" by ${req.user.name}`,
-      });
-    }
-
-    res.json(updated);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+  res.json(updated);
+}));
 
 // Safe Purge All Leads (Super Admin Only - Clean Slate) - MUST be before /api/leads/:id
-app.delete('/api/leads/purge-all', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const purgedCount = db.purgeAllLeads();
-    db.addActivity({
-      type: 'settings',
-      description: `Leads database reset: ${purgedCount} leads permanently purged by ${req.user.name}`,
-    });
-    res.json({
-      success: true,
-      purgedCount,
-      message: `Database reset successful. ${purgedCount} leads permanently purged.`
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+app.delete('/api/leads/purge-all', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const purgedCount = await db.purgeAllLeads();
+  await db.addActivity({
+    type: 'settings',
+    description: `Leads database reset: ${purgedCount} leads permanently purged by ${req.user.name}`,
+  });
+  res.json({
+    success: true,
+    purgedCount,
+    message: `Database reset successful. ${purgedCount} leads permanently purged.`
+  });
+}));
 
-app.delete('/api/leads/:id', authMiddleware, (req, res) => {
+app.delete('/api/leads/:id', authMiddleware, asyncHandler(async (req, res) => {
   if (req.params.id === 'purge-all') return;
-  const success = db.deleteLead(req.params.id);
+  const success = await db.deleteLead(req.params.id);
   if (!success) return res.status(404).json({ error: 'Lead not found' });
   res.json({ message: 'Lead deleted successfully' });
-});
+}));
 
 // Parse uploaded Leads CSV content for preview before committing
-app.post('/api/leads/parse-csv', authMiddleware, (req, res) => {
-  try {
-    const csvData = req.body.csvData || req.body.csvContent;
-    if (!csvData) return res.status(400).json({ error: 'No CSV data provided' });
+app.post('/api/leads/parse-csv', authMiddleware, largeJsonParser, asyncHandler(async (req, res) => {
+  const csvData = req.body.csvData || req.body.csvContent;
+  if (!csvData) return res.status(400).json({ error: 'No CSV data provided' });
 
-    const existingLeads = db.getLeads();
-    const branches = db.getBranches();
-    const categories = db.getCategories();
+  const existingLeads = await db.getLeads();
+  const branches = await db.getBranches();
+  const categories = await db.getCategories();
 
-    const result = parseLeadCsv(csvData, {
-      leads: existingLeads,
-      branches,
-      categories
-    });
+  const result = parseLeadCsv(csvData, {
+    leads: existingLeads,
+    branches,
+    categories
+  });
 
-    res.json(result);
-  } catch (err) {
-    res.status(400).json({ error: `Failed to parse leads CSV: ${err.message}` });
-  }
-});
+  res.json(result);
+}));
 
 // Bulk Import Leads into CRM
-app.post('/api/leads/bulk-import', authMiddleware, (req, res) => {
-  try {
-    const { items, options } = req.body;
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'No valid lead records provided for import' });
-    }
-
-    const result = db.bulkUpsertLeads(items, options || {});
-
-    db.addActivity({
-      type: 'lead_import',
-      description: `Leads Bulk Import: ${result.addedCount} new inquiries created, ${result.updatedCount} leads updated (${result.skippedCount} skipped) by ${req.user.name}`,
-    });
-
-    res.json({
-      success: true,
-      message: `Successfully processed ${items.length} leads (${result.addedCount} added, ${result.updatedCount} updated, ${result.skippedCount} skipped).`,
-      ...result
-    });
-  } catch (err) {
-    res.status(500).json({ error: `Leads import failed: ${err.message}` });
+app.post('/api/leads/bulk-import', authMiddleware, largeJsonParser, asyncHandler(async (req, res) => {
+  const { items, options } = req.body;
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'No valid lead records provided for import' });
   }
-});
 
-app.post('/api/leads/:id/activity', authMiddleware, (req, res) => {
-  const lead = db.getLeadById(req.params.id);
+  const result = await db.bulkUpsertLeads(items, options || {});
+
+  await db.addActivity({
+    type: 'lead_import',
+    description: `Leads Bulk Import: ${result.addedCount} new inquiries created, ${result.updatedCount} leads updated (${result.skippedCount} skipped) by ${req.user.name}`,
+  });
+
+  res.json({
+    success: true,
+    message: `Successfully processed ${items.length} leads (${result.addedCount} added, ${result.updatedCount} updated, ${result.skippedCount} skipped).`,
+    ...result
+  });
+}));
+
+app.post('/api/leads/:id/activity', authMiddleware, asyncHandler(async (req, res) => {
+  const lead = await db.getLeadById(req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
-  const act = db.addActivity({
+  const act = await db.addActivity({
     leadId: lead.id,
     leadName: lead.name,
     type: req.body.type || 'note',
@@ -515,538 +553,384 @@ app.post('/api/leads/:id/activity', authMiddleware, (req, res) => {
   });
 
   if (req.body.type === 'whatsapp' || req.body.type === 'call') {
-    db.updateLead(lead.id, { lastContactedAt: new Date().toISOString() });
+    await db.updateLead(lead.id, { lastContactedAt: new Date().toISOString() });
   }
 
   res.status(201).json(act);
-});
+}));
 
 // Products
-app.get('/api/products', authMiddleware, (req, res) => {
-  try {
-    const { category, brand, search } = req.query;
-    const products = db.getProducts({ category, brand, search });
-    res.json(products);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+app.get('/api/products', authMiddleware, asyncHandler(async (req, res) => {
+  const { category, brand, search } = req.query;
+  const products = await db.getProducts({ category, brand, search });
+  res.json(products);
+}));
 
-app.post('/api/products', authMiddleware, (req, res) => {
-  try {
-    const product = db.createProduct(req.body);
-    res.status(201).json(product);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+app.post('/api/products', authMiddleware, asyncHandler(async (req, res) => {
+  const product = await db.createProduct(req.body);
+  res.status(201).json(product);
+}));
 
-app.patch('/api/products/:id', authMiddleware, (req, res) => {
-  try {
-    const updated = db.updateProduct(req.params.id, req.body);
-    if (!updated) return res.status(404).json({ error: 'Product not found' });
-    res.json(updated);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+app.patch('/api/products/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const updated = await db.updateProduct(req.params.id, req.body);
+  if (!updated) return res.status(404).json({ error: 'Product not found' });
+  res.json(updated);
+}));
 
-app.delete('/api/products/:id', authMiddleware, (req, res) => {
-  const ok = db.deleteProduct(req.params.id);
+app.delete('/api/products/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const ok = await db.deleteProduct(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Product not found' });
-  db.addActivity({
+  await db.addActivity({
     type: 'product_delete',
     description: `Product deleted (ID: ${req.params.id}) by ${req.user.name}`,
   });
   res.json({ message: 'Product deleted' });
-});
+}));
 
 // Bulk Delete Products
-app.post('/api/products/bulk-delete', authMiddleware, (req, res) => {
-  try {
-    const { ids } = req.body;
-    if (!Array.isArray(ids) || ids.length === 0) {
-      return res.status(400).json({ error: 'No product IDs provided' });
-    }
-    const count = db.bulkDeleteProducts(ids);
-    db.addActivity({
-      type: 'product_delete',
-      description: `Bulk deleted ${count} products by ${req.user.name}`,
-    });
-    res.json({ success: true, count, message: `Successfully deleted ${count} products.` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+app.post('/api/products/bulk-delete', authMiddleware, asyncHandler(async (req, res) => {
+  const { ids } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: 'No product IDs provided' });
   }
-});
+  const count = await db.bulkDeleteProducts(ids);
+  await db.addActivity({
+    type: 'product_delete',
+    description: `Bulk deleted ${count} products by ${req.user.name}`,
+  });
+  res.json({ success: true, count, message: `Successfully deleted ${count} products.` });
+}));
 
-// Download Official Monipack / Tally CSV Template
-app.get('/api/products/template', authMiddleware, (req, res) => {
-  try {
-    const csvContent = generateProductTemplate();
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename=monipack_tally_product_template.csv');
-    res.send(csvContent);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+// Download Official Product Catalog CSV Template
+app.get('/api/products/template', authMiddleware, asyncHandler(async (req, res) => {
+  const csvContent = generateProductTemplate();
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename=monipack_product_catalog_template.csv');
+  res.send(csvContent);
+}));
 
-// Parse uploaded product content (CSV, Excel text, or Raw Tally XML) with 2026 Variance Analysis
-app.post('/api/products/parse-csv', authMiddleware, (req, res) => {
-  try {
-    const csvData = req.body.csvData || req.body.csvContent;
-    if (!csvData) return res.status(400).json({ error: 'No product or Tally data provided' });
+// Parse uploaded product CSV content with Variance Analysis
+app.post('/api/products/parse-csv', authMiddleware, largeJsonParser, asyncHandler(async (req, res) => {
+  const csvData = req.body.csvData || req.body.csvContent;
+  if (!csvData) return res.status(400).json({ error: 'No product CSV data provided' });
 
-    const existingProducts = db.getProducts();
-    const result = parseUniversalProductData(csvData, existingProducts);
+  const existingProducts = await db.getProducts();
+  const result = parseUniversalProductData(csvData, existingProducts);
 
-    res.json(result);
-  } catch (err) {
-    res.status(400).json({ error: `Failed to parse product data: ${err.message}` });
-  }
-});
-
-// Automated Tally Watchdog Push Endpoint for 2026 Scheduled Background Sync
-app.post('/api/tally/sync-push', (req, res) => {
-  try {
-    const syncKey = req.headers['x-tally-key'] || req.query.key;
-    const authHeader = req.headers.authorization;
-    const expectedKey = process.env.TALLY_SYNC_KEY || 'monipack-tally-sync-2026';
-
-    let authorized = false;
-    let syncUser = 'Automated Tally Watchdog';
-
-    if (syncKey === expectedKey) {
-      authorized = true;
-    } else if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        const decoded = jwt.verify(authHeader.split(' ')[1], JWT_SECRET);
-        authorized = true;
-        syncUser = decoded.name || 'CRM User';
-      } catch (e) {}
-    }
-
-    if (!authorized) {
-      return res.status(401).json({ error: 'Unauthorized: Invalid Tally sync key or token.' });
-    }
-
-    const { items, options } = req.body;
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'No items provided in sync payload.' });
-    }
-
-    const result = db.bulkUpsertProducts(items, options || { updateExisting: true });
-
-    db.addActivity({
-      type: 'tally_watchdog_sync',
-      description: `Watchdog Auto-Sync: ${result.addedCount} new items, ${result.updatedCount} items refreshed by ${syncUser}`,
-    });
-
-    res.json({
-      success: true,
-      timestamp: new Date().toISOString(),
-      ...result
-    });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  res.json(result);
+}));
 
 // Bulk Import Products into Catalog
-app.post('/api/products/bulk-import', authMiddleware, (req, res) => {
-  try {
-    const { items, options } = req.body;
-    if (!Array.isArray(items) || items.length === 0) {
-      return res.status(400).json({ error: 'No valid product items provided for import' });
-    }
-
-    const result = db.bulkUpsertProducts(items, options || {});
-
-    db.addActivity({
-      type: 'product_import',
-      description: `Product Import: ${result.addedCount} new items added, ${result.updatedCount} items updated by ${req.user.name}`,
-    });
-
-    res.json({
-      success: true,
-      message: `Successfully processed ${items.length} items (${result.addedCount} added, ${result.updatedCount} updated).`,
-      ...result
-    });
-  } catch (err) {
-    res.status(500).json({ error: `Import failed: ${err.message}` });
+app.post('/api/products/bulk-import', authMiddleware, largeJsonParser, asyncHandler(async (req, res) => {
+  const { items, options } = req.body;
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'No valid product items provided for import' });
   }
-});
 
-// Test Live Connection to TallyPrime XML Server (Port 9000)
-app.post('/api/tally/test', authMiddleware, async (req, res) => {
-  try {
-    const tallyUrl = req.body.tallyUrl || 'http://127.0.0.1:9000';
-    const status = await testTallyConnection(tallyUrl);
-    res.json(status);
-  } catch (err) {
-    res.status(500).json({ online: false, message: err.message });
-  }
-});
+  const result = await db.bulkUpsertProducts(items, options || {});
 
-// Fetch Live Stock Items from TallyPrime for Preview
-app.post('/api/tally/fetch', authMiddleware, async (req, res) => {
-  try {
-    const tallyUrl = req.body.tallyUrl || 'http://127.0.0.1:9000';
-    const companyName = req.body.companyName || '';
-    const items = await fetchTallyStockItems(tallyUrl, companyName);
-    res.json({
-      items,
-      count: items.length
-    });
-  } catch (err) {
-    res.status(502).json({ error: err.message });
-  }
-});
+  await db.addActivity({
+    type: 'product_import',
+    description: `Product Import: ${result.addedCount} new items added, ${result.updatedCount} items updated by ${req.user.name}`,
+  });
 
-// Live Sync from TallyPrime Directly into Catalog
-app.post('/api/tally/sync', authMiddleware, async (req, res) => {
-  try {
-    const tallyUrl = req.body.tallyUrl || 'http://127.0.0.1:9000';
-    const companyName = req.body.companyName || '';
-    const updateExisting = req.body.updateExisting !== false;
-
-    const items = await fetchTallyStockItems(tallyUrl, companyName);
-    if (!items || items.length === 0) {
-      return res.status(404).json({ error: 'No stock items returned from TallyPrime. Ensure your Tally company is open with Stock Items.' });
-    }
-
-    const result = db.bulkUpsertProducts(items, { updateExisting });
-
-    db.addActivity({
-      type: 'tally_sync',
-      description: `TallyPrime Live Sync: ${result.addedCount} added, ${result.updatedCount} updated by ${req.user.name}`,
-    });
-
-    res.json({
-      success: true,
-      message: `TallyPrime Sync Successful! ${result.addedCount} new items added, ${result.updatedCount} items updated.`,
-      ...result
-    });
-  } catch (err) {
-    res.status(502).json({ error: `TallyPrime Sync Failed: ${err.message}` });
-  }
-});
+  res.json({
+    success: true,
+    message: `Successfully processed ${items.length} items (${result.addedCount} added, ${result.updatedCount} updated).`,
+    ...result
+  });
+}));
 
 // Quotations
-app.get('/api/quotations', authMiddleware, (req, res) => {
-  try {
-    const quotes = db.getQuotations();
-    res.json(quotes);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+app.get('/api/quotations', authMiddleware, asyncHandler(async (req, res) => {
+  const quotes = await db.getQuotations();
+  res.json(quotes);
+}));
 
-app.get('/api/quotations/:id', authMiddleware, (req, res) => {
-  const quote = db.getQuotationById(req.params.id);
+app.get('/api/quotations/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const quote = await db.getQuotationById(req.params.id);
   if (!quote) return res.status(404).json({ error: 'Quotation not found' });
   res.json(quote);
-});
+}));
 
-app.post('/api/quotations', authMiddleware, (req, res) => {
-  try {
-    if (!req.body.customerName || typeof req.body.customerName !== 'string' || !req.body.customerName.trim()) {
-      return res.status(400).json({ error: 'Customer or Business Name is required for quotation.' });
-    }
-    if (req.body.items && !Array.isArray(req.body.items)) {
-      return res.status(400).json({ error: 'Quotation items must be provided as an array.' });
-    }
-    const quote = db.createQuotation(req.body);
-    db.addActivity({
-      leadId: quote.leadId,
-      leadName: quote.customerName,
-      type: 'quotation',
-      description: `Generated quotation ${quote.code} for OMR ${quote.grandTotalOMR.toFixed(3)} by ${req.user.name}`,
-    });
-    res.status(201).json(quote);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+app.post('/api/quotations', authMiddleware, asyncHandler(async (req, res) => {
+  if (!req.body.customerName || typeof req.body.customerName !== 'string' || !req.body.customerName.trim()) {
+    return res.status(400).json({ error: 'Customer or Business Name is required for quotation.' });
   }
-});
+  if (req.body.items && !Array.isArray(req.body.items)) {
+    return res.status(400).json({ error: 'Quotation items must be provided as an array.' });
+  }
+  const quote = await db.createQuotation(req.body, { changedBy: req.user.name });
+  await db.addActivity({
+    leadId: quote.leadId,
+    leadName: quote.customerName,
+    type: 'quotation',
+    description: `Generated quotation ${quote.code} for OMR ${Number(quote.grandTotalOMR).toFixed(3)} by ${req.user.name}`,
+  });
+  res.status(201).json(quote);
+}));
 
-app.put('/api/quotations/:id', authMiddleware, (req, res) => {
-  try {
-    const updated = db.updateQuotation(req.params.id, req.body);
-    if (!updated) return res.status(404).json({ error: 'Quotation not found' });
-    db.addActivity({
-      type: 'quotation',
-      description: `Quotation "${updated.code}" updated by ${req.user.name}`,
-    });
-    res.json(updated);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+app.put('/api/quotations/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const updated = await db.updateQuotation(req.params.id, req.body, { changedBy: req.user.name });
+  if (!updated) return res.status(404).json({ error: 'Quotation not found' });
+  await db.addActivity({
+    type: 'quotation',
+    description: `Quotation "${updated.code}" updated by ${req.user.name}`,
+  });
+  res.json(updated);
+}));
 
-app.delete('/api/quotations/:id', authMiddleware, (req, res) => {
-  try {
-    const success = db.deleteQuotation(req.params.id);
-    if (!success) return res.status(404).json({ error: 'Quotation not found' });
-    db.addActivity({
-      type: 'quotation',
-      description: `Quotation "${req.params.id}" was deleted by ${req.user.name}`,
-    });
-    res.json({ message: 'Quotation deleted successfully' });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+app.delete('/api/quotations/:id', authMiddleware, asyncHandler(async (req, res) => {
+  const success = await db.deleteQuotation(req.params.id);
+  if (!success) return res.status(404).json({ error: 'Quotation not found' });
+  await db.addActivity({
+    type: 'quotation',
+    description: `Quotation "${req.params.id}" was deleted by ${req.user.name}`,
+  });
+  res.json({ message: 'Quotation deleted successfully' });
+}));
 
 // ================= Super Admin ONLY Settings & Controls =================
 
 // Get Settings
-app.get('/api/settings', authMiddleware, requireSuperAdmin, (req, res) => {
-  res.json(db.getSettings());
-});
+app.get('/api/settings', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const settings = await db.getSettings();
+  res.json(settings);
+}));
 
 // Update Settings
-app.patch('/api/settings', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const updated = db.updateSettings(req.body);
-    db.addActivity({
-      type: 'settings',
-      description: `System settings updated by Administrator (${req.user.email})`,
-    });
-    res.json(updated);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+app.patch('/api/settings', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const updated = await db.updateSettings(req.body);
+  await db.addActivity({
+    type: 'settings',
+    description: `System settings updated by Administrator (${req.user.email})`,
+  });
+  res.json(updated);
+}));
 
 // Download System Backup Snapshot (Super Admin Only)
-app.get('/api/backup', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const filenameDate = new Date().toISOString().slice(0, 10);
-    db.addActivity({
-      type: 'security',
-      description: `System database backup snapshot downloaded by Administrator (${req.user?.email || 'super_admin'})`,
-    });
-    res.setHeader('Content-Type', 'application/json');
-    res.setHeader('Content-Disposition', `attachment; filename=monipack_crm_backup_${filenameDate}.json`);
-    res.send(JSON.stringify(db.data, null, 2));
-  } catch (err) {
-    res.status(500).json({ error: 'Failed to generate backup snapshot' });
-  }
-});
+app.get('/api/backup', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const filenameDate = new Date().toISOString().slice(0, 10);
+  await db.addAuditEntry({
+    type: 'security',
+    userId: req.user.id,
+    userName: req.user.name,
+    description: `System database backup snapshot downloaded by Administrator (${req.user?.email || 'super_admin'})`,
+  });
+
+  // Build backup from all tables
+  const backup = {
+    users: await db.getUsers(),
+    leads: await db.getLeads(),
+    products: await db.getProducts(),
+    quotations: await db.getQuotations(),
+    branches: await db.getBranches(),
+    categories: await db.getCategories(),
+    pipelineStages: await db.getPipelineStages(),
+    settings: await db.getSettings(),
+    activities: await db.getActivities(200),
+  };
+
+  res.setHeader('Content-Type', 'application/json');
+  res.setHeader('Content-Disposition', `attachment; filename=monipack_crm_backup_${filenameDate}.json`);
+  res.send(JSON.stringify(backup, null, 2));
+}));
 
 // Users Management
-app.get('/api/users', authMiddleware, requireSuperAdmin, (req, res) => {
-  res.json(db.getUsers());
-});
+app.get('/api/users', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const users = await db.getUsers();
+  res.json(users);
+}));
 
-app.post('/api/users', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const { name, email, password, role } = req.body || {};
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email, and password are required.' });
-    }
-    if (db.getUserByEmail(email)) {
-      return res.status(400).json({ error: 'A user with this email already exists.' });
-    }
-    const created = db.createUser({ name, email, password, role: role || 'admin' });
-    db.addActivity({
-      type: 'security',
-      description: `New user created by Administrator: ${name} (${role || 'admin'})`,
-    });
-    res.status(201).json(created);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+app.post('/api/users', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { name, email, password, role } = req.body || {};
+  if (!name || !email || !password) {
+    return res.status(400).json({ error: 'Name, email, and password are required.' });
   }
-});
+  const existing = await db.getUserByEmail(email);
+  if (existing) {
+    return res.status(400).json({ error: 'A user with this email already exists.' });
+  }
+  const created = await db.createUser({ name, email, password, role: role || 'admin' });
+  await db.addAuditEntry({
+    type: 'security',
+    userId: req.user.id,
+    userName: req.user.name,
+    description: `New user created by Administrator: ${name} (${role || 'admin'})`,
+  });
+  res.status(201).json(created);
+}));
 
-app.delete('/api/users/:id', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const success = db.deleteUser(req.params.id);
-    if (!success) {
-      return res.status(400).json({ error: 'Unable to delete this user account.' });
-    }
-    db.addActivity({
-      type: 'security',
-      description: `User account deleted by Administrator (ID: ${req.params.id})`,
-    });
-    res.json({ message: 'User deleted successfully' });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+app.delete('/api/users/:id', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const success = await db.deleteUser(req.params.id);
+  if (!success) {
+    return res.status(400).json({ error: 'Unable to delete this user account.' });
   }
-});
+  await db.addAuditEntry({
+    type: 'security',
+    userId: req.user.id,
+    userName: req.user.name,
+    description: `User account deleted by Administrator (ID: ${req.params.id})`,
+  });
+  res.json({ message: 'User deleted successfully' });
+}));
 
-app.patch('/api/users/:id/password', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const { password } = req.body || {};
-    if (!password || typeof password !== 'string' || password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
-    }
-    const updated = db.updateUserPassword(req.params.id, password);
-    if (!updated) {
-      return res.status(404).json({ error: 'User not found.' });
-    }
-    db.addActivity({
-      type: 'security',
-      description: `Password reset by Administrator for user: ${updated.name} (${updated.email})`,
-    });
-    res.json({ message: 'Password updated successfully', user: updated });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
+app.patch('/api/users/:id/password', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { password } = req.body || {};
+  if (!password || typeof password !== 'string' || password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
   }
-});
+  const updated = await db.updateUserPassword(req.params.id, password);
+  if (!updated) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+  await db.addAuditEntry({
+    type: 'security',
+    userId: req.user.id,
+    userName: req.user.name,
+    description: `Password reset by Administrator for user: ${updated.name} (${updated.email})`,
+  });
+  res.json({ message: 'Password updated successfully', user: updated });
+}));
 
 // ---------------- Global App Config (Categories, Stages, Branches) ----------------
 
-app.get('/api/config', authMiddleware, (req, res) => {
-  res.json({
-    categories: db.getCategories(),
-    pipelineStages: db.getPipelineStages(),
-    branches: db.getBranches(),
-  });
-});
+app.get('/api/config', authMiddleware, asyncHandler(async (req, res) => {
+  const [categories, pipelineStages, branches] = await Promise.all([
+    db.getCategories(),
+    db.getPipelineStages(),
+    db.getBranches(),
+  ]);
+  res.json({ categories, pipelineStages, branches });
+}));
 
 // Oman Branches List with per-rep lead counts
-app.get('/api/branches', authMiddleware, (req, res) => {
-  try {
-    const branches = db.getBranches();
-    const leads = db.getLeads();
-    const branchesWithCounts = branches.map((b) => {
-      const branchLeads = leads.filter(
-        (l) => l.branchId === b.id || (l.branch === b.name && (!b.salesman || l.salesman === b.salesman))
-      );
-      return {
-        ...b,
-        leadCount: branchLeads.length,
-        activeLeads: branchLeads.filter((l) => l.status !== 'won' && l.status !== 'lost').length,
-        wonLeads: branchLeads.filter((l) => l.status === 'won').length,
-      };
-    });
-    res.json(branchesWithCounts);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+app.get('/api/branches', authMiddleware, asyncHandler(async (req, res) => {
+  const branches = await db.getBranches();
+  const leads = await db.getLeads();
+
+  const branchesWithCounts = branches.map((b) => {
+    const branchLeads = leads.filter(
+      (l) => String(l.branchId) === String(b.id) || (l.branch === b.name && (!b.salesman || l.salesman === b.salesman))
+    );
+    return {
+      ...b,
+      leadCount: branchLeads.length,
+      activeLeads: branchLeads.filter((l) => l.status !== 'won' && l.status !== 'lost').length,
+      wonLeads: branchLeads.filter((l) => l.status === 'won').length,
+    };
+  });
+  res.json(branchesWithCounts);
+}));
 
 // Security Audit Trail (Super Admin Only)
-app.get('/api/audit-logs', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const limit = parseInt(req.query.limit) || 100;
-    const logs = db.getActivities(limit);
-    res.json(logs);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+app.get('/api/audit-logs', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const limit = parseInt(req.query.limit) || 100;
+  const logs = await db.getAuditLogs(limit);
+  res.json(logs);
+}));
 
 // Category Management (Super Admin Only)
-app.post('/api/settings/categories', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const { name } = req.body;
-    if (!name || typeof name !== 'string' || !name.trim()) {
-      return res.status(400).json({ error: 'Valid category name is required.' });
-    }
-    const clean = name.trim();
-    const existing = db.getCategories();
-    if (existing.some((c) => c.toLowerCase() === clean.toLowerCase())) {
-      return res.status(409).json({ error: `Category "${clean}" already exists.` });
-    }
-    const categories = db.addCategory(clean);
-    db.addActivity({
-      type: 'settings',
-      description: `New product category created: "${clean}" by Administrator (${req.user.email})`,
-    });
-    res.status(201).json({ categories });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+app.post('/api/settings/categories', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { name } = req.body;
+  if (!name || typeof name !== 'string' || !name.trim()) {
+    return res.status(400).json({ error: 'Valid category name is required.' });
   }
-});
+  const clean = name.trim();
+  const existing = await db.getCategories();
+  if (existing.some((c) => c.toLowerCase() === clean.toLowerCase())) {
+    return res.status(409).json({ error: `Category "${clean}" already exists.` });
+  }
+  const categories = await db.addCategory(clean);
+  await db.addActivity({
+    type: 'settings',
+    description: `New product category created: "${clean}" by Administrator (${req.user.email})`,
+  });
+  res.status(201).json({ categories });
+}));
 
-app.delete('/api/settings/categories/:name', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const name = decodeURIComponent(req.params.name);
-    const ok = db.deleteCategory(name);
-    if (!ok) return res.status(404).json({ error: 'Category not found' });
-    db.addActivity({
-      type: 'settings',
-      description: `Product category removed: "${name}" by Administrator`,
-    });
-    res.json({ categories: db.getCategories() });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+app.delete('/api/settings/categories/:name', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const name = decodeURIComponent(req.params.name);
+  const ok = await db.deleteCategory(name);
+  if (!ok) return res.status(404).json({ error: 'Category not found' });
+  await db.addActivity({
+    type: 'settings',
+    description: `Product category removed: "${name}" by Administrator`,
+  });
+  const categories = await db.getCategories();
+  res.json({ categories });
+}));
 
 // Pipeline Stages Management (Super Admin Only)
-app.post('/api/settings/stages', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const { id, label, color } = req.body;
-    if (!label) return res.status(400).json({ error: 'Stage label is required.' });
-    const stage = db.addPipelineStage({ id, label, color });
-    db.addActivity({
-      type: 'settings',
-      description: `New pipeline stage created: "${label}" by Administrator`,
-    });
-    res.status(201).json(stage);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+app.post('/api/settings/stages', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { id, label, color } = req.body;
+  if (!label) return res.status(400).json({ error: 'Stage label is required.' });
+  const stage = await db.addPipelineStage({ id, label, color });
+  await db.addActivity({
+    type: 'settings',
+    description: `New pipeline stage created: "${label}" by Administrator`,
+  });
+  res.status(201).json(stage);
+}));
 
-app.delete('/api/settings/stages/:id', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const ok = db.deletePipelineStage(req.params.id);
-    if (!ok) return res.status(400).json({ error: 'Cannot delete this pipeline stage.' });
-    db.addActivity({
-      type: 'settings',
-      description: `Pipeline stage removed: "${req.params.id}" by Administrator`,
-    });
-    res.json({ stages: db.getPipelineStages() });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
+app.delete('/api/settings/stages/:id', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const ok = await db.deletePipelineStage(req.params.id);
+  if (!ok) return res.status(400).json({ error: 'Cannot delete this pipeline stage.' });
+  await db.addActivity({
+    type: 'settings',
+    description: `Pipeline stage removed: "${req.params.id}" by Administrator`,
+  });
+  const stages = await db.getPipelineStages();
+  res.json({ stages });
+}));
 
 // Branches & Salesmen Management (Super Admin Only)
-app.post('/api/settings/branches', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const { name, city, phone, salesman, isHeadquarters } = req.body;
-    if (!name) return res.status(400).json({ error: 'Branch name is required.' });
-    const branch = db.addBranch({ name, city, phone, salesman, isHeadquarters });
-    db.addActivity({
-      type: 'settings',
-      description: `New branch created: "${name}" (Salesman: ${salesman || 'Unassigned'}) by Administrator`,
-    });
-    res.status(201).json(branch);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+app.post('/api/settings/branches', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const { name, city, phone, salesman, isHeadquarters } = req.body;
+  if (!name) return res.status(400).json({ error: 'Branch name is required.' });
+  const branch = await db.addBranch({ name, city, phone, salesman, isHeadquarters });
+  await db.addActivity({
+    type: 'settings',
+    description: `New branch created: "${name}" (Salesman: ${salesman || 'Unassigned'}) by Administrator`,
+  });
+  res.status(201).json(branch);
+}));
+
+app.patch('/api/settings/branches/:id', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const updated = await db.updateBranch(req.params.id, req.body);
+  if (!updated) return res.status(404).json({ error: 'Branch not found' });
+  await db.addActivity({
+    type: 'settings',
+    description: `Branch "${updated.name}" updated (Salesman: ${updated.salesman}) by Administrator`,
+  });
+  res.json(updated);
+}));
+
+app.delete('/api/settings/branches/:id', authMiddleware, requireSuperAdmin, asyncHandler(async (req, res) => {
+  const ok = await db.deleteBranch(req.params.id);
+  if (!ok) return res.status(404).json({ error: 'Branch not found' });
+  await db.addActivity({
+    type: 'settings',
+    description: `Branch removed (ID: ${req.params.id}) by Administrator`,
+  });
+  res.json({ message: 'Branch deleted successfully' });
+}));
+
+// ---- Central Error Handlers ----
+
+// CORS rejection handler
+app.use((err, req, res, next) => {
+  if (err && err.message === 'Not allowed by CORS') {
+    return res.status(403).json({ error: 'Not allowed by CORS' });
   }
+  next(err);
 });
 
-app.patch('/api/settings/branches/:id', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const updated = db.updateBranch(req.params.id, req.body);
-    if (!updated) return res.status(404).json({ error: 'Branch not found' });
-    db.addActivity({
-      type: 'settings',
-      description: `Branch "${updated.name}" updated (Salesman: ${updated.salesman}) by Administrator`,
-    });
-    res.json(updated);
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.delete('/api/settings/branches/:id', authMiddleware, requireSuperAdmin, (req, res) => {
-  try {
-    const ok = db.deleteBranch(req.params.id);
-    if (!ok) return res.status(404).json({ error: 'Branch not found' });
-    db.addActivity({
-      type: 'settings',
-      description: `Branch removed (ID: ${req.params.id}) by Administrator`,
-    });
-    res.json({ message: 'Branch deleted successfully' });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
+// Central async error handler: never send err.message to the browser
+app.use((err, req, res, next) => {
+  console.error(`[${new Date().toISOString()}] Server Error:`, err.stack || err);
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Something went wrong. Please try again.' });
   }
 });
 
@@ -1079,19 +963,26 @@ if (fs.existsSync(distPath)) {
 }
 
 // Bind to 0.0.0.0 so localhost (IPv6 ::1 and IPv4 127.0.0.1) and LAN all work reliably
-const server = app.listen(PORT, '0.0.0.0', () => {
-  console.log(`===============================================`);
-  console.log(` Monipack CRM Server ACTIVE on port ${PORT}`);
-  console.log(` Morooj Nizwa International LLC`);
-  console.log(` Access Localhost: http://localhost:${PORT}`);
-  console.log(` Access Loopback:  http://127.0.0.1:${PORT}`);
-  console.log(`===============================================`);
-});
+let server = null;
+if (process.env.NODE_ENV !== 'test') {
+  server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`===============================================`);
+    console.log(` Monipack CRM Server ACTIVE on port ${PORT}`);
+    console.log(` Morooj Nizwa International LLC`);
+    console.log(` Database: PostgreSQL`);
+    console.log(` Access Localhost: http://localhost:${PORT}`);
+    console.log(` Access Loopback:  http://127.0.0.1:${PORT}`);
+    console.log(`===============================================`);
+  });
 
-server.on('error', (err) => {
-  if (err.code === 'EADDRINUSE') {
-    console.error(`[CRITICAL] Port ${PORT} is already in use by another process.`);
-  } else {
-    console.error(`[CRITICAL] Server error:`, err);
-  }
-});
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`[CRITICAL] Port ${PORT} is already in use by another process.`);
+    } else {
+      console.error(`[CRITICAL] Server error:`, err);
+    }
+  });
+}
+
+export { app, server };
+export default app;

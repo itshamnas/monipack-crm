@@ -24,7 +24,7 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
     {
       title: 'Total Active Leads',
       value: stats?.totalLeads || 0,
-      subtext: '541 from HORECA Oman & Meta Ads',
+      subtext: stats?.newLeads ? `${stats.newLeads} new awaiting qualification` : 'Active commercial pipeline',
       icon: Users,
       color: 'bg-blue-500',
       accent: 'border-blue-200 text-blue-700 bg-blue-50',
@@ -354,7 +354,7 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
                 Regional Distribution across Oman
               </h3>
               <p className="text-xs text-slate-500">
-                Leads assigned to <span className="font-monipack lowercase font-bold text-slate-700">monipack</span> 10 branch hubs
+                Leads assigned to <span className="font-monipack lowercase font-bold text-slate-700">monipack</span> regional branch hubs
               </p>
             </div>
             <button
