@@ -1,16 +1,20 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeAll } from 'vitest';
 import request from 'supertest';
 import jwt from 'jsonwebtoken';
 import { spawnSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { app } from '../index.js';
+import { verifyTestSafety } from './testHelper.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const serverIndexPath = path.resolve(__dirname, '..', 'index.js');
 
 describe('Security Suite 1 - CORS, RBAC, Rate Limiting, Startup Guard & Tally Removal', () => {
+  beforeAll(() => {
+    verifyTestSafety();
+  });
 
   // 1. CORS Enforcement
   describe('CORS Enforcement', () => {
@@ -200,4 +204,3 @@ TEST-CUP-01,Test Coffee Cup 12oz,كوب قهوة تجريبي,Packaging Products
   });
 
 });
-

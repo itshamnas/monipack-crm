@@ -1,62 +1,12 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import db from './db.js';
+import 'dotenv/config';
+import db from './db/index.js';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Robust CSV Parser handling quotes, escaped quotes and multi-line values
-function parseCSV(text) {
-  const lines = [];
-  let row = [];
-  let inQuotes = false;
-  let currentField = '';
-
-  for (let i = 0; i < text.length; i++) {
-    const char = text[i];
-    const nextChar = text[i + 1];
-
-    if (char === '"') {
-      if (inQuotes && nextChar === '"') {
-        currentField += '"';
-        i++; // skip next quote
-      } else {
-        inQuotes = !inQuotes;
-      }
-    } else if (char === ',' && !inQuotes) {
-      row.push(currentField.trim());
-      currentField = '';
-    } else if ((char === '\r' || char === '\n') && !inQuotes) {
-      if (char === '\r' && nextChar === '\n') {
-        i++;
-      }
-      row.push(currentField.trim());
-      if (row.some((cell) => cell.length > 0)) {
-        lines.push(row);
-      }
-      row = [];
-      currentField = '';
-    } else {
-      currentField += char;
-    }
-  }
-
-  if (currentField.length > 0 || row.length > 0) {
-    row.push(currentField.trim());
-    if (row.some((cell) => cell.length > 0)) {
-      lines.push(row);
-    }
-  }
-
-  return lines;
-}
-
-export function runSeed() {
+export async function runSeed() {
   console.log('--- Starting Monipack CRM Data Seed ---');
 
   // 1. Seed Products if empty
-  if (db.data.products.length === 0) {
+  const existingProducts = await db.getProducts();
+  if (existingProducts.length === 0) {
     const defaultProducts = [
       // Monipack - Packaging & Disposables
       {
@@ -265,17 +215,29 @@ export function runSeed() {
       },
     ];
 
-    defaultProducts.forEach((p) => db.createProduct(p));
+    for (const p of defaultProducts) {
+      await db.createProduct(p);
+    }
     console.log(`Seeded ${defaultProducts.length} default products across 4 divisions.`);
+  } else {
+    console.log(`Products table already contains ${existingProducts.length} products. Skipping product seed.`);
   }
 
-  // Note: CSV Demo Leads and Sample Quotations auto-seeding disabled for production.
-  // Leads will now be imported cleanly via Customer Care / Leads CSV importer.
+  const [leads, products, quotations] = await Promise.all([
+    db.getLeads(),
+    db.getProducts(),
+    db.getQuotations(),
+  ]);
 
-  console.log(`Database ready: ${db.data.leads.length} leads, ${db.data.products.length} products, ${db.data.quotations.length} quotations.`);
+  console.log(`Database ready: ${leads.length} leads, ${products.length} products, ${quotations.length} quotations.`);
 }
 
-// Auto-run if executed directly
+// Auto-run if executed directly via CLI
 if (process.argv[1] && process.argv[1].endsWith('seed.js')) {
-  runSeed();
+  runSeed().then(() => {
+    process.exit(0);
+  }).catch((err) => {
+    console.error('Seed failed:', err);
+    process.exit(1);
+  });
 }

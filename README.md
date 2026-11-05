@@ -12,14 +12,16 @@ Monipack Full Stack CRM is an enterprise-grade customer relationship management 
 - **Leads & Pipeline Management**:
   - Interactive **Kanban Pipeline** (`New Lead` ➔ `Contacted` ➔ `Quotation Sent` ➔ `Sample Delivered` ➔ `Won / Closed` ➔ `Lost`).
   - Searchable **Table View** with live search, filters (Category, Oman Branch, Pipeline Stage), and CSV export.
-  - Pre-seeded with **541+ verified leads** from the HORECA Oman 2026 expo and Meta campaigns.
+  - Stage history tracking with full audit trail on every transition.
+  - Soft-delete data protection (`archived_at`).
 - **WhatsApp 1-Click Action**:
   - Direct integration with WhatsApp Web & mobile app (`wa.me/+968...`).
   - Pre-composed bilingual templates (HORECA Follow-up in Arabic & English, Quotation Dispatch, Sample Tracking).
   - Automatically logs customer engagement to the lead's activity timeline.
 - **Official Monipack Quotation Generator**:
-  - Exact pixel-perfect reproduction of Monipack's official quote layout (`MNI-ITS-...`).
-  - Supports Morooj Nizwa header, Moniclean, Monifood, Monipack, and Kohe brand badges.
+  - Exact reproduction of Monipack's official quote layout (`MNI-ITS-...`).
+  - Concurrent-safe unique quotation numbering via PostgreSQL database sequence.
+  - Decimal quantity support (`NUMERIC(14,3)` for units like KG, ROLL, etc.).
   - Real-time OMR calculations (Subtotal and Grand Total with 3 decimal places).
   - Built-in **Print to PDF** generator with clean A4 layout.
 - **Multi-Brand Product Catalog**:
@@ -27,36 +29,83 @@ Monipack Full Stack CRM is an enterprise-grade customer relationship management 
   - **Moniclean**: 5L Disinfectants, Industrial Floor Cleaners, Luxury Foaming Hand Wash, Blue Centrefeed Towel Rolls.
   - **Monifood**: FO Mojito flavored syrup, FO Blue Curacao, FO Fruit Purees.
   - **Kohe**: Commercial Chef Knives, Paring Knives, Stainless Kitchen Shears.
-- **10 Oman Branches Hubs**:
-  - Ghala (HQ), Al Khoud, Mabela, Amarath, Musannah, Nizwa, Ibri, Ibra, Bahla, Jalan Bani Buali.
+- **Oman Branches & Salesmen Hubs**:
+  - Dedicated `branches` and `salesmen` relational models.
+  - Multi-branch salesman assignments (e.g., covering Ghala HQ and Musannah) with `default_salesman_id` routing.
 
 ---
 
-## 🚀 Quick Start
+## 🗄️ Database Setup (PostgreSQL)
 
-### 1. Launch with One Click
-Double-click `start-crm.bat` in the project root. It will automatically initialize the database, launch the server, and open your browser at:
+### 1. Prerequisites
+- **PostgreSQL 14+** running locally or accessible via network.
+- Create development and test databases:
+```sql
+CREATE DATABASE monipack_dev;
+CREATE DATABASE monipack_test;
 ```
-http://localhost:5000
+
+### 2. Configure Environment (.env)
+Create or update `.env` in the project root:
+```env
+PORT=5000
+JWT_SECRET=your-secure-jwt-secret-at-least-32-chars-long
+ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5000
+DATABASE_URL=postgresql://<username>:<password>@localhost:5432/monipack_dev
+DATABASE_URL_TEST=postgresql://<username>:<password>@localhost:5432/monipack_test
 ```
 
-### 2. Manual Command Line
-```powershell
-# In PowerShell:
-$env:PATH = "$env:LOCALAPPDATA\Programs\nodejs;" + $env:PATH
-cd "c:\Users\retai\Downloads\monipack fullstack crm"
+### 3. Run Database Migrations
+Executes all SQL migrations in `server/migrations/` sequentially inside transactions:
+```bash
+npm run migrate
+```
+Migrations are idempotent and safe to execute multiple times.
 
-# Run Production Server (serves UI + API on port 5000):
-node server/index.js
+### 4. Run Setup Data Import
+Imports setup data (users with existing bcrypt password hashes, branches, salesmen, categories, pipeline stages, products, settings) from the historical JSON file into PostgreSQL:
+```bash
+npm run import-json
+```
+*(Note: Old test leads, quotes, and activity logs are not imported; the source JSON file is kept intact as a backup).*
 
-# Or Run Development Mode with Hot Reload:
+### 5. (Optional) Seed Sample Products
+Populates sample product catalog if the products table is empty:
+```bash
+npm run seed
+```
+
+---
+
+## 🧪 Testing
+
+Run the automated test suite (runs against `DATABASE_URL_TEST` with safety guards):
+```bash
+npm test
+```
+All tests verify feature integrity, security RBAC, rate limiting, and PostgreSQL transactions/soft-deletes.
+
+---
+
+## 🚀 Running the Application
+
+### Development Mode (Backend + Frontend with Hot Reload)
+```bash
 npm run dev
+```
+- Frontend UI: `http://localhost:3000`
+- Backend API: `http://localhost:5000`
+
+### Production Server
+```bash
+npm run build
+npm start
 ```
 
 ---
 
 ## 🛠 Tech Stack
 - **Frontend**: React 19, Tailwind CSS v4, Lucide React icons, Plus Jakarta Sans & Cairo typography.
-- **Backend**: Node.js, Express REST API, CORS.
-- **Storage**: ACID atomic JSON database (`server/data/monipack_crm.json`) with zero external DB configuration.
-- **Data Ingestion**: Custom CSV parser that ingested `monipack_leads_2026-09-22.csv`.
+- **Backend**: Node.js, Express REST API, CORS, Helmet security headers.
+- **Database**: PostgreSQL with connection pooling (`pg`), SQL migrations, database sequences, and ACID transactions.
+- **Testing**: Vitest, Supertest.

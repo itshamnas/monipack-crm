@@ -1,0 +1,72 @@
+{
+  "users": [
+    {
+      "id": "fixture_user_1",
+      "name": "Fixture Imported User",
+      "email": "imported_fixture_user@example.com",
+      "role": "admin",
+      "canExport": false,
+      "passwordHash": "$2b$10$4rFP79oBW6D/4MHldutALeBR/PSd1SBBYvNSrrzcBS9kAeuFGuhlC",
+      "createdAt": "2026-10-01T10:00:00.000Z"
+    }
+  ],
+  "branches": [
+    {
+      "id": "b_fix_ghala",
+      "name": "Fixture Ghala",
+      "city": "Muscat",
+      "phone": "+968 79062219",
+      "salesman": "Fixture Salesman One",
+      "isHeadquarters": true
+    },
+    {
+      "id": "b_fix_musannah",
+      "name": "Fixture Musannah",
+      "city": "South Al Batinah",
+      "phone": "+968 97023054",
+      "salesman": "Fixture Salesman One",
+      "isHeadquarters": false
+    },
+    {
+      "id": "b_fix_b2b",
+      "name": "B2B Fixture",
+      "city": "Muscat",
+      "phone": "+968 79062219",
+      "salesman": "B2B Route Rep",
+      "isHeadquarters": false
+    }
+  ],
+  "categories": [
+    "Packaging Products",
+    "Cleaning Products",
+    "Kohe Products"
+  ],
+  "pipelineStages": [
+    { "id": "new", "label": "STEP 1: Qualification & Intake", "color": "border-t-2 border-blue-500 bg-blue-50/20" },
+    { "id": "contacted", "label": "STEP 2: Analyze & Assign", "color": "border-t-2 border-indigo-500 bg-indigo-50/20" },
+    { "id": "quotation_sent", "label": "STEP 3: Quotation Follow-Up", "color": "border-t-2 border-amber-500 bg-amber-50/20" },
+    { "id": "sample_sent", "label": "STEP 4: Sample & Negotiation", "color": "border-t-2 border-purple-500 bg-purple-50/20" },
+    { "id": "won", "label": "STEP 5: Converted (Won)", "color": "border-t-2 border-emerald-500 bg-emerald-50/20" },
+    { "id": "lost", "label": "STEP 6: Lost / Closed", "color": "border-t-2 border-rose-500 bg-rose-50/20" }
+  ],
+  "products": [
+    {
+      "id": "prod_fix_1",
+      "sku": "MNP-FIX-CUP",
+      "name": "Fixture Cup",
+      "nameAr": "كوب تجريبي",
+      "category": "Packaging Products",
+      "brand": "Monipack",
+      "description": "Test product description",
+      "unit": "CTN",
+      "priceOMR": 10.5,
+      "stock": 100,
+      "createdAt": "2026-10-01T10:00:00.000Z"
+    }
+  ],
+  "settings": {
+    "companyName": "Morooj Nizwa International LLC",
+    "brandName": "Monipack",
+    "currency": "OMR"
+  }
+}

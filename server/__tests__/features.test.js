@@ -1,15 +1,21 @@
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import request from 'supertest';
 import { app } from '../index.js';
-import db from '../db.js';
+import db from '../db/index.js';
+import { resetTestDb, verifyTestSafety } from './testHelper.js';
 
 describe('Feature Integrity Suite - End-to-End Functional Verification', () => {
   let testUser;
   let authToken;
 
+  beforeAll(async () => {
+    verifyTestSafety();
+    await resetTestDb();
+  });
+
   // Setup dynamic test user
   it('authenticates a user and issues a valid session token', async () => {
-    testUser = db.createUser({
+    testUser = await db.createUser({
       name: 'Functional Verification User',
       email: 'dyn_test_user@example.com',
       password: 'DynamicTestPassword123!',
@@ -43,44 +49,63 @@ describe('Feature Integrity Suite - End-to-End Functional Verification', () => {
 
   // Leads list & Lead Slip details
   it('loads leads and lead details for Lead Slip', async () => {
+    // Create a lead first so we can verify details
+    const createRes = await request(app)
+      .post('/api/leads')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        name: 'Feature Test Lead LLC',
+        category: 'Packaging Products',
+        mobile: '98881122',
+      });
+    expect(createRes.status).toBe(201);
+
     const listRes = await request(app)
       .get('/api/leads')
       .set('Authorization', `Bearer ${authToken}`);
 
     expect(listRes.status).toBe(200);
     expect(Array.isArray(listRes.body)).toBe(true);
+    expect(listRes.body.length).toBeGreaterThan(0);
 
-    if (listRes.body.length > 0) {
-      const leadId = listRes.body[0].id;
-      const detailRes = await request(app)
-        .get(`/api/leads/${leadId}`)
-        .set('Authorization', `Bearer ${authToken}`);
+    const leadId = listRes.body[0].id;
+    const detailRes = await request(app)
+      .get(`/api/leads/${leadId}`)
+      .set('Authorization', `Bearer ${authToken}`);
 
-      expect(detailRes.status).toBe(200);
-      expect(detailRes.body.name).toBeDefined();
-      expect(detailRes.body.category).toBeDefined();
-    }
+    expect(detailRes.status).toBe(200);
+    expect(detailRes.body.name).toBeDefined();
+    expect(detailRes.body.category).toBeDefined();
   });
 
   // Quotation details for print
   it('loads quotations and quotation details for Quotation Print', async () => {
+    // Create a quotation first so we can verify details
+    const createRes = await request(app)
+      .post('/api/quotations')
+      .set('Authorization', `Bearer ${authToken}`)
+      .send({
+        customerName: 'Feature Quote Customer',
+        items: [{ item: 'Box', quantity: 2, unitPriceOMR: 5 }],
+      });
+    expect(createRes.status).toBe(201);
+
     const listRes = await request(app)
       .get('/api/quotations')
       .set('Authorization', `Bearer ${authToken}`);
 
     expect(listRes.status).toBe(200);
     expect(Array.isArray(listRes.body)).toBe(true);
+    expect(listRes.body.length).toBeGreaterThan(0);
 
-    if (listRes.body.length > 0) {
-      const quoteId = listRes.body[0].id;
-      const detailRes = await request(app)
-        .get(`/api/quotations/${quoteId}`)
-        .set('Authorization', `Bearer ${authToken}`);
+    const quoteId = listRes.body[0].id;
+    const detailRes = await request(app)
+      .get(`/api/quotations/${quoteId}`)
+      .set('Authorization', `Bearer ${authToken}`);
 
-      expect(detailRes.status).toBe(200);
-      expect(detailRes.body.customerName).toBeDefined();
-      expect(detailRes.body.items).toBeDefined();
-    }
+    expect(detailRes.status).toBe(200);
+    expect(detailRes.body.customerName).toBeDefined();
+    expect(detailRes.body.items).toBeDefined();
   });
 
   // Lead CSV Import parser
@@ -129,10 +154,9 @@ MNP-TEST-CUP,Kraft Hot Cup 8oz,أكواب كرافت 8 أونصة,Packaging Prod
   });
 
   // Cleanup
-  afterAll(() => {
+  afterAll(async () => {
     if (testUser && testUser.id) {
-      db.deleteUser(testUser.id);
+      await db.deleteUser(testUser.id);
     }
   });
 });
-
