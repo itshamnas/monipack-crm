@@ -183,7 +183,7 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
   return (
     <div className="p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-32 sm:pb-36 md:pb-12">
       {/* Welcome Banner */}
-      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-slate-800 to-red-950 text-white rounded-2xl p-4 sm:p-6 lg:p-8 shadow-xl border border-slate-800">
+      <div className="relative overflow-hidden bg-gradient-to-r from-slate-900 via-slate-800 to-red-950 text-white rounded-3xl p-4 sm:p-6 lg:p-8 shadow-xl border border-slate-800">
         <div className="relative z-10 max-w-2xl">
           <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/20 text-red-300 text-xs font-bold border border-red-500/30 mb-3 shadow-xs">
             <span className="w-1.5 h-1.5 rounded-full bg-red-400 animate-pulse"></span>
@@ -210,14 +210,14 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
           <div className="mt-4 sm:mt-5 flex flex-wrap items-center gap-2.5 sm:gap-3">
             <button
               onClick={() => onNavigate('leads')}
-              className="px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-md transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
+              className="px-3.5 py-2 bg-gradient-to-r from-[#9E0A22] to-[#C8102E] hover:brightness-110 text-white text-xs font-bold rounded-full shadow-md transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
             >
               <span>View Active Pipeline</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={() => onNavigate('quotations')}
-              className="px-3.5 py-2 bg-slate-800/80 hover:bg-slate-800 text-slate-200 text-xs font-bold rounded-lg border border-slate-700 transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
+              className="px-3.5 py-2 bg-white/10 hover:bg-white/15 text-slate-100 text-xs font-bold rounded-full border border-slate-700 transition flex items-center gap-1.5 active:scale-95 cursor-pointer"
             >
               <span>Issue New Quotation</span>
               <ArrowUpRight className="w-3.5 h-3.5" />
@@ -237,7 +237,7 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
             <div
               key={idx}
               onClick={card.action}
-              className="bg-white rounded-xl p-3.5 sm:p-5 border border-slate-200 shadow-xs hover:shadow-md hover:border-slate-300 transition-all cursor-pointer group flex flex-col justify-between"
+              className="bg-white rounded-3xl p-3.5 sm:p-5 border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] hover:shadow-md hover:border-slate-300 transition-all cursor-pointer group flex flex-col justify-between"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate mr-1">
@@ -261,7 +261,7 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
       </div>
 
       {/* Pipeline Stages Funnel */}
-      <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-xs">
+      <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)]">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="text-base font-bold text-slate-900">Sales Pipeline Stage Funnel</h3>
@@ -296,7 +296,7 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         
         {/* Category Breakdown */}
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-xs">
+        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)]">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -346,7 +346,7 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
         </div>
 
         {/* Oman Branches Breakdown */}
-        <div className="bg-white rounded-xl p-6 border border-slate-200 shadow-xs">
+        <div className="bg-white rounded-3xl p-6 border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)]">
           <div className="flex items-center justify-between mb-5">
             <div>
               <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
@@ -380,7 +380,7 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
                   <p className="text-xs font-bold text-slate-800">{branch}</p>
                   <p className="text-[10px] text-slate-500">Branch Office</p>
                 </div>
-                <span className="px-2 py-0.5 bg-white font-mono font-bold text-xs text-red-700 rounded-md border border-slate-200 shadow-2xs">
+                <span className="px-2 py-0.5 bg-white font-mono font-bold text-xs text-red-700 rounded-md border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)]">
                   {count}
                 </span>
               </div>
@@ -391,7 +391,7 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
       </div>
 
       {/* Modernized Recent Activity Feed Center */}
-      <div className="bg-white rounded-2xl p-4 sm:p-6 border border-slate-200 shadow-xs">
+      <div className="bg-white rounded-3xl p-4 sm:p-6 border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)]">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 pb-3 border-b border-slate-100">
           <div>
             <h3 className="text-base font-black text-slate-900 flex items-center gap-2">

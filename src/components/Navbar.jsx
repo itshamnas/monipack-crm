@@ -3,6 +3,7 @@ import { roleLabel } from '../auth/roles.js';
 import BrandLogo from './BrandLogo';
 import BrandWordmark from './BrandWordmark';
 import InstallPromptButton from './pwa/InstallPromptButton.jsx';
+import HeaderToggles from './ui/HeaderToggles.jsx';
 import { 
   Search, 
   RefreshCw, 
@@ -119,6 +120,9 @@ export default function Navbar({
 
         {/* PWA Install Button (Header) */}
         <InstallPromptButton variant="header" />
+
+        {/* Sound + theme switches */}
+        <HeaderToggles />
 
         {/* Sync / Refresh Button */}
         <button
