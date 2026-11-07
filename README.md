@@ -109,3 +109,46 @@ npm start
 - **Backend**: Node.js, Express REST API, CORS, Helmet security headers.
 - **Database**: PostgreSQL with connection pooling (`pg`), SQL migrations, database sequences, and ACID transactions.
 - **Testing**: Vitest, Supertest.
+
+## Users & roles
+
+Every person has their own login. Permissions are enforced on the server (`server/auth/permissions.js`); the screens only hide what a role cannot use.
+
+| Role | Can do |
+|---|---|
+| Super Admin | Everything: users, settings, backups, exports, audit log |
+| Manager | All leads (create, assign, archive, import), all quotations, product catalog, audit log. CSV export only if "Allow export" is ticked |
+| Customer Care | All leads: create, qualify, assign, import. Create quotations. No delete, export, products or settings |
+| Salesman | Only leads assigned to his own salesman record: update stage, log calls, create/update quotations. New enquiries he adds are assigned to himself |
+
+- A salesman login must be linked to a record in the salesmen table (Settings → Staff Accounts → Add Staff User).
+- New users and admin password resets get a **temporary password**; the person must choose a new one (min. 10 characters) at first login.
+- Deactivating a user, changing their role or resetting their password signs them out immediately.
+- Users are never deleted, only deactivated, so history and the audit log stay complete.
+
+## Customer data collection (salesman links)
+
+Super Admin opens **Customer Data** in the menu.
+
+1. **Salesman links**: switch on a link for each salesman, then copy it or send it by WhatsApp. Each salesman is either **Branch** (may tick "No CR" with a reason) or **Route / B2B** (CR always required). **Reset** makes the old link stop working at once. An optional 4–6 digit **PIN** adds protection.
+2. **Import**: upload a CSV with the columns `Customer Name` and `Salesman` (plus optional Mobile, CR Number, VAT Number, Route, Segment, Address…). Google Sheets: File → Download → CSV. Excel: Save As → CSV UTF-8. Customers that are already in the CRM are skipped.
+3. The salesman opens his link (`/c/<name>-<token>`). He sees **only his customers**, each with a **% complete**. To save a customer he must fill in **mobile, CR and route**. The other fields are optional: building/shop name, segment, type, categories, governorate → city (Oman list), area/address, postal code, Google Maps location, VAT registered → VAT number, CR paper and VAT certificate. He can come back later to fill what is still empty. Saved values are locked for him, and only the super admin can change them. He can also add customers who are missing from his list. Those new customers wait for approval.
+4. **Progress** shows each salesman's numbers and which details are missing. **Customers** lets you filter, edit (Super Admin only), approve, transfer, archive, download each photo as a PDF or all photos as one PDF, and print the profile.
+
+Notes:
+- After a customer is saved, the salesman can only fill **empty** fields. Saved values can only be changed by the Super Admin. **Lock** (in the customer's details) stops the salesman adding anything more.
+- Fields marked **Only super admin** (e.g. Customer status) are hidden from salesmen.
+- VAT number and VAT certificate are only asked for (and only counted as missing) when "VAT registered" is Yes.
+- If a mobile, CR or VAT number already belongs to another customer, the customer goes to **Pending approval** and shows a note about the possible duplicate.
+- Uploaded files are saved in a private folder (`UPLOAD_DIR`, default `./uploads`). The web server never shares this folder directly. Back it up together with the database.
+- Fields: add new fields, choose which ones are required for each salesman type, hide fields, and edit the dropdown options. Mobile and CR are always required.
+
+## One CRM: menu and how things connect
+
+Menu: **Home · Customers · Leads · Quotations · Settings**.
+
+- **Home**: what needs attention today (approvals, enquiries not called yet, leads with no update for 7+ days, quotes with no answer, missing CR papers, salesmen links off), then one row per salesman with customer data %, open leads, quotes and won value. "Charts" has the old dashboard.
+- **Customers**: one record per customer. The customer page shows the details, documents, % complete, and **all enquiries and quotations** for that customer.
+- **Leads**: Pipeline + New enquiries (call queue). **New enquiry**: type a name or mobile and pick the existing customer (mobile, salesman and location fill in automatically), or type a new name and a new customer is created. Enquiries with the same mobile number always go to the same customer.
+- **Settings**: Salesmen & links, Customer form (fields, routes, dropdowns), Products, Branches, Staff & system.
+- **Salesman link**: two tabs. **My customers** (fill in details) and **My leads** (call/WhatsApp, move the stage, deal value, add a note). A new customer created from an enquiry appears in the salesman's customer list so he can complete it.

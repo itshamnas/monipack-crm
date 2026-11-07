@@ -267,7 +267,7 @@ function CatalogQuickPickerModal({ isOpen, onClose, products, categories, onAddP
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+    <div className="fixed inset-0 z-50 mp-overlay bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         
         {/* Header */}
@@ -741,15 +741,11 @@ export default function Quotations({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Official Quotations</h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-              MNI Executive Spec
-            </span>
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-              5% VAT Ready
-            </span>
+            <h1 className="text-[24px] leading-tight font-extrabold text-slate-900">Quotations</h1>
+            <span className="px-2.5 py-0.5 rounded-full text-[11.5px] font-bold bg-white border border-slate-200 text-slate-600">MNI executive spec</span>
+            <span className="px-2.5 py-0.5 rounded-full text-[11.5px] font-bold bg-emerald-50 text-emerald-700">5% VAT</span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="hidden sm:block text-xs text-slate-500 mt-1">
             Generate and print verified OMR quotations with multi-brand catalog search and Oman 5% VAT calculation.
           </p>
         </div>
@@ -758,17 +754,17 @@ export default function Quotations({
           {activeView === 'list' ? (
             <button
               onClick={() => setActiveView('create')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-sm shadow-red-900/30 transition active:scale-95 cursor-pointer"
+              className="mp-btn mp-btn-red min-h-[40px] w-full sm:w-auto"
             >
               <Plus className="w-4 h-4" />
-              <span>Create New Quotation</span>
+              <span>New quotation</span>
             </button>
           ) : (
             <button
               onClick={() => setActiveView('list')}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
+              className="mp-btn mp-btn-line min-h-[40px]"
             >
-              Back to Quotations List
+              ← Back to quotations
             </button>
           )}
         </div>
@@ -776,7 +772,7 @@ export default function Quotations({
 
       {/* CREATE VIEW */}
       {activeView === 'create' && (
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="bg-white rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] p-6 space-y-6">
           <div className="border-b border-slate-200 pb-4">
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
               Customer & Document Details
@@ -902,7 +898,7 @@ export default function Quotations({
             {/* Mobile Line Items Cards (< md only) */}
             <div className="md:hidden space-y-3">
               {form.items.map((item, idx) => (
-                <div key={idx} className="bg-white rounded-xl border border-slate-200 p-3.5 space-y-2.5 shadow-2xs">
+                <div key={idx} className="bg-white rounded-3xl border border-slate-200 p-3.5 space-y-2.5 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-xs text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
                       Item #{idx + 1}
@@ -1286,7 +1282,7 @@ export default function Quotations({
             </button>
             <button
               type="submit"
-              className="flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-md shadow-red-900/30 transition active:scale-95 cursor-pointer"
+              className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#9E0A22] to-[#C8102E] hover:brightness-110 text-white text-xs font-bold rounded-full shadow-md shadow-red-900/30 transition active:scale-95 cursor-pointer"
             >
               <Check className="w-4 h-4" />
               <span>Save & Preview Quotation</span>
@@ -1297,7 +1293,7 @@ export default function Quotations({
 
       {/* LIST VIEW */}
       {activeView === 'list' && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] overflow-hidden">
           {/* List Header with Search & Filter Controls */}
           <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -1318,7 +1314,7 @@ export default function Quotations({
                   value={quoteSearchQuery}
                   onChange={(e) => setQuoteSearchQuery(e.target.value)}
                   placeholder="Search customer, ref #, Wilayat..."
-                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-500 font-medium"
+                  className="w-full pl-8 pr-7 py-2.5 sm:py-2 text-xs bg-white border border-slate-200 rounded-full focus:outline-none focus:ring-1 focus:ring-red-500 font-medium"
                 />
                 {quoteSearchQuery && (
                   <button
@@ -1356,7 +1352,7 @@ export default function Quotations({
           </div>
 
           {/* Mobile Quotation Cards Feed (< md only) */}
-          <div className="md:hidden divide-y divide-slate-100">
+          <div className="mp-stagger lg:hidden divide-y divide-slate-100">
             {filteredQuotations.length > 0 ? (
               filteredQuotations.map((q) => (
                 <div key={q.id} className="p-4 space-y-2.5 hover:bg-slate-50 transition-colors">
@@ -1388,7 +1384,7 @@ export default function Quotations({
                     <button
                       type="button"
                       onClick={() => setSelectedQuotationForPrint(q)}
-                      className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95 cursor-pointer"
+                      className="flex-1 min-h-[44px] bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-full flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95 cursor-pointer"
                     >
                       <Printer className="w-3.5 h-3.5 text-red-400" />
                       <span>Print MNI Spec</span>
@@ -1396,7 +1392,7 @@ export default function Quotations({
                     <button
                       type="button"
                       onClick={() => setSelectedQuotationForPrint(q)}
-                      className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200 transition active:scale-95 cursor-pointer"
+                      className="w-11 h-11 flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-full border border-emerald-200 transition active:scale-95 cursor-pointer"
                       title="Share Quotation via WhatsApp"
                     >
                       <Share2 className="w-4 h-4" />
@@ -1405,7 +1401,7 @@ export default function Quotations({
                       <button
                         type="button"
                         onClick={() => handleDeleteQuotationClick(q)}
-                        className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 transition active:scale-95 cursor-pointer"
+                        className="w-11 h-11 flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-full border border-rose-200 transition active:scale-95 cursor-pointer"
                         title="Delete Quotation"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1422,7 +1418,7 @@ export default function Quotations({
           </div>
 
           {/* Desktop Table (hidden on mobile, visible md:) */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider border-b border-slate-200">
                 <tr>
@@ -1436,7 +1432,7 @@ export default function Quotations({
                   <th className="py-3 px-4 font-bold text-center">Print / View</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
+              <tbody className="mp-stagger divide-y divide-slate-100 font-medium">
                 {filteredQuotations.length > 0 ? (
                   filteredQuotations.map((q) => (
                     <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">

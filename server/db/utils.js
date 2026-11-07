@@ -80,6 +80,7 @@ export function leadToApi(row) {
     branch: row.branch_name || '',
     salesman: row.salesman_name || '',
     salesmanId: row.salesman_id != null ? String(row.salesman_id) : null,
+    customerId: row.customer_id != null ? String(row.customer_id) : null,
     customerLocation: row.customer_location || '',
     status: row.status || 'new',
     dealValue: Number(row.deal_value || 0),
@@ -90,6 +91,8 @@ export function leadToApi(row) {
     lostReason: row.lost_reason || '',
     date: row.date ? new Date(row.date).toISOString() : new Date().toISOString(),
     lastContactedAt: row.last_contacted_at ? new Date(row.last_contacted_at).toISOString() : null,
+    nextFollowUpAt: row.next_follow_up_at ? new Date(row.next_follow_up_at).toISOString() : null,
+    followUpNote: row.follow_up_note || '',
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString(),
   };
@@ -156,7 +159,10 @@ export function quotationToApi(row, items = []) {
     customerName: row.customer_name || 'Valued Customer',
     address: row.address || '',
     attn: row.attn || '',
-    date: row.date || '',
+    // DATE columns come back as local-midnight Date objects: keep the calendar day, never shift it through UTC
+    date: row.date instanceof Date
+      ? `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, '0')}-${String(row.date.getDate()).padStart(2, '0')}`
+      : (row.date ? String(row.date).slice(0, 10) : ''),
     validityDays: Number(row.validity_days || 30),
     salesRep: row.sales_rep || '',
     status: row.status || 'sent',
@@ -191,8 +197,13 @@ export function userToApi(row) {
     id: String(row.id),
     name: row.name || '',
     email: row.email || '',
-    role: row.role || 'admin',
+    role: row.role === 'admin' ? 'manager' : (row.role || 'manager'),
     canExport: Boolean(row.can_export),
+    isActive: row.is_active === undefined ? true : Boolean(row.is_active),
+    mustChangePassword: Boolean(row.must_change_password),
+    salesmanId: row.salesman_id != null ? String(row.salesman_id) : null,
+    salesmanName: row.salesman_name || null,
+    lastLoginAt: row.last_login_at ? new Date(row.last_login_at).toISOString() : null,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
   };

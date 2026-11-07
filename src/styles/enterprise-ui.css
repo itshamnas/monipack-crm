@@ -1,0 +1,205 @@
+/* ==========================================================================
+   Enterprise UI layer: motion, press physics, focus, numbers, cards, buttons.
+   Pure styling: no layout or behaviour changes. Brand fonts are unchanged.
+   ========================================================================== */
+
+/* Numbers never jitter: OMR amounts, counts and KPIs line up */
+body { font-variant-numeric: tabular-nums; }
+.font-monipack, .font-nadianne { font-variant-numeric: normal; }
+
+/* Micro labels for badges and section titles */
+.mp-label { font-size: 10.5px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* Tactile press on everything clickable */
+@media (hover: hover) and (pointer: fine), (pointer: coarse) {
+  button:not(:disabled), [role="tab"], [role="button"], a.mp-btn {
+    transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+    transition-duration: 160ms;
+    transition-timing-function: cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  button:not(:disabled):active, [role="tab"]:active, [role="button"]:active { transform: scale(0.97); }
+}
+
+/* Keyboard focus that is visible on light and dark */
+:where(button, a, input, select, textarea, [role="tab"], [tabindex]):focus-visible {
+  outline: 2px solid #CC1A22;
+  outline-offset: 2px;
+}
+
+/* Sliding capsule tabs */
+.mp-tabs-pill { transition: left 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), width 0.35s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.2s; }
+
+/* Floating cards: rounded-3xl panels lift slightly on hover */
+.rounded-3xl.border { box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04); }
+@media (hover: hover) {
+  .rounded-3xl.border:is(button, a):hover, .mp-card-hover:hover { box-shadow: 0 10px 30px -6px rgba(15, 23, 42, 0.10); transform: translateY(-1px); }
+}
+
+/* Component classes for new screens */
+.mp-card { border-radius: 1.5rem; padding: 1.25rem; background: #fff; border: 1px solid rgba(226, 232, 240, 0.8); box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.04); transition: box-shadow 0.2s, transform 0.2s; }
+.mp-btn { display: inline-flex; align-items: center; justify-content: center; gap: 0.375rem; min-height: 36px; padding: 0.5rem 1rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 700; }
+.mp-btn-dark { background: #0f172a; color: #fff; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.2); }
+.mp-btn-dark:hover { background: #1e293b; }
+.mp-btn-red { background: linear-gradient(90deg, #9E0A22, #C8102E); color: #fff; box-shadow: 0 6px 16px -6px rgba(200, 16, 46, 0.45); }
+.mp-btn-red:hover { filter: brightness(1.06); }
+.mp-btn-soft { background: #f1f5f9; color: #334155; }
+.mp-btn-soft:hover { background: #e2e8f0; }
+
+/* Theme sweep: the new theme grows as a circle from the click (see utils/theme.js) */
+::view-transition-old(root), ::view-transition-new(root) { animation: none; mix-blend-mode: normal; }
+::view-transition-new(root) { z-index: 2; }
+
+/* Gentle page entrance */
+@keyframes mp-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.mp-enter { animation: mp-rise 0.36s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
+
+/* Respect reduced motion everywhere */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
+}
+
+/* Dark versions of the component classes */
+@media screen {
+  html.dark .mp-card { background: #111a2b; border-color: #24324a; }
+  html.dark .mp-btn-dark { background: #e8eef8; color: #0b1220; }
+  html.dark .mp-btn-dark:hover { background: #ffffff; }
+  html.dark .mp-btn-soft { background: #1b2840; color: #cdd6e4; }
+  /* Light text that sits on dark hero panels keeps its original light colour */
+  html.dark :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-gray-900, .bg-gray-800, [class*="from-slate-9"], [class*="from-slate-8"]) .text-slate-50 { color: #f8fafc; }
+  html.dark :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-gray-900, .bg-gray-800, [class*="from-slate-9"], [class*="from-slate-8"]) .text-slate-100 { color: #f1f5f9; }
+  html.dark :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-gray-900, .bg-gray-800, [class*="from-slate-9"], [class*="from-slate-8"]) .text-slate-200 { color: #e2e8f0; }
+  html.dark :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-gray-900, .bg-gray-800, [class*="from-slate-9"], [class*="from-slate-8"]) .text-slate-300 { color: #cbd5e1; }
+  html.dark :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-gray-900, .bg-gray-800, [class*="from-slate-9"], [class*="from-slate-8"]) .text-slate-400 { color: #94a3b8; }
+  html.dark :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-gray-900, .bg-gray-800, [class*="from-slate-9"], [class*="from-slate-8"]) .text-gray-50 { color: #f9fafb; }
+  html.dark :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-gray-900, .bg-gray-800, [class*="from-slate-9"], [class*="from-slate-8"]) .text-gray-100 { color: #f3f4f6; }
+  html.dark :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-gray-900, .bg-gray-800, [class*="from-slate-9"], [class*="from-slate-8"]) .text-gray-200 { color: #e5e7eb; }
+  html.dark :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-gray-900, .bg-gray-800, [class*="from-slate-9"], [class*="from-slate-8"]) .text-gray-300 { color: #d1d5db; }
+  html.dark :is(.bg-slate-900, .bg-slate-950, .bg-slate-800, .bg-gray-900, .bg-gray-800, [class*="from-slate-9"], [class*="from-slate-8"]) .text-gray-400 { color: #9ca3af; }
+  /* Token-coloured dark chips (toasts, badges) stay dark with light text */
+  html.dark .bg-text-main { background-color: #1f2c44; border-color: #2f4060; }
+  html.dark .rounded-3xl.border { box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.35); }
+}
+
+/* Printing is never affected */
+@media print {
+  * { transition: none !important; animation: none !important; }
+}
+
+/* ==========================================================================
+   Phones, tablets and PCs
+   ========================================================================== */
+
+/* Phones: 16px text in fields stops iPhone/Android zooming in when you tap a field */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea { font-size: 16px !important; }
+}
+
+/* Touch screens: fields and dropdowns at least 40px tall, easy to hit with a finger */
+@media (pointer: coarse) {
+  input:is([type="text"], [type="search"], [type="email"], [type="tel"], [type="number"], [type="password"], [type="date"], [type="url"], :not([type])), select { min-height: 40px; }
+  input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
+  /* no sticky hover colours after a tap */
+  * { -webkit-tap-highlight-color: transparent; }
+}
+
+/* Wide tables scroll smoothly sideways inside their card instead of squashing */
+main :is(.overflow-x-auto, .overflow-auto) { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-width: thin; }
+
+/* Scrolling never bounces the whole app on phones */
+html, body { overscroll-behavior-y: none; }
+
+/* Keep a finger-sized gap between the iPhone home bar and floating buttons */
+.mp-safe-bottom { bottom: calc(1rem + env(safe-area-inset-bottom)) !important; }
+
+/* Content clears the bottom menu (phones and tablets in portrait) */
+.mp-main-pad { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 1024px) { .mp-main-pad { padding-bottom: 0; } }
+
+/* Notices: just above the bottom menu on phones/tablets, bottom-right on PCs */
+.mp-toast { left: 1rem; right: 1rem; bottom: calc(5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 640px) { .mp-toast { left: auto; right: 1.25rem; max-width: 26rem; } }
+@media (min-width: 1024px) { .mp-toast { bottom: 1.25rem; } }
+
+/* ==========================================================================
+   Motion system
+   Reference: Apple HIG (spring sheets, 0.3–0.45s), Linear / Stripe dashboards
+   (quick fades, 40ms list stagger, numbers that count up). Only opacity and
+   transform are animated so it stays smooth on phones. Reduced-motion and
+   print switch all of it off (rules above).
+   ========================================================================== */
+:root {
+  --mp-spring: cubic-bezier(0.34, 1.56, 0.64, 1);   /* playful overshoot: tabs, icons */
+  --mp-out: cubic-bezier(0.22, 1, 0.36, 1);          /* calm settle: pages, cards */
+  --mp-sheet: cubic-bezier(0.32, 0.72, 0, 1);        /* iOS sheet curve */
+}
+
+@keyframes mp-fade { from { opacity: 0; } }
+@keyframes mp-pop { from { opacity: 0; transform: translateY(10px) scale(0.96); } }
+@keyframes mp-sheet-up { from { transform: translateY(100%); } }
+@keyframes mp-grow { from { transform: scaleX(0); } }
+@keyframes mp-pip { from { transform: scaleX(0); opacity: 0; } }
+@keyframes mp-icon-in { from { transform: rotate(-90deg) scale(0.4); opacity: 0; } }
+@keyframes mp-toast-in { from { opacity: 0; transform: translateY(16px) scale(0.94); } }
+@keyframes mp-bump { 40% { transform: translateY(-3px) scale(1.12); } }
+
+/* Pages: each screen rises in when you open it */
+main > * { animation: mp-rise 0.36s var(--mp-out) backwards; }
+
+/* Pop-ups: backdrop fades, panel springs in; on phones bottom sheets slide up like iOS */
+.mp-overlay { animation: mp-fade 0.2s ease-out backwards; }
+.mp-overlay > :not(.absolute):not(.fixed) { animation: mp-pop 0.34s var(--mp-out) backwards; }
+@media (max-width: 639px) {
+  .mp-overlay.items-end > :not(.absolute):not(.fixed) { animation: mp-sheet-up 0.42s var(--mp-sheet) backwards; }
+}
+
+/* Lists and card grids: items arrive one after another (40ms apart, max ~0.5s) */
+.mp-stagger > * { animation: mp-rise 0.42s var(--mp-out) backwards; }
+.mp-stagger > :nth-child(2) { animation-delay: 40ms; }
+.mp-stagger > :nth-child(3) { animation-delay: 80ms; }
+.mp-stagger > :nth-child(4) { animation-delay: 120ms; }
+.mp-stagger > :nth-child(5) { animation-delay: 160ms; }
+.mp-stagger > :nth-child(6) { animation-delay: 200ms; }
+.mp-stagger > :nth-child(7) { animation-delay: 240ms; }
+.mp-stagger > :nth-child(8) { animation-delay: 280ms; }
+.mp-stagger > :nth-child(9) { animation-delay: 320ms; }
+.mp-stagger > :nth-child(10) { animation-delay: 360ms; }
+.mp-stagger > :nth-child(n+11) { animation-delay: 400ms; }
+
+/* Progress bars fill from the left */
+.mp-bar { transform-origin: left center; animation: mp-grow 0.9s var(--mp-out) 0.15s backwards; }
+
+/* Bottom menu: active marker grows, icon gives a small hop */
+.mp-pip { animation: mp-pip 0.35s var(--mp-spring) backwards; }
+.mp-hop { animation: mp-bump 0.4s var(--mp-spring); }
+
+/* Header switches: icon spins in when sound / theme changes */
+.mp-icon-in { animation: mp-icon-in 0.4s var(--mp-spring) backwards; }
+
+/* Notices spring up */
+.mp-toast { animation: mp-toast-in 0.42s var(--mp-spring) backwards !important; }
+
+/* Cards lift under the mouse (PCs only, not on touch) */
+@media (hover: hover) and (pointer: fine) {
+  .mp-lift { transition: transform 0.25s var(--mp-out), box-shadow 0.25s var(--mp-out), border-color 0.2s; }
+  .mp-lift:hover { transform: translateY(-3px); box-shadow: 0 14px 32px -12px rgba(15, 23, 42, 0.18); }
+  main tbody tr { transition: background-color 0.15s; }
+}
+
+/* Existing Tailwind entrance classes (animate-in / fade-in / zoom-in-95 / slide-in-from-*) */
+.animate-in { animation: mp-enter 0.22s var(--mp-out) backwards; }
+.fade-in { --mp-enter-opacity: 0; }
+.zoom-in-95 { --mp-enter-scale: 0.95; }
+.slide-in-from-bottom-4 { --mp-enter-y: 1rem; }
+.slide-in-from-top, .slide-in-from-top-2 { --mp-enter-y: -0.5rem; }
+@keyframes mp-enter {
+  from { opacity: var(--mp-enter-opacity, 1); transform: translate3d(0, var(--mp-enter-y, 0), 0) scale(var(--mp-enter-scale, 1)); }
+}
+
+/* Loading placeholders shimmer instead of blinking */
+.animate-pulse { animation: mp-shimmer 1.4s ease-in-out infinite; }
+@keyframes mp-shimmer { 50% { opacity: 0.55; } }
+
+/* Outline button: white with a hairline border (secondary actions on grey pages) */
+.mp-btn-line { background: #fff; color: #0f172a; border: 1px solid #E2E8F0; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.05); }
+.mp-btn-line:hover { background: #F8FAFC; border-color: #CBD5E1; }
+@media screen { html.dark .mp-btn-line { background: #111a2b; color: #e8eef8; border-color: #24324a; } html.dark .mp-btn-line:hover { background: #1b2840; } }

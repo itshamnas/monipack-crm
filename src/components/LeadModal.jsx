@@ -1,5 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { X, Save, Building, Phone, Mail, MapPin, Tag, DollarSign, FileText, Trash2, UserCheck } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, Save, Building, Phone, Mail, MapPin, Tag, DollarSign, FileText, Trash2, UserCheck, CalendarClock, MessageSquare, PhoneCall, StickyNote, ArrowRightLeft, Send } from 'lucide-react';
+import CustomerPicker from './customers/CustomerPicker.jsx';
+import BranchPicker from './ui/BranchPicker.jsx';
 
 const CATEGORIES = [
   'Packaging Products',
@@ -19,6 +21,35 @@ const STAGES = [
   { id: 'lost', label: 'STEP 6: Lost / Closed' },
 ];
 
+// datetime-local <-> ISO (local time)
+const toLocalInput = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const fromLocalInput = (v) => (v ? new Date(v).toISOString() : null);
+const quickDate = (days, hour = 10) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(hour, 0, 0, 0); return d.toISOString(); };
+const whenText = (iso) => {
+  const d = new Date(iso); const diff = Math.round((Date.now() - d.getTime()) / 60000);
+  if (diff < 1) return 'just now'; if (diff < 60) return `${diff} min ago`; if (diff < 1440) return `${Math.round(diff / 60)} h ago`;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+};
+const TL_ICON = { note: StickyNote, call: PhoneCall, whatsapp: MessageSquare, status_change: ArrowRightLeft, stage: ArrowRightLeft };
+
+// Form section card (defined at module level so inputs keep focus while typing)
+function Section({ n, title, children }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 p-4 mp-sheet-sec">
+      <h4 className="flex items-center gap-2 text-[13px] font-bold text-slate-900 mb-3 mp-display">
+        <span className="w-6 h-6 rounded-lg grid place-items-center bg-slate-100 text-slate-500 text-[11px] font-bold">{n}</span>{title}
+      </h4>
+      {children}
+    </section>
+  );
+}
+
 export default function LeadModal({ 
   isOpen, 
   onClose, 
@@ -27,8 +58,10 @@ export default function LeadModal({
   lead, 
   branches,
   categories: propCategories,
-  pipelineStages: propStages 
+  pipelineStages: propStages,
+  authFetch,
 }) {
+  const [customer, setCustomer] = useState(null); // existing customer this enquiry belongs to
   const activeCategories = propCategories && propCategories.length > 0 ? propCategories : CATEGORIES;
   const activeStages = propStages && propStages.length > 0 ? propStages : STAGES;
 
@@ -46,6 +79,8 @@ export default function LeadModal({
     dealValue: '',
     quantity: '',
     notes: '',
+    nextFollowUpAt: null,
+    followUpNote: '',
   });
 
   const [formError, setFormError] = useState('');
@@ -71,6 +106,7 @@ export default function LeadModal({
 
   useEffect(() => {
     setFormError('');
+    setCustomer(lead?.customerId ? { id: lead.customerId, name: lead.name, mobile: lead.mobile } : null);
     if (lead) {
       const matched = (branches && branches.length > 0)
         ? (branches.find((b) => lead.branchId && b.id === lead.branchId) ||
@@ -93,6 +129,8 @@ export default function LeadModal({
         dealValue: lead.dealValue ? String(lead.dealValue) : '',
         quantity: (lead.quantity && !lead.quantity.includes('Needs Intake')) ? lead.quantity : '',
         notes: (lead.notes && !lead.notes.includes('Needs Intake')) ? lead.notes : '',
+        nextFollowUpAt: lead.nextFollowUpAt || null,
+        followUpNote: lead.followUpNote || '',
       });
     } else {
       const defaultB = branches && branches.length > 0 ? branches[0] : null;
@@ -110,9 +148,36 @@ export default function LeadModal({
         dealValue: '',
         quantity: '',
         notes: '',
+        nextFollowUpAt: null,
+        followUpNote: '',
       });
     }
   }, [lead, isOpen, branches]);
+
+  // ---- Timeline (edit mode): notes, calls, stage changes ----
+  const [timeline, setTimeline] = useState([]);
+  const [tlLoading, setTlLoading] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [noteBusy, setNoteBusy] = useState(false);
+  const loadTimeline = useCallback(async () => {
+    if (!lead?.id || !authFetch) return;
+    setTlLoading(true);
+    try {
+      const r = await authFetch(`/api/leads/${lead.id}/timeline`);
+      if (r.ok) setTimeline(await r.json());
+    } catch { /* timeline is optional */ }
+    setTlLoading(false);
+  }, [lead?.id, authFetch]);
+  useEffect(() => { if (isOpen && lead?.id) { setNoteText(''); loadTimeline(); } else setTimeline([]); }, [isOpen, lead?.id, loadTimeline]);
+  const addActivity = async (type, description) => {
+    if (!lead?.id || !description.trim()) return;
+    setNoteBusy(true);
+    try {
+      const r = await authFetch(`/api/leads/${lead.id}/activity`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, description: description.trim() }) });
+      if (r.ok) { setNoteText(''); await loadTimeline(); }
+    } catch { /* ignore */ }
+    setNoteBusy(false);
+  };
 
   const handleBranchSelect = (selectedVal) => {
     const b = branches.find((item) => String(item.id) === String(selectedVal)) ||
@@ -125,6 +190,21 @@ export default function LeadModal({
         salesman: b.salesman || prev.salesman,
       }));
     }
+  };
+
+  // Picking an existing customer fills the details we already know
+  const pickCustomer = (c) => {
+    setCustomer(c);
+    if (!c) return;
+    const branchMatch = (branches || []).find((b) => c.branchId && String(b.id) === String(c.branchId));
+    setFormData((prev) => ({
+      ...prev,
+      name: c.name,
+      mobile: c.mobile ? extractMobileAndCode({ mobile: c.mobile }).mobile : prev.mobile,
+      customerLocation: prev.customerLocation || c.city || c.address || '',
+      ...(branchMatch ? { branchId: branchMatch.id, branch: branchMatch.name } : {}),
+      ...(c.salesmanName ? { salesman: c.salesmanName } : {}),
+    }));
   };
 
   if (!isOpen) return null;
@@ -162,114 +242,124 @@ export default function LeadModal({
       salesman: formData.salesman?.trim() || foundBranch?.salesman || '',
       customerLocation: formData.customerLocation?.trim() || '',
       dealValue: Number(formData.dealValue) || 0,
+      ...(customer ? { customerId: customer.id } : (lead ? {} : { customerId: null })),
     });
   };
 
+  const inp = 'w-full h-11 text-[13.5px] bg-white border border-slate-200 rounded-xl px-3 focus:outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500 transition placeholder:text-slate-400';
+  const lbl = 'block text-[12px] font-semibold text-slate-700 mb-1.5';
+  const stepName = (l = '') => String(l).replace(/^STEP\s*\d+\s*:\s*/i, '');
+  const branchValue = formData.branchId || branches.find((b) => b.name === formData.branch)?.id || '';
+
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="mp-sheet-layer" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.requestSubmit(); } }}
+        className="mp-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={lead ? 'Edit lead' : 'New enquiry'}
+      >
         {/* Header */}
-        <div className="px-4 sm:px-6 py-3.5 sm:py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
-          <div>
-            <h3 className="text-base font-bold">
-              {lead ? 'Edit Lead' : (
-                <>Create New <span className="font-monipack lowercase text-lg font-normal">monipack</span> Lead</>
-              )}
+        <div className="px-5 sm:px-6 pt-5 pb-4 border-b border-slate-200 flex items-start gap-3 shrink-0">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[19px] font-bold text-slate-900 mp-display">
+              {lead ? 'Edit lead' : <>New <span className="font-monipack lowercase font-normal">monipack</span> enquiry</>}
             </h3>
-            <p className="text-xs text-slate-400">
-              {lead ? `Updating: ${lead.name}` : 'Add client contact & product requirements'}
-            </p>
+            <p className="text-[12.5px] text-slate-500 truncate">{lead ? `Updating: ${lead.name}` : 'Customer, what they need, who follows up'}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-          >
+          <button type="button" onClick={onClose} className="w-10 h-10 grid place-items-center rounded-xl border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition cursor-pointer" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-4 overscroll-contain">
           {formError && (
-            <div className="p-3 rounded-lg bg-red-50 text-red-700 text-xs font-semibold border border-red-200 animate-in fade-in">
-              ⚠️ {formError}
+            <div className="p-3 rounded-xl bg-red-50 text-red-700 text-[12.5px] font-semibold border border-red-200 animate-in fade-in" role="alert">
+              {formError}
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Company / Client Name *
-            </label>
-            <div className="relative">
-              <Building className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                required
-                minLength={3}
-                placeholder="e.g. Grand Muscat Hotel & Cafe"
-                value={formData.name}
-                onChange={(e) => {
-                  setFormData({ ...formData, name: e.target.value });
-                  if (formError) setFormError('');
-                }}
-                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-              />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Product Category
-              </label>
-              <div className="relative">
-                <Tag className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-                >
-                  {(() => {
-                    const cats = [...activeCategories];
-                    if (formData.category && !cats.includes(formData.category)) {
-                      cats.push(formData.category);
-                    }
-                    return cats.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ));
-                  })()}
-                </select>
+          <Section n="1" title="Customer">
+            <label className={lbl}>Company / client name <span className="text-[#CC1A22]">*</span></label>
+            <CustomerPicker
+              authFetch={authFetch}
+              name={formData.name}
+              onNameChange={(v) => { setFormData((prev) => ({ ...prev, name: v })); if (formError) setFormError(''); }}
+              customer={customer}
+              onPick={pickCustomer}
+              inputClass="w-full h-11 text-[13.5px] bg-white border border-slate-200 rounded-xl pl-9 pr-3 focus:outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500 transition"
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              <div>
+                <label className={lbl}>Mobile / WhatsApp <span className="text-[#CC1A22]">*</span></label>
+                <div className="flex h-11 rounded-xl border border-slate-200 bg-white overflow-hidden focus-within:ring-4 focus-within:ring-red-500/10 focus-within:border-red-500 transition">
+                  <span className="inline-flex items-center px-3 text-[12px] font-bold text-slate-500 border-r border-slate-200 bg-slate-50">+968</span>
+                  <input
+                    type="text"
+                    inputMode="tel"
+                    required
+                    minLength={7}
+                    placeholder="e.g. 91386771"
+                    value={formData.mobile}
+                    onChange={(e) => {
+                      setFormData({ ...formData, mobile: e.target.value });
+                      if (formError) setFormError('');
+                    }}
+                    className="flex-1 min-w-0 px-3 text-[13.5px] outline-none bg-transparent"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>Email</label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input type="email" placeholder="purchasing@company.om" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className={`${inp} pl-9`} />
+                </div>
               </div>
             </div>
+          </Section>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Assigned Oman Branch / Hub
-              </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <select
-                  value={formData.branchId || branches.find((b) => b.name === formData.branch)?.id || formData.branch}
-                  onChange={(e) => handleBranchSelect(e.target.value)}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition cursor-pointer"
-                >
-                  {branches.map((b) => (
-                    <option key={b.id || `${b.name}-${b.salesman}`} value={b.id}>
-                      {b.name}{b.city ? ` (${b.city})` : ''}{b.salesman ? ` - Sales: ${b.salesman}` : ''}
-                    </option>
-                  ))}
-                </select>
+          <Section n="2" title="Requirement">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Product category</label>
+                <div className="relative">
+                  <Tag className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className={`${inp} pl-9 cursor-pointer`}>
+                    {(() => {
+                      const cats = [...activeCategories];
+                      if (formData.category && !cats.includes(formData.category)) cats.push(formData.category);
+                      return cats.map((c) => (<option key={c} value={c}>{c}</option>));
+                    })()}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>Delivery location (wilayat)</label>
+                <div className="relative">
+                  <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input type="text" placeholder="e.g. Muscat, Seeb, Nizwa, Sohar" value={formData.customerLocation} onChange={(e) => setFormData({ ...formData, customerLocation: e.target.value })} className={`${inp} pl-9`} />
+                </div>
               </div>
             </div>
-          </div>
+            <div className="mt-3">
+              <label className={lbl}>Quantity / products requested</label>
+              <input type="text" placeholder="e.g. 50 cartons 16oz PET cups, 20 rolls cling film" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} className={inp} />
+            </div>
+            <div className="mt-3">
+              <label className={lbl}>Notes & meeting discussion</label>
+              <textarea rows="3" placeholder="Delivery preferences, quotation requests…" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className={`${inp} h-auto py-2.5`} />
+            </div>
+          </Section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Assigned Sales Representative
-              </label>
+          <Section n="3" title="Assign">
+            <label className={lbl}>Branch / hub</label>
+            <BranchPicker value={branchValue} onChange={handleBranchSelect} branches={branches || []} allowAll={false} variant="light" placeholder="Choose branch / hub" />
+            <div className="mt-3">
+              <label className={lbl}>Sales representative</label>
               <div className="relative">
                 <UserCheck className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
@@ -278,178 +368,130 @@ export default function LeadModal({
                   placeholder="e.g. AFSAL, ANAS, JAMSHID"
                   value={formData.salesman}
                   onChange={(e) => setFormData({ ...formData, salesman: e.target.value })}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition font-bold"
+                  className={`${inp} pl-9 font-semibold`}
                 />
                 <datalist id="leadmodal-salesmen">
-                  {Array.from(new Set(branches.map((b) => b.salesman).filter(Boolean))).map((sm) => (
-                    <option key={sm} value={sm} />
-                  ))}
+                  {Array.from(new Set(branches.map((b) => b.salesman).filter(Boolean))).map((sm) => (<option key={sm} value={sm} />))}
                 </datalist>
               </div>
+              <p className="text-[11.5px] text-slate-500 mt-1.5">Choosing a branch fills in its rep. You can change it.</p>
             </div>
+          </Section>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Customer Wilayat / Delivery Location in Oman
-              </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="e.g. Muscat, Seeb, Nizwa, Sohar"
-                  value={formData.customerLocation}
-                  onChange={(e) => setFormData({ ...formData, customerLocation: e.target.value })}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Mobile / WhatsApp (Oman) *
-              </label>
-              <div className="flex">
-                <span className="inline-flex items-center px-3 text-xs bg-slate-100 border border-r-0 border-slate-300 rounded-l-lg text-slate-600 font-medium">
-                  +968
-                </span>
-                <input
-                  type="text"
-                  required
-                  minLength={7}
-                  placeholder="e.g. 91386771"
-                  value={formData.mobile}
-                  onChange={(e) => {
-                    setFormData({ ...formData, mobile: e.target.value });
-                    if (formError) setFormError('');
-                  }}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-r-lg px-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="email"
-                  placeholder="purchasing@company.om"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Sales Pipeline Stage
-              </label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg px-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-              >
-                {activeStages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Estimated Deal Value (OMR)
-              </label>
-              <div className="relative">
-                <span className="text-[10px] font-bold text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                  OMR
-                </span>
-                <input
-                  type="number"
-                  step="0.001"
-                  placeholder="0.000"
-                  value={formData.dealValue}
-                  onChange={(e) => setFormData({ ...formData, dealValue: e.target.value })}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-12 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Quantity / Products Requested
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. 50 Cartons 16oz PET cups, 20 Rolls cling film"
-              value={formData.quantity}
-              onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-              className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg px-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Notes & Meeting Discussion
-            </label>
-            <textarea
-              rows="3"
-              placeholder="Add key notes, delivery preferences, or quotation requests..."
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-3 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-            />
-          </div>
-
-          {/* Footer Actions */}
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
-            <div>
-              {lead && onDeleteLead && (
+          <Section n="4" title="Stage & value">
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Pipeline stage">
+              {activeStages.map((st, i) => (
                 <button
+                  key={st.id}
                   type="button"
-                  onClick={() => {
-                    if (window.confirm(`Are you sure you want to permanently delete lead "${formData.name || lead.name}"? This action cannot be undone.`)) {
-                      onDeleteLead(lead.id);
-                      onClose();
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                  role="radio"
+                  aria-checked={formData.status === st.id}
+                  onClick={() => setFormData({ ...formData, status: st.id })}
+                  className={`min-h-[34px] px-3 rounded-lg text-[12px] font-semibold border transition cursor-pointer ${formData.status === st.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
                 >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Delete Lead</span>
+                  {i + 1}. {stepName(st.label)}
+                </button>
+              ))}
+            </div>
+            <div className="mt-3 max-w-xs">
+              <label className={lbl}>Estimated deal value</label>
+              <div className="flex h-11 rounded-xl border border-slate-200 bg-white overflow-hidden focus-within:ring-4 focus-within:ring-red-500/10 focus-within:border-red-500 transition">
+                <span className="inline-flex items-center px-3 text-[11px] font-bold text-slate-500 border-r border-slate-200 bg-slate-50">OMR</span>
+                <input type="number" inputMode="decimal" step="0.001" placeholder="0.000" value={formData.dealValue} onChange={(e) => setFormData({ ...formData, dealValue: e.target.value })} className="flex-1 min-w-0 px-3 text-[13.5px] outline-none bg-transparent tabular-nums" />
+              </div>
+            </div>
+          </Section>
+
+          <Section n="5" title="Next follow-up">
+            <div className="flex flex-wrap gap-1.5">
+              {[['Today', 0, 16], ['Tomorrow', 1, 10], ['In 3 days', 3, 10], ['Next week', 7, 10]].map(([label, d, h]) => (
+                <button key={label} type="button" onClick={() => setFormData({ ...formData, nextFollowUpAt: quickDate(d, h) })}
+                  className="min-h-[34px] px-3 rounded-lg text-[12px] font-semibold border border-slate-200 bg-white text-slate-600 hover:border-slate-300 transition cursor-pointer">
+                  {label}
+                </button>
+              ))}
+              {formData.nextFollowUpAt && (
+                <button type="button" onClick={() => setFormData({ ...formData, nextFollowUpAt: null })} className="min-h-[34px] px-3 rounded-lg text-[12px] font-semibold text-rose-600 hover:bg-rose-50 cursor-pointer">
+                  No follow-up
                 </button>
               )}
             </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white rounded-lg shadow-sm transition active:scale-95 cursor-pointer"
-                style={{ backgroundColor: 'var(--color-primary, #CC1A22)' }}
-              >
-                <Save className="w-4 h-4" />
-                <span>{lead ? 'Update Lead' : 'Save Lead'}</span>
-              </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              <div>
+                <label className={lbl}>Date & time</label>
+                <div className="relative">
+                  <CalendarClock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input type="datetime-local" value={toLocalInput(formData.nextFollowUpAt)} onChange={(e) => setFormData({ ...formData, nextFollowUpAt: fromLocalInput(e.target.value) })} className={`${inp} pl-9`} />
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>What to do</label>
+                <input type="text" maxLength={300} placeholder="e.g. Send price list, call back" value={formData.followUpNote} onChange={(e) => setFormData({ ...formData, followUpNote: e.target.value })} className={inp} />
+              </div>
             </div>
-          </div>
-        </form>
-      </div>
+            <p className="text-[11.5px] text-slate-500 mt-1.5">Shows as “Due today” or “Overdue” on Home and on the pipeline card.</p>
+          </Section>
+
+          {lead?.id && (
+            <Section n="6" title="Activity & notes">
+              <div className="flex gap-2">
+                <input type="text" value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Add a note…"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) { e.preventDefault(); addActivity('note', noteText); } }}
+                  className={inp} maxLength={1000} />
+                <button type="button" disabled={noteBusy || !noteText.trim()} onClick={() => addActivity('note', noteText)} className="shrink-0 w-11 h-11 grid place-items-center rounded-xl bg-slate-900 text-white disabled:opacity-40 cursor-pointer" aria-label="Add note">
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                <button type="button" disabled={noteBusy} onClick={() => addActivity('call', 'Called the customer')} className="min-h-[32px] px-3 rounded-lg text-[12px] font-semibold border border-slate-200 text-slate-600 hover:border-slate-300 inline-flex items-center gap-1.5 cursor-pointer"><PhoneCall className="w-3.5 h-3.5 text-blue-600" /> Log a call</button>
+                <button type="button" disabled={noteBusy} onClick={() => addActivity('whatsapp', 'Sent a WhatsApp message')} className="min-h-[32px] px-3 rounded-lg text-[12px] font-semibold border border-slate-200 text-slate-600 hover:border-slate-300 inline-flex items-center gap-1.5 cursor-pointer"><MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> Log a WhatsApp</button>
+              </div>
+              <ol className="mt-4 space-y-0">
+                {tlLoading && !timeline.length && <li className="text-[12.5px] text-slate-500">Loading…</li>}
+                {!tlLoading && !timeline.length && <li className="text-[12.5px] text-slate-500">No activity yet.</li>}
+                {timeline.map((it, i) => {
+                  const Icon = TL_ICON[it.type] || StickyNote;
+                  const text = it.kind === 'stage' ? `Stage: ${it.fromStatus || 'start'} → ${it.toStatus}${it.by ? ` (${it.by})` : ''}` : it.description;
+                  return (
+                    <li key={it.id || i} className="relative grid grid-cols-[28px_1fr] gap-2.5 pb-3">
+                      {i < timeline.length - 1 && <span className="absolute left-[13.5px] top-8 bottom-0 w-px bg-slate-200" aria-hidden="true" />}
+                      <span className={`w-7 h-7 rounded-lg grid place-items-center ${it.type === 'call' ? 'bg-blue-50 text-blue-600' : it.type === 'whatsapp' ? 'bg-emerald-50 text-emerald-600' : it.type === 'note' ? 'bg-amber-50 text-amber-600' : 'bg-violet-50 text-violet-600'}`}><Icon className="w-3.5 h-3.5" /></span>
+                      <span className="min-w-0"><span className="block text-[12.5px] text-slate-800 break-words">{text}</span><span className="text-[11px] text-slate-400">{whenText(it.timestamp)}</span></span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </Section>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-5 sm:px-6 py-3.5 border-t border-slate-200 flex items-center gap-2 shrink-0 bg-white mp-sheet-foot">
+          {lead && onDeleteLead && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`Are you sure you want to permanently delete lead "${formData.name || lead.name}"? This action cannot be undone.`)) {
+                  onDeleteLead(lead.id);
+                  onClose();
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 min-h-[42px] text-[12.5px] font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Delete lead</span>
+            </button>
+          )}
+          <span className="hidden md:inline text-[11.5px] text-slate-400 mr-auto"><kbd className="mp-kbd">Ctrl</kbd> + <kbd className="mp-kbd">Enter</kbd> to save</span>
+          <button type="button" onClick={onClose} className="ml-auto md:ml-0 px-4 min-h-[42px] text-[13px] font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer">
+            Cancel
+          </button>
+          <button type="submit" className="mp-btn mp-btn-red min-h-[42px] px-5 text-[13px]">
+            <Save className="w-4 h-4" />
+            <span>{lead ? 'Update lead' : 'Save lead'}</span>
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

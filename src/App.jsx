@@ -11,7 +11,15 @@ import Products from './pages/Products.jsx';
 import Branches from './pages/Branches.jsx';
 import Settings from './pages/Settings.jsx';
 import Login from './pages/Login.jsx';
+import ChangePassword from './pages/ChangePassword.jsx';
 import CustomerCare from './pages/CustomerCare.jsx';
+import DataCleanup from './pages/DataCleanup.jsx';
+import SalesTargets from './pages/SalesTargets.jsx';
+import Tasks from './pages/Tasks.jsx';
+import Customers, { SalesmanLinksPage, CustomerFieldsPage } from './pages/Customers.jsx';
+import Home from './pages/Home.jsx';
+import SectionTabs from './components/layout/SectionTabs.jsx';
+import { sectionOf } from './components/layout/navigation.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import MobileBottomNav from './components/layout/MobileBottomNav.jsx';
 import OfflineBanner from './components/pwa/OfflineBanner.jsx';
@@ -30,6 +38,8 @@ export default function App() {
   });
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [customerFilter, setCustomerFilter] = useState(null); // filter passed from Home to the Customers page
+  useEffect(() => { if (activeTab !== 'customers') setCustomerFilter(null); }, [activeTab]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
@@ -37,6 +47,7 @@ export default function App() {
 
   // Core Data States
   const [stats, setStats] = useState(null);
+  const [taskDue, setTaskDue] = useState(0);
   const [leads, setLeads] = useState([]);
   const [products, setProducts] = useState([]);
   const [quotations, setQuotations] = useState([]);
@@ -57,12 +68,26 @@ export default function App() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const handleLoginSuccess = (newToken, newUser) => {
+  // Permission check for showing/hiding actions (the server enforces the same rules)
+  const can = (permission) => Boolean(currentUser?.permissions?.includes(permission));
+
+  const saveSession = (newToken, newUser) => {
     setToken(newToken);
     setCurrentUser(newUser);
     localStorage.setItem('monipack_auth_token', newToken);
     localStorage.setItem('monipack_auth_user', JSON.stringify(newUser));
-    showToast(`Welcome back, ${newUser.name}!`);
+  };
+
+  const handleLoginSuccess = (newToken, newUser) => {
+    saveSession(newToken, newUser);
+    if (!newUser?.mustChangePassword) {
+      showToast(`Welcome back, ${newUser.name}!`);
+    }
+  };
+
+  const handlePasswordChanged = (newToken, newUser) => {
+    saveSession(newToken, newUser);
+    showToast('Password saved. Welcome!');
   };
 
   const handleLogout = (showToastNotice = true) => {
@@ -89,14 +114,38 @@ export default function App() {
         handleLogout(false);
         throw new Error('Session expired. Please log in.');
       }
+      if (res.status === 403) {
+        const body = await res.clone().json().catch(() => ({}));
+        if (body.code === 'PASSWORD_CHANGE_REQUIRED') {
+          setCurrentUser((u) => (u ? { ...u, mustChangePassword: true } : u));
+          throw new Error('Please set a new password first.');
+        }
+      }
       return res;
     },
     [token]
   );
 
+  // Badge: my open tasks due today or overdue
+  const refreshTaskDue = useCallback(async () => {
+    if (!token || currentUser?.mustChangePassword || !currentUser?.permissions?.includes('tasks.use')) { setTaskDue(0); return; }
+    try {
+      const r = await authFetch('/api/tasks?scope=mine');
+      if (!r.ok) return;
+      const list = await r.json();
+      const end = new Date(); end.setHours(23, 59, 59, 999);
+      setTaskDue(list.filter((t) => t.status !== 'done' && t.dueAt && new Date(t.dueAt) <= end).length);
+    } catch { /* ignore */ }
+  }, [token, currentUser, authFetch]);
+  useEffect(() => {
+    refreshTaskDue();
+    const t = setInterval(refreshTaskDue, 120000);
+    return () => clearInterval(t);
+  }, [refreshTaskDue]);
+
   // Fetch all CRM data
   const fetchData = useCallback(async () => {
-    if (!token) return;
+    if (!token || currentUser?.mustChangePassword) return;
     setLoading(true);
     try {
       const [statsRes, leadsRes, prodsRes, quotesRes, branchesRes, configRes] = await Promise.all([
@@ -128,13 +177,61 @@ export default function App() {
     } finally {
       setLoading(false);
     }
-  }, [token, authFetch]);
+  }, [token, authFetch, currentUser?.mustChangePassword]);
+
+  // Refresh the signed-in user's role and permissions from the server (older saved sessions have none)
+  useEffect(() => {
+    if (!token) return;
+    let cancelled = false;
+    fetch(getApiUrl('/api/auth/me'), { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => {
+        if (cancelled) return;
+        if (res.status === 401) {
+          handleLogout(false);
+          return;
+        }
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.user) {
+            setCurrentUser(data.user);
+            localStorage.setItem('monipack_auth_user', JSON.stringify(data.user));
+          }
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [token]);
 
   useEffect(() => {
     if (token) {
       fetchData();
     }
   }, [token, fetchData]);
+
+  // Security guard: only users allowed to manage settings can open the Settings page.
+  // (Must stay above the early returns below - React hooks cannot run conditionally.)
+  useEffect(() => {
+    if (activeTab === 'settings' && currentUser && !currentUser.permissions?.includes('settings.manage')) {
+      setActiveTab('dashboard');
+    }
+    if (activeTab === 'customers' && currentUser && !currentUser.permissions?.includes('customers.view')) {
+      setActiveTab('dashboard');
+    }
+    if (['settings-links', 'settings-fields'].includes(activeTab) && currentUser && !currentUser.permissions?.includes('customers.manage')) {
+      setActiveTab('dashboard');
+    }
+    if (activeTab === 'settings-targets' && currentUser && !currentUser.permissions?.includes('settings.manage')) {
+      setActiveTab('dashboard');
+    }
+    if (activeTab === 'tasks' && currentUser && !currentUser.permissions?.includes('tasks.use')) {
+      setActiveTab('dashboard');
+    }
+    if (activeTab === 'settings-cleanup' && currentUser && currentUser.role !== 'super_admin') {
+      setActiveTab('dashboard');
+    }
+  }, [activeTab, currentUser]);
 
   useEffect(() => {
     window.__monipackNavigate = (tab) => setActiveTab(tab);
@@ -401,12 +498,38 @@ export default function App() {
     );
   }
 
+  // Temporary password: the user must choose their own before using the CRM
+  if (currentUser.mustChangePassword) {
+    return (
+      <div className="flex flex-col min-h-screen">
+        <OfflineBanner />
+        <ChangePassword
+          token={token}
+          user={currentUser}
+          onPasswordChanged={handlePasswordChanged}
+          onLogout={handleLogout}
+        />
+      </div>
+    );
+  }
+
   // Page Title mapping (with responsive shortTitle for mobile viewports)
   const titles = {
+    analytics: { title: 'Charts', shortTitle: 'Charts', subtitle: 'Pipeline funnel, categories and branches' },
+    'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: 'Each salesman\'s secret link, type and PIN' },
+    tasks: { title: 'Tasks', shortTitle: 'Tasks', subtitle: 'To-dos for you and the team' },
+    'settings-targets': { title: 'Sales targets', shortTitle: 'Targets', subtitle: 'Monthly OMR target for each salesman' },
+    'settings-cleanup': { title: 'Data cleanup', shortTitle: 'Cleanup', subtitle: 'Super admin only: delete test or old data before going live' },
+    'settings-fields': { title: 'Customer form', shortTitle: 'Customer form', subtitle: 'Fields salesmen fill in, required fields and dropdown choices' },
+    customers: {
+      title: 'Customer Data Centre',
+      shortTitle: 'Customers',
+      subtitle: 'Every customer, enquiry, quotation and document in one place'
+    },
     dashboard: { 
-      title: 'Executive Sales Dashboard', 
-      shortTitle: 'Dashboard', 
-      subtitle: 'Overview of B2B packaging pipeline and conversion performance' 
+      title: 'Home', 
+      shortTitle: 'Home', 
+      subtitle: 'What needs attention today' 
     },
     customercare: { 
       title: 'Customer Care & Inbound Intake Desk', 
@@ -440,13 +563,6 @@ export default function App() {
     },
   };
 
-  // Enforce security guard: admin cannot open settings
-  useEffect(() => {
-    if (activeTab === 'settings' && currentUser?.role !== 'super_admin') {
-      setActiveTab('dashboard');
-    }
-  }, [activeTab, currentUser]);
-
   return (
     <>
       <AppLayout
@@ -455,7 +571,7 @@ export default function App() {
         notifications={
           toast && (
             <div
-              className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl shadow-xl border text-xs font-bold animate-in fade-in slide-in-from-bottom-4 duration-200 ${
+              className={`fixed mp-toast z-50 px-4 py-3 rounded-2xl text-center sm:text-left shadow-xl border text-xs font-bold animate-in fade-in slide-in-from-bottom-4 duration-200 ${
                 toast.type === 'error'
                   ? 'bg-primary text-white border-primary-hover'
                   : 'bg-text-main text-white border-slate-800'
@@ -474,6 +590,9 @@ export default function App() {
             }}
             onOpenDrawer={() => setIsMobileDrawerOpen(true)}
             stats={stats}
+            currentUser={currentUser}
+            onNewLead={handleOpenNewLead}
+            taskDue={taskDue}
           />
         }
         sidebar={
@@ -489,6 +608,7 @@ export default function App() {
             onNewQuote={() => setActiveTab('quotations')}
             onCloseMobileDrawer={() => setIsMobileDrawerOpen(false)}
             onLogout={handleLogout}
+            taskDue={taskDue}
           />
         }
         header={
@@ -507,8 +627,23 @@ export default function App() {
           />
         }
       >
+        <SectionTabs section={sectionOf(activeTab, currentUser)} activeTab={activeTab} onChange={setActiveTab} />
         <ErrorBoundary key={activeTab}>
-          {activeTab === 'dashboard' && (
+          {activeTab === 'dashboard' && can('customers.view') && (
+            <Home
+              authFetch={authFetch}
+              leads={leads}
+              quotations={quotations}
+              pipelineStages={pipelineStages}
+              currentUser={currentUser}
+              onNavigate={setActiveTab}
+              onNewLead={handleOpenNewLead}
+              canManageCustomers={can('customers.manage')}
+              taskDue={taskDue}
+              onOpenCustomers={(f) => { setCustomerFilter({ ...f, _k: Date.now() }); setActiveTab('customers'); }}
+            />
+          )}
+          {(activeTab === 'analytics' || (activeTab === 'dashboard' && !can('customers.view'))) && (
           <Dashboard
             stats={stats}
             onNavigate={setActiveTab}
@@ -527,7 +662,8 @@ export default function App() {
             onCreateQuoteFromLead={handleCreateQuoteFromLead}
             onNewLead={handleOpenNewLead}
             onEditLead={handleEditLead}
-            onDeleteLead={handleDeleteLead}
+            onDeleteLead={can('leads.archive') ? handleDeleteLead : null}
+            canImport={can('leads.import')}
             showToast={showToast}
             onNavigateToPipeline={() => setActiveTab('leads')}
             onRefresh={fetchData}
@@ -552,7 +688,8 @@ export default function App() {
             onNewLead={handleOpenNewLead}
             onEditLead={handleEditLead}
             onUpdateLead={handleUpdateLead}
-            onDeleteLead={handleDeleteLead}
+            onDeleteLead={can('leads.archive') ? handleDeleteLead : null}
+            canImport={can('leads.import')}
             onUpdateStatus={handleUpdateStatus}
             onOpenWhatsApp={(lead) => setWhatsAppLead(lead)}
             onCreateQuoteFromLead={handleCreateQuoteFromLead}
@@ -571,7 +708,7 @@ export default function App() {
             onClearPrefilledLead={() => setPrefilledLeadForQuote(null)}
             onCreateQuotation={handleCreateQuotation}
             onUpdateQuotation={handleUpdateQuotation}
-            onDeleteQuotation={handleDeleteQuotation}
+            onDeleteQuotation={can('quotations.archive') ? handleDeleteQuotation : null}
             onRefresh={fetchData}
           />
         )}
@@ -587,6 +724,7 @@ export default function App() {
             onRefresh={fetchData}
             token={token}
             showToast={showToast}
+            canManage={can('products.manage')}
           />
         )}
 
@@ -599,7 +737,33 @@ export default function App() {
           />
         )}
 
-        {activeTab === 'settings' && currentUser?.role === 'super_admin' && (
+        {activeTab === 'customers' && can('customers.view') && (
+          <Customers key={customerFilter?._k || 'customers'} authFetch={authFetch} showToast={showToast} canManage={can('customers.manage')}
+            initialFilter={customerFilter ? (({ _k, ...f }) => f)(customerFilter) : undefined}
+            onOpenSettings={can('customers.manage') ? setActiveTab : undefined} />
+        )}
+
+        {activeTab === 'settings-links' && can('customers.manage') && (
+          <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-24 md:pb-8"><SalesmanLinksPage authFetch={authFetch} showToast={showToast} /></div>
+        )}
+
+        {activeTab === 'settings-fields' && can('customers.manage') && (
+          <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-24 md:pb-8"><CustomerFieldsPage authFetch={authFetch} showToast={showToast} /></div>
+        )}
+
+        {activeTab === 'tasks' && can('tasks.use') && (
+          <Tasks authFetch={authFetch} showToast={showToast} currentUser={currentUser} onTasksChanged={refreshTaskDue} />
+        )}
+
+        {activeTab === 'settings-targets' && can('settings.manage') && (
+          <div className="p-3 sm:p-6 lg:p-8 max-w-5xl mx-auto pb-24 md:pb-8"><SalesTargets authFetch={authFetch} showToast={showToast} /></div>
+        )}
+
+        {activeTab === 'settings-cleanup' && currentUser?.role === 'super_admin' && (
+          <div className="p-3 sm:p-6 lg:p-8 max-w-5xl mx-auto pb-24 md:pb-8"><DataCleanup authFetch={authFetch} showToast={showToast} onDone={fetchData} /></div>
+        )}
+
+        {activeTab === 'settings' && can('settings.manage') && (
           <Settings
             authFetch={authFetch}
             showToast={showToast}
@@ -619,11 +783,12 @@ export default function App() {
           setEditingLead(null);
         }}
         onSave={handleSaveLead}
-        onDeleteLead={handleDeleteLead}
+        onDeleteLead={can('leads.archive') ? handleDeleteLead : null}
         lead={editingLead}
         branches={branches}
         categories={categories}
         pipelineStages={pipelineStages}
+        authFetch={authFetch}
       />
 
       <WhatsAppModal

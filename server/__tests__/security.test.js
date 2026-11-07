@@ -5,6 +5,7 @@ import { spawnSync } from 'child_process';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { app } from '../index.js';
+import db from '../db/index.js';
 import { verifyTestSafety } from './testHelper.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -178,12 +179,15 @@ describe('Security Suite 1 - CORS, RBAC, Rate Limiting, Startup Guard & Tally Re
   // 6. Product CSV Import
   describe('Product CSV Import Functionality', () => {
     it('successfully parses product CSV content without Tally dependencies', async () => {
+      // Tokens must now belong to a real, active user (the server checks the user on every request)
       const secret = process.env.JWT_SECRET || 'test-jwt-secret-min-32-chars-long!!';
-      const token = jwt.sign(
-        { id: 'test_admin', name: 'Tester', role: 'admin', canExport: false },
-        secret,
-        { expiresIn: '1h' }
-      );
+      const manager = await db.createUser({
+        name: 'Product Import Tester',
+        email: `product_import_${Date.now()}@example.com`,
+        password: 'ProductImport123!',
+        role: 'manager',
+      });
+      const token = jwt.sign({ id: manager.id, tv: 0 }, secret, { expiresIn: '1h' });
 
       const sampleCsv = `SKU / Part Number,Item Name (English),Arabic Name,Category / Stock Group,Brand,Unit,Price (OMR),Opening Stock Balance
 TEST-CUP-01,Test Coffee Cup 12oz,كوب قهوة تجريبي,Packaging Products,Monipack,CTN,15.200,200`;

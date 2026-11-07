@@ -1,7 +1,7 @@
 // Monipack CRM Production Service Worker
 // Morooj Nizwa International LLC (Sultanate of Oman)
 
-const CACHE_VERSION = 'monipack-v1';
+const CACHE_VERSION = 'monipack-v2';
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const DATA_CACHE = `${CACHE_VERSION}-data`;
 
@@ -69,6 +69,9 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.includes('/@vite/') || url.pathname.includes('/@react-refresh')) {
     return;
   }
+
+  // Customer data, salesman links and uploaded documents are never stored in the offline cache
+  if (/^\/api\/(link|customers|customer-links|customer-fields)(\/|$)/.test(url.pathname)) return;
 
   // 1. API Calls: Network-First with Cache Fallback
   if (url.pathname.startsWith('/api/')) {

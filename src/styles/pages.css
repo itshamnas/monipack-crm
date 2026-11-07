@@ -1,0 +1,75 @@
+/* ==========================================================================
+   Enterprise page harmony: one look for tables, cards, fields and buttons on
+   every page (Customers, Quotations, call queue, Charts, Settings, Products,
+   Branches...). Scoped to the page area; printed documents are excluded.
+   Styling only.
+   ========================================================================== */
+
+/* ---------- Tables (Attio-style) ---------- */
+#monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) thead th {
+  font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #98A2B3;
+  background: #F8F9FB; border-bottom: 1px solid #E7E9EF; white-space: nowrap;
+}
+#monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) thead { background: #F8F9FB; }
+#monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) tbody tr { transition: background-color 0.12s; }
+#monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) tbody tr:hover { background-color: #F8FAFC; }
+#monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) tbody td { border-color: #EEF0F4; }
+
+/* ---------- Cards: one radius, hairline border, soft shadow ---------- */
+#monipack-content-canvas :is(.rounded-3xl, .rounded-2xl).bg-white:not(.quotation-sheet) { border-radius: 20px; }
+#monipack-content-canvas .bg-white.border:is(.rounded-3xl, .rounded-2xl, .rounded-xl):not(button):not(.quotation-sheet) {
+  border-color: #E7E9EF; box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 1px 3px rgba(16, 24, 40, 0.06);
+}
+
+/* Dark hero banners (call queue, charts, branches): same corner + a soft brand glow */
+#monipack-content-canvas :is(.bg-slate-900, .bg-slate-950, [class*="from-slate-9"], [class*="from-[#0"]):is(.rounded-3xl, .rounded-2xl) { border-radius: 20px; position: relative; overflow: hidden; isolation: isolate; }
+#monipack-content-canvas :is(.bg-slate-900, .bg-slate-950, [class*="from-slate-9"]):is(.rounded-3xl, .rounded-2xl)::after {
+  content: ''; position: absolute; z-index: -1; right: -80px; top: -120px; width: 340px; height: 340px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(208, 18, 27, 0.35), transparent 65%); pointer-events: none;
+}
+
+/* ---------- Fields: one height, one focus ring ---------- */
+#monipack-content-canvas :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), select, textarea):not(.quotation-sheet *) {
+  border-radius: 12px;
+}
+#monipack-content-canvas :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea):not(.quotation-sheet *):focus {
+  outline: none; border-color: #D0121B; box-shadow: 0 0 0 4px rgba(208, 18, 27, 0.1);
+}
+#monipack-content-canvas input[type="checkbox"], #monipack-content-canvas input[type="radio"] { accent-color: #D0121B; }
+
+/* ---------- Buttons ---------- */
+/* Brand red buttons get the gradient + soft glow */
+#monipack-content-canvas :is(button, a):is(.bg-\[\#CC1A22\], .bg-red-600, .bg-red-700):not(:disabled) {
+  background-image: linear-gradient(180deg, #E1222B, #B90F18); box-shadow: 0 6px 16px -8px rgba(208, 18, 27, 0.7), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+#monipack-content-canvas :is(button, a):is(.bg-\[\#CC1A22\], .bg-red-600, .bg-red-700):not(:disabled):hover { filter: brightness(1.06); }
+/* Dark buttons: ink with a subtle top highlight */
+#monipack-content-canvas button:is(.bg-slate-900, .bg-slate-800):not(:disabled) { box-shadow: 0 6px 14px -8px rgba(15, 23, 42, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.1); }
+
+/* ---------- Page titles ---------- */
+#monipack-content-canvas :is(h1, h2).text-2xl, #monipack-content-canvas :is(h1, h2).text-3xl { letter-spacing: -0.025em; font-weight: 800; }
+
+/* ---------- Wide tables on small screens: scroll inside the card, with a hint shadow ---------- */
+@media (max-width: 1023px) {
+  #monipack-content-canvas .overflow-x-auto:has(> table) {
+    background:
+      linear-gradient(90deg, #fff 30%, rgba(255, 255, 255, 0)) left / 24px 100% no-repeat local,
+      linear-gradient(270deg, #fff 30%, rgba(255, 255, 255, 0)) right / 24px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, rgba(15, 23, 42, 0.12), transparent) left / 10px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, rgba(15, 23, 42, 0.12), transparent) right / 10px 100% no-repeat scroll;
+  }
+}
+
+/* ---------- Dark mode equivalents ---------- */
+@media screen {
+  html.dark #monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) thead,
+  html.dark #monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) thead th { background: #0E1522; border-color: #1F2A3C; color: #64708A; }
+  html.dark #monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) tbody tr:hover { background-color: #131c2c; }
+  html.dark #monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) tbody td { border-color: #1A2434; }
+  html.dark #monipack-content-canvas .bg-white.border:is(.rounded-3xl, .rounded-2xl, .rounded-xl):not(button):not(.quotation-sheet) { border-color: #1F2A3C; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
+  html.dark #monipack-content-canvas .overflow-x-auto:has(> table) { background: none; }
+}
+
+/* ---------- Monipack watermark on printable sheets (quotation, lead slip) ---------- */
+.mp-sheet-wm { position: absolute; left: 50%; top: 50%; width: 55%; max-width: 420px; transform: translate(-50%, -50%); opacity: 0.07; pointer-events: none; user-select: none; z-index: 0; }
+@media print { .mp-sheet-wm { position: fixed; } }

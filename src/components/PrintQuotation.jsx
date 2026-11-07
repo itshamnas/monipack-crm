@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { getCompany } from '../utils/pdfReport.js';
 import { 
   Printer, 
   X, 
@@ -30,7 +31,49 @@ import {
  * - In-place customizable Commercial Terms with instant "Reset to Standard" option
  * - Professional formatting for customer names (capitalize), address, phone (no dangling hyphens), and OMR currency
  */
+// ---- helpers for the printed sheet ----
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+function niceDate(value) {
+  const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return value || '';
+  return `${Number(m[3])} ${MONTHS.at(Number(m[2]) - 1)} ${m[1]}`;
+}
+function addDays(value, days) {
+  const m = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return '';
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + Number(days || 0)));
+  return d.toISOString().slice(0, 10);
+}
+const ONES = ['', 'One', 'Two', 'Three', 'Four', 'Five', 'Six', 'Seven', 'Eight', 'Nine', 'Ten', 'Eleven', 'Twelve', 'Thirteen', 'Fourteen', 'Fifteen', 'Sixteen', 'Seventeen', 'Eighteen', 'Nineteen'];
+const TENS = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+function words(n) {
+  n = Math.floor(n);
+  if (n === 0) return 'Zero';
+  const chunk = (x) => {
+    const h = Math.floor(x / 100), r = x % 100;
+    const parts = [];
+    if (h) parts.push(`${ONES.at(h)} Hundred`);
+    if (r) parts.push(r < 20 ? ONES.at(r) : `${TENS.at(Math.floor(r / 10))}${r % 10 ? `-${ONES.at(r % 10)}` : ''}`);
+    return parts.join(' and ');
+  };
+  const units = [[1e9, 'Billion'], [1e6, 'Million'], [1e3, 'Thousand']];
+  const out = [];
+  for (const [size, name] of units) {
+    if (n >= size) { out.push(`${chunk(Math.floor(n / size))} ${name}`); n %= size; }
+  }
+  if (n) out.push(chunk(n));
+  return out.join(' ');
+}
+/** 152.250 -> "Omani Rials One Hundred and Fifty-Two and Baisa Two Hundred and Fifty Only" */
+function omrInWords(amount) {
+  const baisaTotal = Math.round(Number(amount || 0) * 1000);
+  const rials = Math.floor(baisaTotal / 1000), baisa = baisaTotal % 1000;
+  return `Omani Rials ${words(rials)}${baisa ? ` and Baisa ${words(baisa)}` : ''} Only`;
+}
+
 export default function PrintQuotation({ quotation, onClose, onUpdateTerms, onUpdateVat }) {
+  const [company, setCompany] = useState(null);
+  useEffect(() => { getCompany().then(setCompany); }, []);
   if (!quotation) return null;
 
   const defaultStandardTerms = [
@@ -223,7 +266,7 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
 
   return createPortal(
     <div 
-      className="quotation-modal-overlay fixed inset-0 z-50 bg-slate-950 sm:bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-start overflow-y-auto p-2 sm:p-4 md:p-6 pb-20 sm:pb-8"
+      className="quotation-modal-overlay fixed inset-0 z-50 mp-overlay bg-slate-950 sm:bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-start overflow-y-auto p-2 sm:p-4 md:p-6 pb-20 sm:pb-8"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isEditingTerms) {
           onClose();
@@ -465,259 +508,134 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
       )}
 
       {/* The Printable A4 Sheet */}
-      <div 
-        className="quotation-sheet shrink-0 bg-white w-full max-w-[850px] min-h-fit h-auto p-3.5 sm:p-8 md:p-10 pb-8 sm:pb-10 rounded-xl shadow-2xl border border-slate-200 text-slate-900 relative my-2 sm:my-8 print:my-0 print:p-0 print:border-none print:shadow-none print:max-w-none print:min-h-0 print:w-full print:rounded-none"
+      <div
+        className="quotation-sheet shrink-0 bg-white w-full max-w-[850px] min-h-fit h-auto p-4 sm:p-10 rounded-xl shadow-2xl border border-slate-200 text-slate-900 relative my-2 sm:my-8 print:my-0 print:p-0 print:border-none print:shadow-none print:max-w-none print:min-h-0 print:w-full print:rounded-none"
         onClick={(e) => e.stopPropagation()}
+        style={{ fontFamily: "Inter, Arial, 'Cairo', sans-serif" }}
       >
-        {/* ==========================================================================
-            Header: 3D Ribbon Logo + Ghala Address (Left) & QUOTATION + Ref (Right)
-            ========================================================================== */}
-        <div className="flex items-start justify-between mb-6 pb-2">
-          {/* Left: 3D Ribbon Logo & Address */}
-          <div className="flex items-center gap-4">
-            <div className="w-24 sm:w-28 shrink-0">
-              <img
-                src="/brands/monipack-cropped.png"
-                alt="monipack"
-                className="w-full h-auto object-contain block drop-shadow-xs"
-              />
-            </div>
-            <div className="text-slate-800 text-[13px] font-medium leading-tight">
-              <div className="font-bold text-slate-900">Ghala</div>
-              <div>Muscat</div>
-              <div>Sultanate of Oman</div>
+        <img className="mp-sheet-wm" src="/brands/watermark.png" alt="" aria-hidden="true" />
+        {/* Letterhead */}
+        <div className="flex items-start justify-between gap-6 pb-4 border-b-[3px] border-[#CC1A22]">
+          <div className="flex items-start gap-4 min-w-0">
+            <img src="/brands/monipack-cropped.png" alt="monipack" className="w-20 sm:w-24 h-auto object-contain shrink-0" />
+            <div className="text-[11px] leading-snug text-slate-600 min-w-0">
+              <div className="text-sm font-extrabold text-slate-900">{company?.companyName || 'Morooj Nizwa International LLC'}</div>
+              {company?.companyNameAr && <div className="text-[12px] font-semibold text-slate-800" dir="rtl" style={{ fontFamily: "'Cairo', Arial, sans-serif", textAlign: 'left' }}>{company.companyNameAr}</div>}
+              <div>{company?.headquarters || 'Ghala, Muscat, Sultanate of Oman'}{company?.poBox ? ` · ${company.poBox}` : ''}</div>
+              <div>{[company?.phone, company?.email, company?.website].filter(Boolean).join(' · ')}</div>
+              {(company?.crNumber || company?.vatNumber) && (
+                <div className="font-semibold text-slate-700">
+                  {[company?.crNumber && `CR No. ${company.crNumber}`, company?.vatNumber && `VATIN ${company.vatNumber}`].filter(Boolean).join(' · ')}
+                </div>
+              )}
             </div>
           </div>
-
-          {/* Right: QUOTATION & QTN Code */}
-          <div className="text-right">
-            <h1 className="text-3xl font-black tracking-tight text-slate-900 font-sans uppercase">
-              QUOTATION
-            </h1>
-            <div className="text-sm font-bold text-slate-700 font-mono mt-0.5 tracking-tight">
-              {quotation.code || 'MNI-ITS-2026-1042'}
-            </div>
-          </div>
-        </div>
-
-        {/* ==========================================================================
-            Customer & Quote Info Box (Clean dual-card with rounded border)
-            ========================================================================== */}
-        <div className="border border-slate-300 rounded-lg p-2.5 sm:p-3.5 mb-5 bg-white text-xs">
-          <div className="grid grid-cols-2 divide-x divide-slate-300 gap-1 sm:gap-0">
-            {/* Prepared For: */}
-            <div className="pr-2 sm:pr-4 space-y-1 min-w-0">
-              <div className="font-bold text-slate-900 text-[10px] sm:text-[11px] mb-0.5 sm:mb-1 uppercase tracking-wider">
-                Prepared For:
-              </div>
-              <div className="font-bold text-slate-950 text-xs sm:text-sm capitalize truncate sm:whitespace-normal">
-                {quotation.customerName || 'Valued Customer'}
-              </div>
-              <div className="text-slate-700 text-[11px] sm:text-xs break-words">
-                {quotation.address || 'Muscat, Sultanate of Oman'}
-              </div>
-              {quotation.phone && quotation.phone !== '+968 -' && quotation.phone !== '+968' && (
-                <div className="text-slate-700 text-[10px] sm:text-xs font-mono break-words">
-                  <span className="font-semibold text-slate-800 font-sans">Contact:</span> {quotation.phone}
-                </div>
-              )}
-              {quotation.attn && (
-                <div className="text-slate-700 text-[10px] sm:text-xs break-words">
-                  <span className="font-semibold text-slate-800">Attn:</span> {quotation.attn}
-                </div>
-              )}
-              {quotation.email && (
-                <div className="text-slate-700 text-[10px] sm:text-xs truncate sm:break-words">
-                  <span className="font-semibold text-slate-800">Email:</span> {quotation.email}
-                </div>
-              )}
-            </div>
-
-            {/* Quote Info: */}
-            <div className="pl-2 sm:pl-6 space-y-1 min-w-0">
-              <div className="font-bold text-slate-900 text-[10px] sm:text-[11px] mb-0.5 sm:mb-1 uppercase tracking-wider">
-                Quote Info:
-              </div>
-              <div className="text-slate-800 text-[11px] sm:text-xs flex items-center justify-between">
-                <span className="font-semibold text-slate-700">Issue Date:</span>
-                <span className="font-mono font-bold text-slate-900">{quotation.date || new Date().toISOString().split('T')[0]}</span>
-              </div>
-              <div className="text-slate-800 text-[11px] sm:text-xs flex items-center justify-between">
-                <span className="font-semibold text-slate-700">Validity:</span>
-                <span className="font-bold text-slate-900">{quotation.validityDays || 30} Days</span>
-              </div>
-              <div className="text-slate-800 text-[11px] sm:text-xs flex items-center justify-between">
-                <span className="font-semibold text-slate-700">Sales Rep:</span>
-                <span className="font-bold text-slate-900 truncate max-w-[110px] sm:max-w-none">{quotation.salesRep || 'Hamad Al Kindi'}</span>
-              </div>
-              {quotation.branch && (
-                <div className="text-slate-800 text-[11px] sm:text-xs flex items-center justify-between">
-                  <span className="font-semibold text-slate-700">Branch:</span>
-                  <span className="font-bold text-slate-900 truncate max-w-[110px] sm:max-w-none">{quotation.branch}</span>
-                </div>
-              )}
-            </div>
+          <div className="text-right shrink-0">
+            <h1 className="text-2xl sm:text-3xl font-black tracking-[0.12em] text-slate-900 uppercase">Quotation</h1>
+            <table className="mt-2 ml-auto text-[11px]">
+              <tbody>
+                <tr><td className="pr-3 text-slate-500 text-left">Quotation No.</td><td className="font-bold font-mono text-slate-900">{quotation.code}</td></tr>
+                <tr><td className="pr-3 text-slate-500 text-left">Date</td><td className="font-semibold text-slate-900">{niceDate(quotation.date) || niceDate(new Date().toISOString())}</td></tr>
+                <tr><td className="pr-3 text-slate-500 text-left">Valid until</td><td className="font-semibold text-slate-900">{niceDate(addDays(quotation.date, quotation.validityDays || 30))}</td></tr>
+                {quotation.salesRep && <tr><td className="pr-3 text-slate-500 text-left">Sales rep</td><td className="font-semibold text-slate-900">{quotation.salesRep}</td></tr>}
+              </tbody>
+            </table>
           </div>
         </div>
 
-        {/* ==========================================================================
-            Items Table (Clean Grey Header, Vertical Dividers, table-header-group Pagination)
-            ========================================================================== */}
-        <div className="mb-4">
-          <div className="sm:hidden flex items-center justify-between text-[10px] text-slate-500 font-semibold mb-1 px-1 no-print">
-            <span className="uppercase tracking-wider text-slate-400 font-bold">Line Items</span>
-            <span className="flex items-center gap-1 text-red-600 font-bold">
-              Swipe table <ArrowRight className="w-3 h-3" />
-            </span>
+        {/* Bill to */}
+        <div className="grid grid-cols-2 gap-6 py-4 text-[12px]">
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-[#CC1A22] mb-1">Quotation for</div>
+            <div className="text-[15px] font-bold text-slate-950 break-words">{quotation.customerName || 'Valued Customer'}</div>
+            {quotation.attn && <div className="text-slate-700">Attn: {quotation.attn}</div>}
+            <div className="text-slate-600 break-words">{quotation.address || 'Muscat, Sultanate of Oman'}</div>
+            {quotation.phone && !['+968', '+968 -'].includes(quotation.phone) && <div className="text-slate-600">Tel: {quotation.phone}</div>}
+            {quotation.email && <div className="text-slate-600 break-words">{quotation.email}</div>}
           </div>
+          <div className="text-slate-600 self-end text-[11px] leading-relaxed">
+            Dear Sir / Madam,<br />
+            Thank you for your enquiry. We are pleased to offer the following items at the prices and terms below.
+          </div>
+        </div>
 
-          <div className="quotation-table-wrapper border border-slate-300 rounded-md overflow-x-auto print:overflow-visible print:border-none shadow-2xs">
-            <table className="w-full min-w-[560px] sm:min-w-0 text-left text-xs border-collapse">
-              <thead 
-                className="bg-slate-100 text-slate-900 text-[11px] font-bold select-none border-b border-slate-300"
-                style={{ display: 'table-header-group' }}
-              >
-              <tr>
-                <th className="py-2.5 px-2 text-center border-r border-slate-300 w-[6%] font-black uppercase">#</th>
-                <th className="py-2.5 px-3 border-r border-slate-300 w-[48%] font-black uppercase">Description</th>
-                <th className="py-2.5 px-2 text-center border-r border-slate-300 w-[11%] font-black uppercase">Unit</th>
-                <th className="py-2.5 px-2 text-center border-r border-slate-300 w-[10%] font-black uppercase">Qty</th>
-                <th className="py-2.5 px-3 text-right border-r border-slate-300 w-[12%] font-black uppercase whitespace-nowrap">Price (OMR)</th>
-                <th className="py-2.5 px-3 text-right w-[13%] font-black uppercase whitespace-nowrap">Total (OMR)</th>
+        {/* Items */}
+        <div className="quotation-table-wrapper overflow-x-auto print:overflow-visible">
+          <table className="w-full min-w-[560px] sm:min-w-0 text-left text-[12px] border-collapse">
+            <thead style={{ display: 'table-header-group' }}>
+              <tr className="bg-slate-900 text-white text-[10px] uppercase tracking-wider" style={{ printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
+                <th className="py-2 px-2 text-center w-[5%] font-bold">#</th>
+                <th className="py-2 px-3 w-[47%] font-bold">Item &amp; description</th>
+                <th className="py-2 px-2 text-center w-[9%] font-bold">Unit</th>
+                <th className="py-2 px-2 text-right w-[9%] font-bold">Qty</th>
+                <th className="py-2 px-3 text-right w-[14%] font-bold whitespace-nowrap">Unit price</th>
+                <th className="py-2 px-3 text-right w-[16%] font-bold whitespace-nowrap">Amount (OMR)</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-200">
-              {items.length > 0 ? (
-                items.map((item, idx) => {
-                  const qty = Number(item.quantity || 1);
-                  const price = Number(item.unitPriceOMR || 0);
-                  const lineTotal = Number(item.totalOMR !== undefined ? item.totalOMR : (qty * price));
-
-                  return (
-                    <tr 
-                      key={idx} 
-                      className="border-b border-slate-200 bg-white"
-                      style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
-                    >
-                      <td className="py-2.5 px-2 text-center font-bold text-slate-600 border-r border-slate-200">
-                        {idx + 1}.
-                      </td>
-                      <td className="py-2.5 px-3 border-r border-slate-200">
-                        <div className="font-bold text-slate-950 text-xs">{item.item || 'Packaging Item'}</div>
-                        {item.description && (
-                          <div className="text-[11px] text-slate-600 mt-0.5 leading-snug">
-                            ({item.description})
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-2.5 px-2 text-center font-semibold text-slate-700 border-r border-slate-200">
-                        {item.unit || 'CTN'}
-                      </td>
-                      <td className="py-2.5 px-2 text-center font-bold text-slate-900 border-r border-slate-200">
-                        {qty}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-medium text-slate-800 border-r border-slate-200">
-                        {price.toFixed(3)}
-                      </td>
-                      <td className="py-2.5 px-3 text-right font-mono font-bold text-slate-950">
-                        {lineTotal.toFixed(3)}
-                      </td>
-                    </tr>
-                  );
-                })
-              ) : (
-                <tr>
-                  <td colSpan="6" className="text-center py-8 text-slate-400">
-                    No items in this quotation
-                  </td>
-                </tr>
+            <tbody>
+              {items.length > 0 ? items.map((item, idx) => {
+                const qty = Number(item.quantity || 1);
+                const price = Number(item.unitPriceOMR || 0);
+                const lineTotal = Number(item.totalOMR !== undefined ? item.totalOMR : qty * price);
+                const desc = String(item.description || '').trim();
+                return (
+                  <tr key={idx} className={`border-b border-slate-200 ${idx % 2 ? 'bg-slate-50' : 'bg-white'}`} style={{ pageBreakInside: 'avoid', breakInside: 'avoid', printColorAdjust: 'exact', WebkitPrintColorAdjust: 'exact' }}>
+                    <td className="py-2.5 px-2 text-center text-slate-500 align-top">{idx + 1}</td>
+                    <td className="py-2.5 px-3 align-top">
+                      <div className="font-semibold text-slate-950">{item.item || 'Packaging item'}</div>
+                      {desc && desc !== '-' && <div className="text-[11px] text-slate-500 mt-0.5 leading-snug">{desc}</div>}
+                    </td>
+                    <td className="py-2.5 px-2 text-center text-slate-700 align-top">{item.unit || 'CTN'}</td>
+                    <td className="py-2.5 px-2 text-right tabular-nums text-slate-900 align-top">{qty.toLocaleString('en-US')}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums text-slate-800 align-top">{price.toFixed(3)}</td>
+                    <td className="py-2.5 px-3 text-right tabular-nums font-semibold text-slate-950 align-top">{lineTotal.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
+                  </tr>
+                );
+              }) : (
+                <tr><td colSpan="6" className="text-center py-8 text-slate-400">No items in this quotation</td></tr>
               )}
             </tbody>
-            <tfoot style={{ display: 'table-footer-group' }}>
-              <tr>
-                <td colSpan="6" className="h-1"></td>
-              </tr>
-            </tfoot>
           </table>
-          </div>
         </div>
 
-        {/* Totals Block (Right Aligned, Elegant Omani OMR Currency Formatting) */}
-        <div className="flex justify-end mb-6">
-          <div className="w-72 text-xs space-y-1.5 bg-slate-50/60 p-3 rounded-lg border border-slate-200">
-            <div className="flex justify-between items-center text-slate-700 px-1">
-              <span className="font-semibold text-slate-600">Subtotal:</span>
-              <span className="font-mono font-bold text-slate-900">
-                OMR {subtotal.toFixed(3)}
-              </span>
-            </div>
-
-            {currentVatEnabled ? (
-              <div className="flex justify-between items-center text-slate-700 px-1">
-                <span className="font-semibold text-slate-600">VAT ({currentVatRate}%):</span>
-                <span className="font-mono font-bold text-slate-900">
-                  OMR {vatAmount.toFixed(3)}
-                </span>
-              </div>
-            ) : (
-              <div className="flex justify-between items-center text-slate-500 italic text-[11px] px-1">
-                <span>VAT:</span>
-                <span>Tax Exempt (0%)</span>
-              </div>
-            )}
-
-            <div className="border-t border-slate-300 pt-2 flex justify-between items-center px-1">
-              <span className="font-black text-slate-950 text-sm">Grand Total:</span>
-              <span className="font-mono font-black text-base text-[#CC1A22] tracking-tight">
-                OMR {grandTotal.toFixed(3)}
-              </span>
-            </div>
+        {/* Totals + amount in words */}
+        <div className="flex flex-col-reverse sm:flex-row sm:items-start justify-between gap-4 mt-4 print:flex-row" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+          <div className="text-[11px] text-slate-600 sm:max-w-[55%]">
+            <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 mb-1">Amount in words</div>
+            <div className="font-semibold text-slate-800">{omrInWords(grandTotal)}</div>
           </div>
+          <table className="w-full sm:w-72 sm:max-w-[288px] text-[12px] print:w-72 print:max-w-[280px] shrink-0">
+            <tbody>
+              <tr><td className="py-1 text-slate-600">Subtotal</td><td className="py-1 text-right tabular-nums font-semibold">{subtotal.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td></tr>
+              <tr><td className="py-1 text-slate-600">{currentVatEnabled ? `VAT ${currentVatRate}%` : 'VAT (exempt)'}</td><td className="py-1 text-right tabular-nums font-semibold">{vatAmount.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td></tr>
+              <tr className="border-t-2 border-slate-900">
+                <td className="pt-2 font-extrabold text-slate-950">Total (OMR)</td>
+                <td className="pt-2 text-right tabular-nums font-black text-[16px] text-[#CC1A22]">{grandTotal.toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
 
-        {/* ==========================================================================
-            Closing Block Integrity: Terms, Signature, and Bottom Logos Bar
-            ========================================================================== */}
-        <div 
-          className="print-closing-block print:break-inside-avoid"
-          style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}
-        >
-          {/* Terms & Conditions (Left) and Authorized Signature (Right) */}
-          <div className="flex flex-col gap-6 sm:grid sm:grid-cols-12 sm:gap-8 my-6 print:grid print:grid-cols-12 print:gap-8">
-            {/* Left: Standard Terms & Conditions */}
-            <div className="w-full sm:col-span-7 print:col-span-7 text-[11px] text-slate-700 space-y-1">
-              <div className="flex items-center justify-between mb-1.5">
-                <h4 className="font-bold text-slate-900 text-xs uppercase tracking-wider">
-                  Standard Terms & Conditions
-                </h4>
+        {/* Terms, bank details, signatures */}
+        <div className="print-closing-block mt-6" style={{ pageBreakInside: 'avoid', breakInside: 'avoid' }}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 print:grid-cols-2 text-[11px]">
+            <div>
+              <div className="flex items-center justify-between mb-1">
+                <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500">Terms &amp; conditions</div>
                 <div className="flex items-center gap-1.5 no-print">
-                  {saveSuccess && (
-                    <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1">
-                      <Check className="w-3 h-3" /> Saved!
-                    </span>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => setIsEditingTerms((prev) => !prev)}
-                    className="text-[10px] font-bold text-[#CC1A22] hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-0.5 rounded transition cursor-pointer"
-                  >
-                    {isEditingTerms ? 'Done' : 'Change Terms'}
+                  {saveSuccess && <span className="text-[10px] text-emerald-600 font-bold flex items-center gap-1"><Check className="w-3 h-3" /> Saved!</span>}
+                  <button type="button" onClick={() => setIsEditingTerms((prev) => !prev)}
+                    className="text-[10px] font-bold text-[#CC1A22] hover:text-red-800 bg-red-50 hover:bg-red-100 border border-red-200 px-2 py-0.5 rounded transition cursor-pointer">
+                    {isEditingTerms ? 'Done' : 'Change terms'}
                   </button>
                 </div>
               </div>
-
-              {/* Normal Read / Print View */}
               {!isEditingTerms && (
-                <ul className="space-y-1 text-slate-600 leading-snug">
-                  {terms.map((term, i) => (
-                    <li key={i}>• {term}</li>
-                  ))}
-                  {terms.length === 0 && (
-                    <li className="italic text-slate-400">No terms specified.</li>
-                  )}
-                </ul>
+                <ol className="list-decimal pl-4 space-y-0.5 text-slate-700 leading-snug">
+                  {terms.map((term, i) => <li key={i}>{term}</li>)}
+                  {terms.length === 0 && <li className="italic text-slate-400 list-none">No terms specified.</li>}
+                </ol>
               )}
-
               {/* Interactive In-Place Terms Editor (Hidden in Print) */}
               {isEditingTerms && (
                 <div className="no-print bg-slate-50 border border-slate-300 rounded-lg p-3 space-y-2 mt-2 shadow-xs">
@@ -794,58 +712,51 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
                   </div>
                 </div>
               )}
-            </div>
 
-            {/* Right: Signature & Stamp */}
-            <div className="w-full sm:col-span-5 print:col-span-5 flex flex-col justify-end items-center mt-3 sm:mt-0">
-              <div className="w-full max-w-[240px] sm:max-w-none border-b border-slate-400 mb-1.5 h-12 sm:h-14"></div>
-              <div className="text-xs font-semibold text-slate-800 text-center">
-                Authorized Signature & Stamp
-              </div>
+            </div>
+            <div>
+              {(company?.bankName || company?.iban || company?.bankAccountNumber) && (
+                <>
+                  <div className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-500 mb-1">Bank details</div>
+                  <table className="text-slate-700">
+                    <tbody>
+                      {company.bankName && <tr><td className="pr-3 text-slate-500">Bank</td><td className="font-semibold">{company.bankName}</td></tr>}
+                      {company.bankAccountName && <tr><td className="pr-3 text-slate-500">Account name</td><td className="font-semibold">{company.bankAccountName}</td></tr>}
+                      {company.bankAccountNumber && <tr><td className="pr-3 text-slate-500">Account no.</td><td className="font-semibold font-mono">{company.bankAccountNumber}</td></tr>}
+                      {company.iban && <tr><td className="pr-3 text-slate-500">IBAN</td><td className="font-semibold font-mono">{company.iban}</td></tr>}
+                    </tbody>
+                  </table>
+                </>
+              )}
             </div>
           </div>
 
-          {/* Divider Line */}
-          <div className="border-t border-slate-300 my-4"></div>
-
-          {/* 4 Brand Logos Strip (monipack, moniclean, KOHE, monifood) */}
-          <div className="grid grid-cols-4 gap-2 items-center justify-items-center sm:flex sm:items-center sm:justify-between px-1 sm:px-6 py-2">
-            <div className="flex items-center justify-center h-8 sm:h-12 w-full max-w-[75px] sm:w-28">
-              <img
-                src="/brands/monipack-cropped.png"
-                alt="monipack"
-                className="max-h-7 sm:max-h-11 max-w-full object-contain"
-              />
+          <div className="grid grid-cols-2 gap-10 mt-10 text-[11px]">
+            <div>
+              <div className="h-14 border-b border-slate-400" />
+              <div className="mt-1.5 font-semibold text-slate-900">For {company?.companyName || 'Morooj Nizwa International LLC'}</div>
+              <div className="text-slate-500">Authorized signature &amp; company stamp</div>
             </div>
-            <div className="flex items-center justify-center h-8 sm:h-12 w-full max-w-[75px] sm:w-28">
-              <img
-                src="/brands/moniclean-cropped.png"
-                alt="moniclean"
-                className="max-h-7 sm:max-h-11 max-w-full object-contain"
-              />
-            </div>
-            <div className="flex items-center justify-center h-8 sm:h-12 w-full max-w-[75px] sm:w-28">
-              <img
-                src="/brands/kohe-cropped.png"
-                alt="KOHE"
-                className="max-h-6 sm:max-h-8 max-w-full object-contain"
-              />
-            </div>
-            <div className="flex items-center justify-center h-8 sm:h-12 w-full max-w-[75px] sm:w-28">
-              <img
-                src="/brands/monifood-cropped.png"
-                alt="monifood"
-                className="max-h-6 sm:max-h-10 max-w-full object-contain"
-              />
+            <div>
+              <div className="h-14 border-b border-slate-400" />
+              <div className="mt-1.5 font-semibold text-slate-900">Customer acceptance</div>
+              <div className="text-slate-500">Name, signature, stamp &amp; date</div>
             </div>
           </div>
 
-          {/* Legal Footer Line */}
-          <div className="text-center text-[10px] text-slate-500 font-medium mt-1">
-            A division of Morooj Nizwa International LLC. Generated by monipack CRM.
+          <div className="mt-8 pt-3 border-t border-slate-200 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-5 opacity-90">
+              <img src="/brands/monipack-cropped.png" alt="monipack" className="h-6 object-contain" />
+              <img src="/brands/moniclean-cropped.png" alt="moniclean" className="h-6 object-contain" />
+              <img src="/brands/kohe-cropped.png" alt="KOHE" className="h-4 object-contain" />
+              <img src="/brands/monifood-cropped.png" alt="monifood" className="h-6 object-contain" />
+            </div>
+            <div className="text-[9px] text-slate-400 text-right leading-tight">
+              {company?.companyName || 'Morooj Nizwa International LLC'}{company?.crNumber ? ` · CR ${company.crNumber}` : ''}<br />
+              Prices in Omani Rials (OMR). E&amp;OE.
+            </div>
           </div>
         </div>
-
       </div>
     </div>,
     document.body

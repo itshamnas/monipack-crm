@@ -43,6 +43,7 @@ export default function CustomerCare({
   token,
   onEditLead,
   onDeleteLead,
+  canImport = true,
 }) {
   const [search, setSearch] = useState('');
   const [selectedBranch, setSelectedBranch] = useState('all');
@@ -176,7 +177,7 @@ export default function CustomerCare({
   return (
     <div className="p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-24 md:pb-8">
       {/* Top Banner: Step 1 & 2 Blueprint Guide */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-red-950 text-white rounded-2xl p-4 sm:p-6 border border-slate-700 shadow-xl">
+      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-red-950 text-white rounded-3xl p-4 sm:p-6 border border-slate-700 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6">
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -270,7 +271,7 @@ export default function CustomerCare({
       </div>
 
       {/* Toolbar: Filters & Actions */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3">
+      <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
           {/* Search Box */}
           <div className="relative flex-1 min-w-[220px]">
@@ -349,6 +350,7 @@ export default function CustomerCare({
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
+          {canImport && (
           <button
             onClick={() => setShowImportModal(true)}
             className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg shadow-2xs transition active:scale-95"
@@ -357,10 +359,11 @@ export default function CustomerCare({
             <FileSpreadsheet className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Import Campaign Leads</span>
           </button>
+          )}
 
           <button
             onClick={onNewLead}
-            className="flex items-center gap-1.5 px-3.5 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-2xs transition active:scale-95"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-[#9E0A22] to-[#C8102E] hover:brightness-110 text-white text-xs font-bold rounded-full shadow-2xs transition active:scale-95"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Add Inbound Lead</span>
@@ -460,7 +463,7 @@ export default function CustomerCare({
           return (
             <div
               key={lead.id}
-              className={`bg-white rounded-xl border p-5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between ${
+              className={`bg-white rounded-3xl border p-5 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between ${
                 isAwaitingCall ? 'border-red-200 ring-1 ring-red-100' : 'border-slate-200'
               }`}
             >
@@ -489,6 +492,7 @@ export default function CustomerCare({
                     >
                       <Edit2 className="w-3.5 h-3.5" />
                     </button>
+                    {onDeleteLead && (
                     <button
                       type="button"
                       onClick={() => handleDeleteLeadClick(lead)}
@@ -497,6 +501,7 @@ export default function CustomerCare({
                     >
                       <Trash2 className="w-3.5 h-3.5" />
                     </button>
+                    )}
                   </div>
                 </div>
 
@@ -613,7 +618,7 @@ export default function CustomerCare({
 
       {/* Pagination controls for high-volume leads */}
       {displayLeads.length > visibleCount && (
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-3 mt-4">
+        <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] flex flex-wrap items-center justify-between gap-3 mt-4">
           <p className="text-xs text-slate-500 font-medium">
             Showing <strong className="text-slate-900 font-mono">{visibleLeads.length}</strong> of{' '}
             <strong className="text-slate-900 font-mono">{displayLeads.length}</strong> inbound leads.
@@ -638,7 +643,7 @@ export default function CustomerCare({
       )}
 
       {displayLeads.length === 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-12 text-center space-y-3">
+        <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center space-y-3">
           <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
             <CheckCircle className="w-6 h-6 text-emerald-600" />
           </div>

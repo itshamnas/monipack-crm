@@ -41,12 +41,7 @@ export default function AppLayout({
           <aside
             id="monipack-sidebar-region"
             aria-label="monipack Sidebar Navigation"
-            className="hidden md:flex w-[260px] min-w-[260px] max-w-[260px] h-full flex-col bg-white border-r border-surface-silver shrink-0 select-none z-30 relative"
-            style={{
-              width: 'var(--sidebar-width, 260px)',
-              backgroundColor: 'var(--color-component-bg, #FFFFFF)',
-              borderColor: 'var(--color-surface-silver, #E5E7EB)',
-            }}
+            className="mp-side-region hidden lg:flex h-full flex-col shrink-0 select-none z-30 relative"
           >
             {sidebar}
           </aside>
@@ -56,7 +51,7 @@ export default function AppLayout({
       {sidebar && (
         <div
           id="monipack-mobile-drawer-wrapper"
-          className={`fixed inset-0 z-50 md:hidden transition-all duration-300 ${
+          className={`fixed inset-0 z-50 lg:hidden transition-all duration-300 ${
             isMobileDrawerOpen ? 'visible pointer-events-auto' : 'invisible pointer-events-none'
           }`}
           aria-hidden={!isMobileDrawerOpen}
@@ -74,7 +69,7 @@ export default function AppLayout({
             className={`fixed inset-y-0 left-0 w-[310px] sm:w-[320px] max-w-[88vw] h-full bg-white shadow-2xl flex flex-col z-50 transform transition-transform duration-300 ease-out ${
               isMobileDrawerOpen ? 'translate-x-0' : '-translate-x-full'
             }`}
-            style={{ backgroundColor: 'var(--color-component-bg, #FFFFFF)' }}
+            style={{ backgroundColor: 'var(--mp-side-bg, #0C111D)' }}
           >
             {sidebar}
           </div>
@@ -105,7 +100,7 @@ export default function AppLayout({
         {/* Dynamic Main Content Canvas (includes pb-20 on mobile to leave clearance for bottom nav) */}
         <main
           id="monipack-content-canvas"
-          className="flex-1 overflow-y-auto bg-app-bg focus:outline-none pb-20 md:pb-0"
+          className="flex-1 overflow-y-auto bg-app-bg focus:outline-none mp-main-pad"
           tabIndex={-1}
           style={{ backgroundColor: 'var(--color-app-bg, #F3F4F6)' }}
         >

@@ -1,5 +1,6 @@
 import React from 'react';
-import { LayoutDashboard, Headphones, Users, FileText, Menu } from 'lucide-react';
+import { LayoutDashboard, ContactRound, Users, FileText, Menu, Plus, ListChecks } from 'lucide-react';
+import { sectionOf } from './navigation.js';
 
 /**
  * monipack Enterprise CRM - Mobile Bottom Navigation Bar
@@ -11,54 +12,50 @@ export default function MobileBottomNav({
   onTabChange,
   onOpenDrawer,
   stats,
+  currentUser,
+  onNewLead,
+  taskDue = 0,
 }) {
   const newLeadsBadge = stats?.newLeads ?? 0;
 
+  const canCustomers = Boolean(currentUser?.permissions?.includes('customers.view'));
   const navItems = [
+    { id: 'dashboard', section: 'home', label: 'Home', icon: LayoutDashboard, badge: null },
+    ...(canCustomers ? [{ id: 'customers', section: 'customers', label: 'Customers', icon: ContactRound, badge: null }] : []),
     {
-      id: 'dashboard',
-      label: 'Overview',
-      icon: LayoutDashboard,
-      badge: null,
-    },
-    {
-      id: 'customercare',
-      label: 'Care Desk',
-      icon: Headphones,
+      id: 'leads', section: 'leads', label: 'Leads', icon: Users,
       badge: newLeadsBadge > 0 ? (newLeadsBadge > 99 ? '99+' : newLeadsBadge) : null,
       badgeColor: 'bg-[#CC1A22] text-white',
     },
-    {
-      id: 'leads',
-      label: 'Pipeline',
-      icon: Users,
-      badge: null,
-    },
-    {
-      id: 'quotations',
-      label: 'Quotes',
-      icon: FileText,
-      badge: null,
-    },
+    ...(currentUser?.permissions?.includes('tasks.use') ? [{ id: 'tasks', section: 'tasks', label: 'Tasks', icon: ListChecks, badge: taskDue > 0 ? (taskDue > 99 ? '99+' : taskDue) : null }] : []),
+    { id: 'quotations', section: 'quotations', label: 'Quotes', icon: FileText, badge: null },
   ];
+  const activeSection = sectionOf(activeTab, currentUser)?.id;
 
   return (
     <nav
       id="monipack-mobile-bottom-nav"
       aria-label="Mobile Navigation"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-surface-silver shadow-lg select-none"
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-surface-silver shadow-lg select-none"
       style={{
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        backgroundColor: 'color-mix(in srgb, var(--color-component-bg, #FFFFFF) 95%, transparent)',
         borderColor: 'var(--color-surface-silver, #E5E7EB)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
-      <div className="flex items-center justify-around h-16 px-1">
-        {navItems.map((item) => {
+      <div className="flex items-center justify-around h-16 px-1 max-w-2xl mx-auto">
+        {navItems.map((item, idx) => {
           const Icon = item.icon;
-          const isActive = activeTab === item.id;
+          const isActive = activeSection === item.section;
 
+          const fab = onNewLead && idx === Math.ceil(navItems.length / 2) ? (
+            <button key="fab" type="button" onClick={onNewLead} className="mp-fab" aria-label="New enquiry" title="New enquiry">
+              <span><Plus className="w-6 h-6" strokeWidth={2.5} /></span>
+            </button>
+          ) : null;
           return (
+            <React.Fragment key={item.id}>
+            {fab}
             <button
               key={item.id}
               type="button"
@@ -81,8 +78,9 @@ export default function MobileBottomNav({
               )}
 
               <Icon
+                key={isActive ? 'on' : 'off'}
                 className={`w-5 h-5 transition-transform ${
-                  isActive ? 'scale-110 stroke-[2.5]' : 'stroke-2'
+                  isActive ? 'scale-110 stroke-[2.5] mp-hop' : 'stroke-2'
                 }`}
                 style={isActive ? { color: 'var(--color-primary, #CC1A22)' } : undefined}
               />
@@ -93,11 +91,12 @@ export default function MobileBottomNav({
               {/* Active bottom pip indicator */}
               {isActive && (
                 <span
-                  className="absolute bottom-1 w-6 h-0.5 rounded-full bg-[#CC1A22]"
+                  className="absolute bottom-1 w-6 h-0.5 rounded-full bg-[#CC1A22] mp-pip"
                   style={{ backgroundColor: 'var(--color-primary, #CC1A22)' }}
                 />
               )}
             </button>
+            </React.Fragment>
           );
         })}
 

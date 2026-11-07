@@ -1,10 +1,32 @@
 import pool, { query, getClient } from './pool.js';
 import { normalizeOmanPhone, leadToApi } from './utils.js';
+import { ensureCustomerForLead } from './customers.js';
+
+/** Match a salesman name (as the screens send it) to the salesmen table. */
+async function resolveSalesmanId(runner, name) {
+  if (!name || !String(name).trim()) return null;
+  const { rows } = await runner.query(
+    'SELECT id FROM salesmen WHERE LOWER(TRIM(name)) = LOWER(TRIM($1)) AND archived_at IS NULL ORDER BY id LIMIT 1',
+    [String(name)]
+  );
+  return rows[0] ? rows[0].id : null;
+}
+
+function toId(v) {
+  const n = parseInt(v, 10);
+  return isNaN(n) ? null : n;
+}
 
 export async function getLeads(filters = {}) {
   let sql = 'SELECT * FROM leads WHERE archived_at IS NULL';
   const params = [];
   let idx = 1;
+
+  // Own-scope (salesman role): only leads assigned to this salesman record
+  if (filters.salesmanId !== undefined) {
+    sql += ` AND salesman_id = $${idx++}`;
+    params.push(toId(filters.salesmanId) ?? -1);
+  }
 
   if (filters.search && filters.search.trim()) {
     const q = `%${filters.search.trim().toLowerCase()}%`;
@@ -49,15 +71,24 @@ export async function getLeadById(id) {
   return rows[0] ? leadToApi(rows[0]) : null;
 }
 
+/** A valid date for the next follow-up, or null to clear it */
+function followUpOrNull(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export async function createLead(lead) {
   const { countryCode, mobile, phone } = normalizeOmanPhone(lead.countryCode, lead.mobile, lead.phone);
+  const salesmanId = toId(lead.salesmanId) ?? await resolveSalesmanId({ query }, lead.salesman);
 
   const { rows } = await query(
     `INSERT INTO leads (
        name, contact_person, category, product_details, country_code, mobile, phone,
        email, branch_id, branch_name, salesman_id, salesman_name, customer_location,
-       status, deal_value, quantity, notes, intake_completed, source, date
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+       status, deal_value, quantity, notes, intake_completed, source, date,
+       next_follow_up_at, follow_up_note
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
      RETURNING *`,
     [
       lead.name || 'Untitled Lead',
@@ -70,7 +101,7 @@ export async function createLead(lead) {
       lead.email || '',
       lead.branchId ? parseInt(lead.branchId, 10) || null : null,
       lead.branch || 'Ghala',
-      lead.salesmanId ? parseInt(lead.salesmanId, 10) || null : null,
+      salesmanId,
       lead.salesman || '',
       lead.customerLocation || '',
       lead.status || 'new',
@@ -80,9 +111,13 @@ export async function createLead(lead) {
       Boolean(lead.intakeCompleted),
       lead.source || null,
       lead.date || new Date().toISOString(),
+      followUpOrNull(lead.nextFollowUpAt),
+      String(lead.followUpNote || '').slice(0, 300),
     ]
   );
-  return leadToApi(rows[0]);
+  // Every enquiry belongs to a customer: the one chosen in the form, the matching one, or a new one
+  const customerId = await ensureCustomerForLead(rows[0], lead.customerId);
+  return leadToApi({ ...rows[0], customer_id: customerId });
 }
 
 export async function updateLead(id, updates, options = {}) {
@@ -104,6 +139,13 @@ export async function updateLead(id, updates, options = {}) {
     const rawPhone = updates.phone !== undefined ? updates.phone : e.phone;
     const { countryCode, mobile, phone } = normalizeOmanPhone(rawCode, rawMobile, rawPhone);
 
+    let nextSalesmanId = e.salesman_id;
+    if (updates.salesmanId !== undefined) {
+      nextSalesmanId = toId(updates.salesmanId);
+    } else if (updates.salesman !== undefined && updates.salesman !== e.salesman_name) {
+      nextSalesmanId = await resolveSalesmanId(client, updates.salesman);
+    }
+
     const { rows } = await client.query(
       `UPDATE leads SET
          name = $1, contact_person = $2, category = $3, product_details = $4,
@@ -111,7 +153,7 @@ export async function updateLead(id, updates, options = {}) {
          branch_id = $9, branch_name = $10, salesman_id = $11, salesman_name = $12,
          customer_location = $13, status = $14, deal_value = $15, quantity = $16,
          notes = $17, intake_completed = $18, lost_reason = $19,
-         last_contacted_at = $20, updated_at = now()
+         last_contacted_at = $20, next_follow_up_at = $22, follow_up_note = $23, updated_at = now()
        WHERE id = $21 AND archived_at IS NULL
        RETURNING *`,
       [
@@ -125,7 +167,7 @@ export async function updateLead(id, updates, options = {}) {
         updates.email !== undefined ? updates.email : e.email,
         updates.branchId !== undefined ? (parseInt(updates.branchId, 10) || null) : e.branch_id,
         updates.branch !== undefined ? updates.branch : e.branch_name,
-        updates.salesmanId !== undefined ? (parseInt(updates.salesmanId, 10) || null) : e.salesman_id,
+        nextSalesmanId,
         updates.salesman !== undefined ? updates.salesman : e.salesman_name,
         updates.customerLocation !== undefined ? updates.customerLocation : e.customer_location,
         updates.status !== undefined ? updates.status : e.status,
@@ -136,6 +178,8 @@ export async function updateLead(id, updates, options = {}) {
         updates.lostReason !== undefined ? updates.lostReason : e.lost_reason,
         updates.lastContactedAt !== undefined ? updates.lastContactedAt : e.last_contacted_at,
         numId,
+        updates.nextFollowUpAt !== undefined ? followUpOrNull(updates.nextFollowUpAt) : e.next_follow_up_at,
+        updates.followUpNote !== undefined ? String(updates.followUpNote || '').slice(0, 300) : (e.follow_up_note || ''),
       ]
     );
 
@@ -149,7 +193,13 @@ export async function updateLead(id, updates, options = {}) {
     }
 
     await client.query('COMMIT');
-    return rows[0] ? leadToApi(rows[0]) : null;
+    if (!rows[0]) return null;
+    // Linked to another customer in the form, or not linked yet: (re)link it
+    if (updates.customerId !== undefined || !rows[0].customer_id) {
+      const customerId = await ensureCustomerForLead(rows[0], updates.customerId);
+      return leadToApi({ ...rows[0], customer_id: customerId });
+    }
+    return leadToApi(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -270,6 +320,19 @@ export async function bulkUpsertLeads(items = [], options = {}) {
       }
     }
   }
+
+  // Link imported leads to their salesman record (the import file only carries the name)
+  await query(
+    `UPDATE leads l SET salesman_id = s.id
+     FROM salesmen s
+     WHERE l.salesman_id IS NULL AND l.archived_at IS NULL
+       AND l.salesman_name IS NOT NULL AND l.salesman_name <> ''
+       AND LOWER(TRIM(l.salesman_name)) = LOWER(TRIM(s.name)) AND s.archived_at IS NULL`
+  );
+
+  // Every imported lead belongs to a customer (matched by mobile/name, or created)
+  const { rows: unlinked } = await query('SELECT * FROM leads WHERE customer_id IS NULL AND archived_at IS NULL');
+  for (const row of unlinked) await ensureCustomerForLead(row);
 
   const { rows: total } = await query('SELECT COUNT(*) AS cnt FROM leads WHERE archived_at IS NULL');
   return { addedCount, updatedCount, skippedCount, totalLeads: parseInt(total[0].cnt) };

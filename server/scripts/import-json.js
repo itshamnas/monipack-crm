@@ -41,7 +41,8 @@ async function importData() {
       for (const u of data.users) {
         if (!u.email) continue;
         const email = u.email.toLowerCase().trim();
-        const role = u.role || 'admin';
+        // Old JSON used 'admin'; it is now called 'manager'
+        const role = (!u.role || u.role === 'admin') ? 'manager' : u.role;
         const canExport = u.canExport === true || role === 'super_admin';
         const hash = u.passwordHash;
         const name = u.name || 'User';

@@ -8,6 +8,7 @@ import * as stages from './stages.js';
 import * as products from './products.js';
 import * as leads from './leads.js';
 import * as quotations from './quotations.js';
+import * as targets from './targets.js';
 import * as activities from './activities.js';
 import * as analytics from './analytics.js';
 import * as settings from './settings.js';
@@ -22,9 +23,15 @@ const db = {
   getUsers: users.getUsers,
   getUserByEmail: users.getUserByEmail,
   getUserById: users.getUserById,
+  getUserAuthState: users.getUserAuthState,
+  getPublicUserById: users.getPublicUserById,
   createUser: users.createUser,
+  updateUser: users.updateUser,
+  deactivateUser: users.deactivateUser,
   deleteUser: users.deleteUser,
   updateUserPassword: users.updateUserPassword,
+  recordLogin: users.recordLogin,
+  countActiveSuperAdmins: users.countActiveSuperAdmins,
   initUsers: users.initUsers,
 
   // Branches
@@ -81,6 +88,9 @@ const db = {
   // Activities
   addActivity: activities.addActivity,
   getActivities: activities.getActivities,
+  getLeadTimeline: activities.getLeadTimeline,
+  getTargets: targets.getTargets,
+  setTargets: targets.setTargets,
 
   // Analytics
   getAnalytics: analytics.getAnalytics,
