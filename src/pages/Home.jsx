@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { openPrintable, chipsHtml, tableHtml } from '../utils/pdfReport.js';
 import {
   AlertTriangle, CheckCircle2, ChevronRight, ContactRound, FileText, Link2, Plus, Upload, Phone, Clock, ShieldCheck, FileWarning,
-  Users, Filter, TrendingUp, Trophy, PieChart, CalendarClock, Target,
+  Users, Filter, TrendingUp, Trophy, PieChart, CalendarClock, Target, ListChecks,
 } from 'lucide-react';
 import { avatarStyle } from '../components/ui/BranchPicker.jsx';
 
@@ -36,7 +36,7 @@ function Bar({ value }) {
   );
 }
 
-export default function Home({ authFetch, leads = [], quotations = [], pipelineStages = [], currentUser, onNavigate, onOpenCustomers, onNewLead, canManageCustomers }) {
+export default function Home({ authFetch, leads = [], quotations = [], pipelineStages = [], currentUser, onNavigate, onOpenCustomers, onNewLead, canManageCustomers, taskDue = 0 }) {
   const [summary, setSummary] = useState(null);
 
   useEffect(() => {
@@ -82,6 +82,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
 
   const todo = [
     { n: pending, icon: ShieldCheck, text: 'customers waiting for your approval', sub: 'New customers or possible duplicates sent by salesmen', go: () => onOpenCustomers({ status: 'pending_approval' }), show: canManageCustomers },
+    { n: taskDue, icon: ListChecks, text: 'of your tasks are due today or overdue', sub: 'Open your task list', go: () => onNavigate('tasks'), show: true },
     { n: stats.followUps, icon: CalendarClock, text: 'follow-ups due today or overdue', sub: 'Open the pipeline showing only these', go: () => { try { sessionStorage.setItem('mp_followups', '1'); } catch { /* ignore */ } onNavigate('leads'); }, show: true },
     { n: stats.newEnquiries, icon: Phone, text: 'new enquiries not called yet', sub: 'Call them and assign to a salesman', go: () => onNavigate('customercare'), show: true },
     { n: stats.stale, icon: Clock, text: 'open leads with no update for 7+ days', sub: 'Follow up with the salesman', go: () => onNavigate('leads'), show: true },

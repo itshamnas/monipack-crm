@@ -16,6 +16,9 @@ export const NAV_SECTIONS = [
     { id: 'leads', label: 'Pipeline' },
     { id: 'customercare', label: 'New enquiries (call queue)' },
   ] },
+  { id: 'tasks', label: 'Tasks', perm: 'tasks.use', pages: [
+    { id: 'tasks', label: 'Tasks', perm: 'tasks.use' },
+  ] },
   { id: 'quotations', label: 'Quotations', pages: [
     { id: 'quotations', label: 'Quotations' },
   ] },

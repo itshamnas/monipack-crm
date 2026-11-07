@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, ContactRound, Users, FileText, Menu, Plus } from 'lucide-react';
+import { LayoutDashboard, ContactRound, Users, FileText, Menu, Plus, ListChecks } from 'lucide-react';
 import { sectionOf } from './navigation.js';
 
 /**
@@ -14,6 +14,7 @@ export default function MobileBottomNav({
   stats,
   currentUser,
   onNewLead,
+  taskDue = 0,
 }) {
   const newLeadsBadge = stats?.newLeads ?? 0;
 
@@ -26,6 +27,7 @@ export default function MobileBottomNav({
       badge: newLeadsBadge > 0 ? (newLeadsBadge > 99 ? '99+' : newLeadsBadge) : null,
       badgeColor: 'bg-[#CC1A22] text-white',
     },
+    ...(currentUser?.permissions?.includes('tasks.use') ? [{ id: 'tasks', section: 'tasks', label: 'Tasks', icon: ListChecks, badge: taskDue > 0 ? (taskDue > 99 ? '99+' : taskDue) : null }] : []),
     { id: 'quotations', section: 'quotations', label: 'Quotes', icon: FileText, badge: null },
   ];
   const activeSection = sectionOf(activeTab, currentUser)?.id;

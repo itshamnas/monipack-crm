@@ -18,6 +18,7 @@ export const CLEANUP_GROUPS = [
   { id: 'salesmen', label: 'Salesmen & links', note: 'All salesmen, their secret links, PINs and link history.' },
   { id: 'products', label: 'Products & categories', note: 'The product list and product categories.' },
   { id: 'branches', label: 'Branches', note: 'All branches.' },
+  { id: 'tasks', label: 'Tasks', note: 'All tasks and their comments.' },
   { id: 'activity', label: 'Activity history', note: 'The activity feed (who did what). The security audit log is kept.' },
   { id: 'users', label: 'Staff logins', note: 'Every login except super admins (managers, customer care, salesman logins).' },
 ];
@@ -31,6 +32,7 @@ const COUNT_SQL = {
   products: 'SELECT (SELECT COUNT(*) FROM products) AS n, (SELECT COUNT(*) FROM categories) AS extra',
   branches: 'SELECT COUNT(*) AS n FROM branches',
   activity: 'SELECT COUNT(*) AS n FROM lead_activities',
+  tasks: 'SELECT COUNT(*) AS n FROM tasks WHERE archived_at IS NULL',
   users: "SELECT COUNT(*) AS n FROM users WHERE role <> 'super_admin'",
 };
 
@@ -103,6 +105,7 @@ export async function runCleanup(groups, { resetQuotationNumbers = false } = {})
       await run('leads', 'DELETE FROM leads');
     }
     if (chosen.has('activity')) await run('activity', 'DELETE FROM lead_activities');
+    if (chosen.has('tasks')) await run('tasks', 'DELETE FROM tasks');
     if (chosen.has('customers')) {
       const { rows } = await client.query('SELECT storage_key, pdf_storage_key, page_keys FROM customer_files');
       fileKeys = fileKeysOf(rows);
