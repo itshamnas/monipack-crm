@@ -208,6 +208,17 @@ export function completeness(customer, fields, salesmanType, { audience = 'admin
   return { missingRequired, missing, filled, total, percent: total ? Math.round((filled / total) * 100) : 100 };
 }
 
+/**
+ * The one status people see: Needs approval / Not started / In progress / Complete.
+ * Based on the saved status (approval, started) and on how complete the details are right now,
+ * so it never says "Complete" while fields are still missing.
+ */
+export function stageOf(customer, percent) {
+  if (customer.status === 'pending_approval') return 'pending_approval';
+  if (customer.status === 'not_started') return 'not_started';
+  return percent >= 100 ? 'complete' : 'in_progress';
+}
+
 /** 'complete' when every field the salesman can fill is done, else 'submitted'. Caller handles pending approval. */
 export function statusAfterSubmit(customer, fields, salesmanType) {
   return completeness(customer, fields, salesmanType, { audience: 'salesman' }).missing.length === 0 ? 'complete' : 'submitted';
