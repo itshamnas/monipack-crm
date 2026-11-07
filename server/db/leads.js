@@ -1,5 +1,6 @@
 import pool, { query, getClient } from './pool.js';
 import { normalizeOmanPhone, leadToApi } from './utils.js';
+import { ensureCustomerForLead } from './customers.js';
 
 /** Match a salesman name (as the screens send it) to the salesmen table. */
 async function resolveSalesmanId(runner, name) {
@@ -104,7 +105,9 @@ export async function createLead(lead) {
       lead.date || new Date().toISOString(),
     ]
   );
-  return leadToApi(rows[0]);
+  // Every enquiry belongs to a customer: the one chosen in the form, the matching one, or a new one
+  const customerId = await ensureCustomerForLead(rows[0], lead.customerId);
+  return leadToApi({ ...rows[0], customer_id: customerId });
 }
 
 export async function updateLead(id, updates, options = {}) {
@@ -178,7 +181,13 @@ export async function updateLead(id, updates, options = {}) {
     }
 
     await client.query('COMMIT');
-    return rows[0] ? leadToApi(rows[0]) : null;
+    if (!rows[0]) return null;
+    // Linked to another customer in the form, or not linked yet: (re)link it
+    if (updates.customerId !== undefined || !rows[0].customer_id) {
+      const customerId = await ensureCustomerForLead(rows[0], updates.customerId);
+      return leadToApi({ ...rows[0], customer_id: customerId });
+    }
+    return leadToApi(rows[0]);
   } catch (err) {
     await client.query('ROLLBACK');
     throw err;
@@ -308,6 +317,10 @@ export async function bulkUpsertLeads(items = [], options = {}) {
        AND l.salesman_name IS NOT NULL AND l.salesman_name <> ''
        AND LOWER(TRIM(l.salesman_name)) = LOWER(TRIM(s.name)) AND s.archived_at IS NULL`
   );
+
+  // Every imported lead belongs to a customer (matched by mobile/name, or created)
+  const { rows: unlinked } = await query('SELECT * FROM leads WHERE customer_id IS NULL AND archived_at IS NULL');
+  for (const row of unlinked) await ensureCustomerForLead(row);
 
   const { rows: total } = await query('SELECT COUNT(*) AS cnt FROM leads WHERE archived_at IS NULL');
   return { addedCount, updatedCount, skippedCount, totalLeads: parseInt(total[0].cnt) };

@@ -516,3 +516,143 @@ export async function setCustomerLocked(id, locked) {
   await query('UPDATE customers SET locked = $1, updated_at = now() WHERE id = $2 AND archived_at IS NULL', [Boolean(locked), toId(id)]);
   return getCustomerRow(id);
 }
+
+// ---------------- Leads <-> customers ----------------
+
+const last8 = (v) => {
+  const d = String(v || '').replace(/\D/g, '');
+  return d.length >= 8 ? d.slice(-8) : null;
+};
+
+function normalizeLeadMobile(countryCode, mobile) {
+  const d = String(mobile || '').replace(/\D/g, '');
+  if (!d) return null;
+  if (d.length === 8 && String(countryCode || '+968').replace(/\D/g, '') === '968') return `+968${d}`;
+  if (d.length === 11 && d.startsWith('968')) return `+${d}`;
+  const cc = String(countryCode || '').replace(/\D/g, '');
+  if (cc && !d.startsWith(cc)) return `+${cc}${d}`;
+  return `+${d}`;
+}
+
+/** Find the customer a lead belongs to (same mobile, or the one customer with exactly this name). */
+export async function findCustomerForLead({ mobile, phone, name }) {
+  const key = last8(mobile) || last8(phone);
+  if (key) {
+    const { rows } = await query(
+      `SELECT id FROM customers WHERE archived_at IS NULL
+         AND RIGHT(regexp_replace(COALESCE(mobile, ''), '\\D', '', 'g'), 8) = $1 ORDER BY id LIMIT 1`,
+      [key]
+    );
+    if (rows[0]) return rows[0].id;
+  }
+  if (name && String(name).trim()) {
+    const { rows } = await query(
+      `SELECT MIN(id) AS id FROM customers WHERE archived_at IS NULL AND LOWER(TRIM(name)) = LOWER(TRIM($1)) HAVING COUNT(*) = 1`,
+      [String(name)]
+    );
+    if (rows[0]) return rows[0].id;
+  }
+  return null;
+}
+
+/**
+ * Every lead belongs to a customer. Use the chosen customer, or the matching one, or create a new one
+ * (it then appears in the salesman's link list so he can complete the details).
+ * leadRow: a raw leads row. Returns the customer id.
+ */
+export async function ensureCustomerForLead(leadRow, chosenCustomerId) {
+  let cid = toId(chosenCustomerId);
+  if (cid) {
+    const { rows } = await query('SELECT id FROM customers WHERE id = $1 AND archived_at IS NULL', [cid]);
+    if (!rows[0]) cid = null;
+  }
+  if (!cid) cid = await findCustomerForLead(leadRow);
+  if (!cid) {
+    const { rows } = await query(
+      `INSERT INTO customers (name, salesman_id, status, mobile, data, source)
+       VALUES ($1, $2, 'not_started', $3, $4::jsonb, 'enquiry') RETURNING id`,
+      [
+        String(leadRow.name || 'Customer').trim().slice(0, 255) || 'Customer',
+        leadRow.salesman_id || null,
+        normalizeLeadMobile(leadRow.country_code, leadRow.mobile || leadRow.phone),
+        JSON.stringify(leadRow.customer_location ? { address: String(leadRow.customer_location).slice(0, 500) } : {}),
+      ]
+    );
+    cid = rows[0].id;
+  }
+  await query('UPDATE leads SET customer_id = $1 WHERE id = $2', [cid, leadRow.id]);
+  return cid;
+}
+
+/** Quick search for the "New enquiry" form: existing customers by name or mobile. */
+export async function lookupCustomers(q, { salesmanId } = {}) {
+  const text = String(q || '').trim();
+  if (text.length < 2) return [];
+  const digits = text.replace(/\D/g, '');
+  const params = [`%${text.toLowerCase()}%`];
+  let where = 'LOWER(c.name) LIKE $1';
+  if (digits.length >= 4) {
+    params.push(`%${digits.slice(-8)}%`);
+    where += ` OR regexp_replace(COALESCE(c.mobile, ''), '\\D', '', 'g') LIKE $${params.length}`;
+  }
+  let scope = '';
+  if (salesmanId !== undefined) {
+    params.push(toId(salesmanId) ?? -1);
+    scope = ` AND c.salesman_id = $${params.length}`;
+  }
+  const { rows } = await query(
+    `SELECT c.id, c.name, c.mobile, c.data, c.salesman_id, s.name AS salesman_name, s.branch_id, b.name AS branch_name,
+       (SELECT COUNT(*) FROM leads l WHERE l.customer_id = c.id AND l.archived_at IS NULL) AS lead_count
+     FROM customers c
+     LEFT JOIN salesmen s ON s.id = c.salesman_id
+     LEFT JOIN branches b ON b.id = s.branch_id
+     WHERE c.archived_at IS NULL AND (${where})${scope}
+     ORDER BY c.name LIMIT 8`,
+    params
+  );
+  return rows.map((r) => ({
+    id: String(r.id),
+    name: r.name,
+    mobile: r.mobile || '',
+    city: r.data?.city || '',
+    governorate: r.data?.governorate || '',
+    address: r.data?.address || '',
+    salesmanId: r.salesman_id != null ? String(r.salesman_id) : null,
+    salesmanName: r.salesman_name || '',
+    branchId: r.branch_id != null ? String(r.branch_id) : null,
+    branchName: r.branch_name || '',
+    leadCount: Number(r.lead_count || 0),
+  }));
+}
+
+/** Enquiries and quotations of one customer (for the customer page). */
+export async function getCustomerActivity(customerId) {
+  const cid = toId(customerId);
+  const [{ rows: leads }, { rows: quotes }] = await Promise.all([
+    query(
+      `SELECT id, name, category, status, deal_value, quantity, salesman_name, branch_name, date, updated_at
+       FROM leads WHERE customer_id = $1 AND archived_at IS NULL ORDER BY COALESCE(date, created_at) DESC`,
+      [cid]
+    ),
+    query(
+      `SELECT q.* FROM quotations q JOIN leads l ON l.id = q.lead_id
+       WHERE l.customer_id = $1 AND q.archived_at IS NULL ORDER BY q.created_at DESC`,
+      [cid]
+    ),
+  ]);
+  return {
+    leads: leads.map((l) => ({
+      id: String(l.id), name: l.name, category: l.category || '', status: l.status, dealValue: Number(l.deal_value || 0),
+      quantity: l.quantity || '', salesman: l.salesman_name || '', branch: l.branch_name || '', date: iso(l.date || l.updated_at),
+    })),
+    quotations: quotes.map((q) => ({
+      id: String(q.id),
+      number: q.code,
+      total: Number(q.grand_total_omr || 0),
+      status: q.status || '',
+      date: iso(q.created_at),
+      leadId: q.lead_id != null ? String(q.lead_id) : null,
+    })),
+    wonValue: leads.filter((l) => l.status === 'won').reduce((s, l) => s + Number(l.deal_value || 0), 0),
+  };
+}

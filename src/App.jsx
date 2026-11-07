@@ -13,7 +13,10 @@ import Settings from './pages/Settings.jsx';
 import Login from './pages/Login.jsx';
 import ChangePassword from './pages/ChangePassword.jsx';
 import CustomerCare from './pages/CustomerCare.jsx';
-import Customers from './pages/Customers.jsx';
+import Customers, { SalesmanLinksPage, CustomerFieldsPage } from './pages/Customers.jsx';
+import Home from './pages/Home.jsx';
+import SectionTabs from './components/layout/SectionTabs.jsx';
+import { sectionOf } from './components/layout/navigation.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import MobileBottomNav from './components/layout/MobileBottomNav.jsx';
 import OfflineBanner from './components/pwa/OfflineBanner.jsx';
@@ -32,6 +35,8 @@ export default function App() {
   });
 
   const [activeTab, setActiveTab] = useState('dashboard');
+  const [customerFilter, setCustomerFilter] = useState(null); // filter passed from Home to the Customers page
+  useEffect(() => { if (activeTab !== 'customers') setCustomerFilter(null); }, [activeTab]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All Categories');
@@ -191,6 +196,9 @@ export default function App() {
       setActiveTab('dashboard');
     }
     if (activeTab === 'customers' && currentUser && !currentUser.permissions?.includes('customers.view')) {
+      setActiveTab('dashboard');
+    }
+    if (['settings-links', 'settings-fields'].includes(activeTab) && currentUser && !currentUser.permissions?.includes('customers.manage')) {
       setActiveTab('dashboard');
     }
   }, [activeTab, currentUser]);
@@ -477,15 +485,18 @@ export default function App() {
 
   // Page Title mapping (with responsive shortTitle for mobile viewports)
   const titles = {
+    analytics: { title: 'Charts', shortTitle: 'Charts', subtitle: 'Pipeline funnel, categories and branches' },
+    'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: 'Each salesman\'s secret link, type and PIN' },
+    'settings-fields': { title: 'Customer form', shortTitle: 'Customer form', subtitle: 'Fields salesmen fill in, required fields and dropdown choices' },
     customers: {
-      title: 'Customer Data Collection',
+      title: 'Customers',
       shortTitle: 'Customers',
-      subtitle: 'Salesman links, progress, missing details and customer documents'
+      subtitle: 'Details, documents, enquiries and quotations of every customer'
     },
     dashboard: { 
-      title: 'Executive Sales Dashboard', 
-      shortTitle: 'Dashboard', 
-      subtitle: 'Overview of B2B packaging pipeline and conversion performance' 
+      title: 'Home', 
+      shortTitle: 'Home', 
+      subtitle: 'What needs attention today' 
     },
     customercare: { 
       title: 'Customer Care & Inbound Intake Desk', 
@@ -546,6 +557,7 @@ export default function App() {
             }}
             onOpenDrawer={() => setIsMobileDrawerOpen(true)}
             stats={stats}
+            currentUser={currentUser}
           />
         }
         sidebar={
@@ -579,8 +591,21 @@ export default function App() {
           />
         }
       >
+        <SectionTabs section={sectionOf(activeTab, currentUser)} activeTab={activeTab} onChange={setActiveTab} />
         <ErrorBoundary key={activeTab}>
-          {activeTab === 'dashboard' && (
+          {activeTab === 'dashboard' && can('customers.view') && (
+            <Home
+              authFetch={authFetch}
+              leads={leads}
+              quotations={quotations}
+              currentUser={currentUser}
+              onNavigate={setActiveTab}
+              onNewLead={handleOpenNewLead}
+              canManageCustomers={can('customers.manage')}
+              onOpenCustomers={(f) => { setCustomerFilter({ ...f, _k: Date.now() }); setActiveTab('customers'); }}
+            />
+          )}
+          {(activeTab === 'analytics' || (activeTab === 'dashboard' && !can('customers.view'))) && (
           <Dashboard
             stats={stats}
             onNavigate={setActiveTab}
@@ -675,7 +700,17 @@ export default function App() {
         )}
 
         {activeTab === 'customers' && can('customers.view') && (
-          <Customers authFetch={authFetch} showToast={showToast} canManage={can('customers.manage')} />
+          <Customers key={customerFilter?._k || 'customers'} authFetch={authFetch} showToast={showToast} canManage={can('customers.manage')}
+            initialFilter={customerFilter ? (({ _k, ...f }) => f)(customerFilter) : undefined}
+            onOpenSettings={can('customers.manage') ? setActiveTab : undefined} />
+        )}
+
+        {activeTab === 'settings-links' && can('customers.manage') && (
+          <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-24 md:pb-8"><SalesmanLinksPage authFetch={authFetch} showToast={showToast} /></div>
+        )}
+
+        {activeTab === 'settings-fields' && can('customers.manage') && (
+          <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-24 md:pb-8"><CustomerFieldsPage authFetch={authFetch} showToast={showToast} /></div>
         )}
 
         {activeTab === 'settings' && can('settings.manage') && (
@@ -703,6 +738,7 @@ export default function App() {
         branches={branches}
         categories={categories}
         pipelineStages={pipelineStages}
+        authFetch={authFetch}
       />
 
       <WhatsAppModal

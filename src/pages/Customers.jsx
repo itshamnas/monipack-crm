@@ -13,6 +13,7 @@ const STATUS = {
   pending_approval: { label: 'Pending approval', cls: 'bg-blue-50 text-blue-800 border-blue-200' },
 };
 const TYPE_LABEL = { branch: 'Branch', route_b2b: 'Route / B2B' };
+const STAGE_NAMES = { new: 'New', contacted: 'Assigned', quotation_sent: 'Quote sent', sample_sent: 'Sample / negotiation', won: 'Won', lost: 'Lost' };
 
 const card = 'bg-white rounded-3xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)]';
 const btn = 'inline-flex items-center justify-center gap-1.5 min-h-[36px] px-3 rounded-full text-xs font-bold transition active:scale-[0.97] disabled:opacity-50';
@@ -63,12 +64,13 @@ async function downloadBlob(authFetch, url, filename) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-export default function Customers({ authFetch, showToast, canManage }) {
-  const [tab, setTab] = useState('overview');
+export default function Customers({ authFetch, showToast, canManage, initialFilter, onOpenSettings }) {
+  const { tab: initialTab, ...initialListFilter } = initialFilter || {};
+  const [tab, setTab] = useState(initialTab || 'list');
   const [summary, setSummary] = useState(null);
   const [links, setLinks] = useState([]);
   const [fields, setFields] = useState([]);
-  const [listFilter, setListFilter] = useState({ salesmanId: 'all', status: 'all', search: '', missing: '' });
+  const [listFilter, setListFilter] = useState({ salesmanId: 'all', status: 'all', search: '', missing: '', ...initialListFilter });
   const [openId, setOpenId] = useState(null);
 
   const loadSummary = useCallback(async () => {
@@ -90,23 +92,30 @@ export default function Customers({ authFetch, showToast, canManage }) {
   }, [links, summary]);
 
   const tabs = [
+    ['list', 'All customers'],
     ['overview', 'Progress'],
-    ['list', 'Customers'],
-    ...(canManage ? [['links', 'Salesman links'], ['import', 'Import'], ['fields', 'Fields']] : []),
+    ...(canManage ? [['import', 'Import list']] : []),
   ];
 
   return (
     <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5 pb-24 md:pb-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Customer data collection</p>
           <h1 className="text-2xl font-extrabold text-slate-900">Customers</h1>
+          <p className="text-sm text-slate-500">Every customer, their details, documents, enquiries and quotations.</p>
         </div>
         {canManage && (
+          <div className="flex flex-wrap gap-2">
+          {onOpenSettings && (
+            <button type="button" className={btnLight} onClick={() => onOpenSettings('settings-links')}>
+              <Link2 className="w-4 h-4" /> Salesman links
+            </button>
+          )}
           <button type="button" className={btnLight}
             onClick={() => downloadBlob(authFetch, '/api/customers/export', `monipack_customers_${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => showToast(e.message, 'error'))}>
             <Download className="w-4 h-4" /> Export Excel (CSV)
           </button>
+          </div>
         )}
       </div>
 
@@ -126,20 +135,45 @@ export default function Customers({ authFetch, showToast, canManage }) {
         <CustomerList authFetch={authFetch} showToast={showToast} canManage={canManage} filter={listFilter}
           setFilter={setListFilter} salesmen={salesmenOptions} fields={fields} onOpen={setOpenId} onChanged={loadSummary} />
       )}
-      {tab === 'links' && canManage && (
-        <LinksTab authFetch={authFetch} showToast={showToast} links={links} summary={summary} onChanged={loadSummary} />
-      )}
       {tab === 'import' && canManage && (
         <ImportTab authFetch={authFetch} showToast={showToast} onDone={() => { loadSummary(); setTab('overview'); }} />
-      )}
-      {tab === 'fields' && canManage && (
-        <FieldsTab authFetch={authFetch} showToast={showToast} fields={fields} onChanged={loadSummary} />
       )}
 
       {openId && (
         <CustomerDetail id={openId} authFetch={authFetch} showToast={showToast} canManage={canManage}
           fields={fields} salesmen={salesmenOptions} onClose={() => setOpenId(null)} onChanged={loadSummary} />
       )}
+    </div>
+  );
+}
+
+// ---------------- Pages shown under Settings ----------------
+
+/** Settings → Salesmen & links */
+export function SalesmanLinksPage({ authFetch, showToast }) {
+  const [links, setLinks] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const load = useCallback(async () => {
+    const [l, s] = await Promise.all([authFetch('/api/customer-links'), authFetch('/api/customers/summary')]);
+    if (l.ok) setLinks(await l.json());
+    if (s.ok) setSummary(await s.json());
+  }, [authFetch]);
+  useEffect(() => { load().catch(() => showToast('Could not load salesmen', 'error')); }, [load]);
+  return <LinksTab authFetch={authFetch} showToast={showToast} links={links} summary={summary} onChanged={load} />;
+}
+
+/** Settings → Customer form fields */
+export function CustomerFieldsPage({ authFetch, showToast }) {
+  const [fields, setFields] = useState([]);
+  const load = useCallback(async () => {
+    const res = await authFetch('/api/customer-fields');
+    if (res.ok) setFields(await res.json());
+  }, [authFetch]);
+  useEffect(() => { load().catch(() => showToast('Could not load fields', 'error')); }, [load]);
+  return (
+    <div className="space-y-3">
+      <p className="text-sm text-slate-600">These are the details salesmen fill in on their link. Set which are required, hide fields you don't need, and edit the dropdown choices (for example your <strong>routes</strong>).</p>
+      <FieldsTab authFetch={authFetch} showToast={showToast} fields={fields} onChanged={load} />
     </div>
   );
 }
@@ -530,6 +564,48 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
           )}
         </div>
         {c.locked && <p className="p-3 rounded-2xl bg-slate-100 text-slate-700 text-sm"><Lock className="w-4 h-4 inline mr-1" />Locked. The salesman can see this customer but can't add details or documents.</p>}
+
+        <section className="grid sm:grid-cols-3 gap-2" aria-label="Business with this customer">
+          {[['Enquiries', (c.leads || []).length], ['Quotations', (c.quotations || []).length], ['Won (OMR)', Number(c.wonValue || 0).toFixed(3)]].map(([label, v]) => (
+            <div key={label} className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
+              <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
+              <span className="block text-lg font-extrabold tabular-nums">{v}</span>
+            </div>
+          ))}
+        </section>
+        {((c.leads || []).length > 0 || (c.quotations || []).length > 0) && (
+          <section className="grid lg:grid-cols-2 gap-3">
+            <div className="rounded-2xl border border-slate-200 overflow-hidden">
+              <h3 className="px-4 py-2.5 bg-slate-50 text-sm font-bold">Enquiries</h3>
+              <ul className="divide-y divide-slate-100">
+                {(c.leads || []).map((l) => (
+                  <li key={l.id} className="px-4 py-2.5 text-sm flex items-center gap-2">
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-semibold truncate">{l.category || 'Enquiry'}{l.quantity ? ` · ${l.quantity}` : ''}</span>
+                      <span className="block text-[11px] text-slate-500">{fmt(l.date)} · {l.salesman || 'No salesman'}</span>
+                    </span>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100">{STAGE_NAMES[l.status] || l.status}</span>
+                    {l.dealValue > 0 && <span className="text-xs font-bold tabular-nums">{l.dealValue.toFixed(3)}</span>}
+                  </li>
+                ))}
+                {(c.leads || []).length === 0 && <li className="px-4 py-3 text-sm text-slate-500">No enquiries yet.</li>}
+              </ul>
+            </div>
+            <div className="rounded-2xl border border-slate-200 overflow-hidden">
+              <h3 className="px-4 py-2.5 bg-slate-50 text-sm font-bold">Quotations</h3>
+              <ul className="divide-y divide-slate-100">
+                {(c.quotations || []).map((q) => (
+                  <li key={q.id} className="px-4 py-2.5 text-sm flex items-center gap-2">
+                    <span className="flex-1 font-semibold">{q.number}<span className="block text-[11px] font-normal text-slate-500">{fmt(q.date)}</span></span>
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100">{q.status}</span>
+                    <span className="text-xs font-bold tabular-nums">OMR {q.total.toFixed(3)}</span>
+                  </li>
+                ))}
+                {(c.quotations || []).length === 0 && <li className="px-4 py-3 text-sm text-slate-500">No quotations yet.</li>}
+              </ul>
+            </div>
+          </section>
+        )}
         {c.reviewNote && <p className="p-3 rounded-2xl bg-blue-50 text-blue-900 text-sm"><AlertTriangle className="w-4 h-4 inline mr-1" />{c.reviewNote}</p>}
 
         {canManage && c.status === 'pending_approval' && (
