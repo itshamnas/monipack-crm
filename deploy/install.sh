@@ -8,7 +8,7 @@ ADMIN_EMAIL="${2:-admin@monipack.com}"
 APP_DIR=/opt/monipack-crm
 DATA_DIR=/var/lib/monipack
 APP_USER=monipack
-PORT=3000
+PORT=3077
 say() { printf '\n\033[1;31m==> %s\033[0m\n' "$*"; }
 [ "$(id -u)" = 0 ] || { echo "Run as root"; exit 1; }
 cd "$APP_DIR"
@@ -16,14 +16,19 @@ cd "$APP_DIR"
 say "1/8 System packages"
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -y
-apt-get install -y curl git nginx postgresql postgresql-contrib openssl ca-certificates ufw
+if ss -ltnp | grep -E ":(80|443) " | grep -vq nginx; then echo "Another web server already uses port 80/443 - stopping so the shop is not affected. Send this screen to support."; ss -ltnp | grep -E ":(80|443) "; exit 1; fi
+apt-get install -y curl git nginx postgresql postgresql-contrib openssl ca-certificates xz-utils
 
-say "2/8 Node.js 22"
-if ! command -v node >/dev/null || [ "$(node -p 'process.versions.node.split(".")[0]')" -lt 20 ]; then
-  curl -fsSL https://deb.nodesource.com/setup_22.x | bash -
-  apt-get install -y nodejs
+say "2/8 Node.js 22 (private copy in /opt/node22 - does not touch any other app)"
+if [ ! -x /opt/node22/bin/node ]; then
+  curl -fsSL https://nodejs.org/dist/v22.11.0/node-v22.11.0-linux-x64.tar.xz -o /tmp/node22.tar.xz
+  mkdir -p /opt/node22 && tar -xJf /tmp/node22.tar.xz -C /opt/node22 --strip-components=1
 fi
+export PATH=/opt/node22/bin:$PATH
 node -v
+if ss -ltn | grep -q ":${PORT} "; then
+  pgrep -f "/opt/monipack-crm/server/index.js" >/dev/null || { echo "Port ${PORT} is used by another app - stopping so nothing else is affected."; exit 1; }
+fi
 
 say "3/8 App user and folders"
 id "$APP_USER" >/dev/null 2>&1 || useradd --system --home "$DATA_DIR" --shell /usr/sbin/nologin "$APP_USER"
@@ -71,7 +76,7 @@ Type=simple
 User=${APP_USER}
 WorkingDirectory=${APP_DIR}
 EnvironmentFile=${APP_DIR}/.env
-ExecStart=/usr/bin/node server/index.js
+ExecStart=/opt/node22/bin/node server/index.js
 Restart=always
 RestartSec=3
 
