@@ -13,6 +13,7 @@ import Settings from './pages/Settings.jsx';
 import Login from './pages/Login.jsx';
 import ChangePassword from './pages/ChangePassword.jsx';
 import CustomerCare from './pages/CustomerCare.jsx';
+import DataCleanup from './pages/DataCleanup.jsx';
 import Customers, { SalesmanLinksPage, CustomerFieldsPage } from './pages/Customers.jsx';
 import Home from './pages/Home.jsx';
 import SectionTabs from './components/layout/SectionTabs.jsx';
@@ -199,6 +200,9 @@ export default function App() {
       setActiveTab('dashboard');
     }
     if (['settings-links', 'settings-fields'].includes(activeTab) && currentUser && !currentUser.permissions?.includes('customers.manage')) {
+      setActiveTab('dashboard');
+    }
+    if (activeTab === 'settings-cleanup' && currentUser && currentUser.role !== 'super_admin') {
       setActiveTab('dashboard');
     }
   }, [activeTab, currentUser]);
@@ -487,6 +491,7 @@ export default function App() {
   const titles = {
     analytics: { title: 'Charts', shortTitle: 'Charts', subtitle: 'Pipeline funnel, categories and branches' },
     'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: 'Each salesman\'s secret link, type and PIN' },
+    'settings-cleanup': { title: 'Data cleanup', shortTitle: 'Cleanup', subtitle: 'Super admin only: delete test or old data before going live' },
     'settings-fields': { title: 'Customer form', shortTitle: 'Customer form', subtitle: 'Fields salesmen fill in, required fields and dropdown choices' },
     customers: {
       title: 'Customer Data Centre',
@@ -711,6 +716,10 @@ export default function App() {
 
         {activeTab === 'settings-fields' && can('customers.manage') && (
           <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-24 md:pb-8"><CustomerFieldsPage authFetch={authFetch} showToast={showToast} /></div>
+        )}
+
+        {activeTab === 'settings-cleanup' && currentUser?.role === 'super_admin' && (
+          <div className="p-3 sm:p-6 lg:p-8 max-w-5xl mx-auto pb-24 md:pb-8"><DataCleanup authFetch={authFetch} showToast={showToast} onDone={fetchData} /></div>
         )}
 
         {activeTab === 'settings' && can('settings.manage') && (
