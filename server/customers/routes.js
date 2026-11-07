@@ -8,7 +8,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import * as cdb from '../db/customers.js';
 import {
-  validateSubmission, statusAfterSubmit, parseCustomerImport, detectFileType, jpegsToPdf, completeness, mergeData,
+  validateSubmission, statusAfterSubmit, parseCustomerImport, detectFileType, jpegsToPdf, completeness, mergeData, stageOf,
   FILE_LABELS, MAX_FILE_BYTES, SALESMAN_TYPES,
 } from './logic.js';
 import { saveFile, readFile } from './storage.js';
@@ -366,8 +366,9 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     const fields = await cdb.getCustomerFields({ includeHidden: false });
     list = list.map((c) => {
       const comp = completeness(c, fields, c.salesmanType || 'branch');
-      return { ...c, missing: comp.missing, percent: comp.percent };
+      return { ...c, missing: comp.missing, percent: comp.percent, stage: stageOf(c, comp.percent) };
     });
+    if (req.query.stage) list = list.filter((c) => c.stage === req.query.stage);
     if (missing) list = list.filter((c) => c.status !== 'not_started' && c.missing.includes(String(missing)));
     res.json(list);
   }));
@@ -400,7 +401,7 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     if (!c) return res.status(404).json({ error: 'Customer not found.' });
     const comp = completeness(c, await cdb.getCustomerFields({ includeHidden: false }), c.salesmanType || 'branch');
     const activity = await cdb.getCustomerActivity(c.id);
-    res.json({ ...c, percent: comp.percent, missing: comp.missing, ...activity });
+    res.json({ ...c, percent: comp.percent, missing: comp.missing, stage: stageOf(c, comp.percent), ...activity });
   }));
 
   app.post('/api/customers', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {

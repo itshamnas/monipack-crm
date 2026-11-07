@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import bcrypt from 'bcryptjs';
 import { query, getClient } from './pool.js';
-import { completeness } from '../customers/logic.js';
+import { completeness, stageOf } from '../customers/logic.js';
 
 const toId = (v) => {
   const n = parseInt(v, 10);
@@ -468,7 +468,7 @@ export async function getSummary() {
     listLinks(),
   ]);
 
-  const totals = { total: 0, not_started: 0, submitted: 0, complete: 0, pending_approval: 0 };
+  const totals = { total: 0, not_started: 0, in_progress: 0, complete: 0, pending_approval: 0 };
   const per = new Map(links.map((l) => [l.salesmanId, {
     ...l, assigned: 0, remaining: 0, submitted: 0, complete: 0, pending: 0, lastActivity: null, percentSum: 0,
   }]));
@@ -478,17 +478,19 @@ export async function getSummary() {
   for (const row of customers) {
     const c = customerToApi(row);
     const pct = completeness(c, fields, c.salesmanType || 'branch', { audience: 'salesman' }).percent;
-    percentSum += pct;
+    const adminPct = completeness(c, fields, c.salesmanType || 'branch').percent;
+    const stage = stageOf(c, adminPct);
+    percentSum += adminPct;
     totals.total++;
-    totals[c.status] = (totals[c.status] || 0) + 1;
+    totals[stage]++;
     const p = c.salesmanId ? per.get(c.salesmanId) : null;
     if (p) {
       p.assigned++;
       p.percentSum += pct;
       if (c.status === 'not_started') p.remaining++;
-      if (c.status === 'submitted') p.submitted++;
-      if (c.status === 'complete') p.complete++;
-      if (c.status === 'pending_approval') p.pending++;
+      if (stage === 'in_progress') p.submitted++;
+      if (stage === 'complete') p.complete++;
+      if (stage === 'pending_approval') p.pending++;
       if (c.submittedAt && (!p.lastActivity || c.submittedAt > p.lastActivity)) p.lastActivity = c.submittedAt;
     }
     if (c.status !== 'not_started') {
@@ -497,7 +499,7 @@ export async function getSummary() {
     }
   }
 
-  const done = totals.submitted + totals.complete;
+  const done = totals.in_progress + totals.complete;
   return {
     totals: {
       ...totals,

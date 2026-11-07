@@ -7,10 +7,11 @@ import CustomerFieldInput, { asList, fieldApplies } from '../components/customer
 import { FILE_LABEL_NAMES, prepareUpload } from '../utils/fileUpload.js';
 
 const STATUS = {
+  pending_approval: { label: 'Needs approval', cls: 'bg-blue-50 text-blue-800 border-blue-200' },
   not_started: { label: 'Not started', cls: 'bg-slate-100 text-slate-700 border-slate-200' },
-  submitted: { label: 'Submitted', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
+  in_progress: { label: 'In progress', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
   complete: { label: 'Complete', cls: 'bg-emerald-50 text-emerald-800 border-emerald-200' },
-  pending_approval: { label: 'Pending approval', cls: 'bg-blue-50 text-blue-800 border-blue-200' },
+  submitted: { label: 'In progress', cls: 'bg-amber-50 text-amber-800 border-amber-200' },
 };
 const TYPE_LABEL = { branch: 'Branch', route_b2b: 'Route / B2B' };
 const STAGE_NAMES = { new: 'New', contacted: 'Assigned', quotation_sent: 'Quote sent', sample_sent: 'Sample / negotiation', won: 'Won', lost: 'Lost' };
@@ -66,82 +67,51 @@ async function downloadBlob(authFetch, url, filename) {
 
 export default function Customers({ authFetch, showToast, canManage, initialFilter, onOpenSettings }) {
   const { tab: initialTab, ...initialListFilter } = initialFilter || {};
-  const [tab, setTab] = useState(initialTab || 'list');
-  const [summary, setSummary] = useState(null);
-  const [links, setLinks] = useState([]);
+  const [importing, setImporting] = useState(initialTab === 'import');
   const [fields, setFields] = useState([]);
-  const [listFilter, setListFilter] = useState({ salesmanId: 'all', status: 'all', search: '', missing: '', ...initialListFilter });
+  const [salesmen, setSalesmen] = useState([]);
   const [openId, setOpenId] = useState(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
-  const loadSummary = useCallback(async () => {
-    const [s, f, l] = await Promise.all([
-      authFetch('/api/customers/summary'),
-      authFetch('/api/customer-fields'),
-      canManage ? authFetch('/api/customer-links') : Promise.resolve(null),
-    ]);
-    if (s.ok) setSummary(await s.json());
+  const loadMeta = useCallback(async () => {
+    const [f, s] = await Promise.all([authFetch('/api/customer-fields'), authFetch('/api/salesmen')]);
     if (f.ok) setFields(await f.json());
-    if (l && l.ok) setLinks(await l.json());
-  }, [authFetch, canManage]);
-
-  useEffect(() => { loadSummary().catch(() => showToast('Could not load customer data', 'error')); }, [loadSummary]);
-
-  const salesmenOptions = useMemo(() => {
-    const src = links.length ? links : (summary?.salesmen || []);
-    return src.map((s) => ({ id: s.salesmanId, name: s.name, type: s.type }));
-  }, [links, summary]);
-
-  const tabs = [
-    ['list', 'All customers'],
-    ['overview', 'Progress'],
-    ...(canManage ? [['import', 'Import list']] : []),
-  ];
+    if (s.ok) setSalesmen((await s.json()).map((x) => ({ id: String(x.id), name: x.name, type: x.type })));
+  }, [authFetch]);
+  useEffect(() => { loadMeta().catch(() => showToast('Could not load customer data', 'error')); }, [loadMeta]);
+  const changed = () => setReloadKey((k) => k + 1);
 
   return (
-    <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-5 pb-24 md:pb-8">
+    <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 pb-24 md:pb-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-900">Customers</h1>
-          <p className="text-sm text-slate-500">Every customer, their details, documents, enquiries and quotations.</p>
+          <p className="text-sm text-slate-500">Tap a customer to see details, documents, enquiries and quotations.</p>
         </div>
         {canManage && (
           <div className="flex flex-wrap gap-2">
-          {onOpenSettings && (
-            <button type="button" className={btnLight} onClick={() => onOpenSettings('settings-links')}>
-              <Link2 className="w-4 h-4" /> Salesman links
+            <button type="button" className={btnLight} onClick={() => setImporting((v) => !v)}><Upload className="w-4 h-4" /> Import list</button>
+            <button type="button" className={btnLight}
+              onClick={() => downloadBlob(authFetch, '/api/customers/export', `monipack_customers_${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => showToast(e.message, 'error'))}>
+              <Download className="w-4 h-4" /> Export
             </button>
-          )}
-          <button type="button" className={btnLight}
-            onClick={() => downloadBlob(authFetch, '/api/customers/export', `monipack_customers_${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => showToast(e.message, 'error'))}>
-            <Download className="w-4 h-4" /> Export Excel (CSV)
-          </button>
+            {onOpenSettings && (
+              <button type="button" className={btnLight} onClick={() => onOpenSettings('settings-links')}><Link2 className="w-4 h-4" /> Salesman links</button>
+            )}
           </div>
         )}
       </div>
 
-      <div role="tablist" aria-label="Customer sections" className="flex flex-wrap gap-1 p-1 bg-white border border-slate-200 rounded-full w-fit">
-        {tabs.map(([id, label]) => (
-          <button key={id} role="tab" aria-selected={tab === id} type="button" onClick={() => setTab(id)}
-            className={`min-h-[40px] px-4 rounded-full text-xs font-bold transition ${tab === id ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
-            {label}
-          </button>
-        ))}
-      </div>
+      {importing && canManage && (
+        <ImportTab authFetch={authFetch} showToast={showToast} onDone={() => { setImporting(false); changed(); }} />
+      )}
 
-      {tab === 'overview' && (
-        <Overview summary={summary} onOpenList={(f) => { setListFilter({ salesmanId: 'all', status: 'all', search: '', missing: '', ...f }); setTab('list'); }} />
-      )}
-      {tab === 'list' && (
-        <CustomerList authFetch={authFetch} showToast={showToast} canManage={canManage} filter={listFilter}
-          setFilter={setListFilter} salesmen={salesmenOptions} fields={fields} onOpen={setOpenId} onChanged={loadSummary} />
-      )}
-      {tab === 'import' && canManage && (
-        <ImportTab authFetch={authFetch} showToast={showToast} onDone={() => { loadSummary(); setTab('overview'); }} />
-      )}
+      <CustomerList key={reloadKey} authFetch={authFetch} showToast={showToast} canManage={canManage} initialFilter={initialListFilter}
+        salesmen={salesmen} fields={fields} onOpen={setOpenId} onChanged={changed} />
 
       {openId && (
         <CustomerDetail id={openId} authFetch={authFetch} showToast={showToast} canManage={canManage}
-          fields={fields} salesmen={salesmenOptions} onClose={() => setOpenId(null)} onChanged={loadSummary} />
+          fields={fields} salesmen={salesmen} onClose={() => setOpenId(null)} onChanged={changed} />
       )}
     </div>
   );
@@ -178,93 +148,22 @@ export function CustomerFieldsPage({ authFetch, showToast }) {
   );
 }
 
-// ---------------- Progress overview ----------------
-function Overview({ summary, onOpenList }) {
-  if (!summary) return <div className={`${card} p-8 text-center text-sm text-slate-500`}>Loading…</div>;
-  const t = summary.totals;
-  const kpis = [
-    ['Total customers', t.total, null],
-    ['Not started', t.not_started, 'not_started'],
-    ['Submitted', t.submitted, 'submitted'],
-    ['Complete', t.complete, 'complete'],
-    ['Pending approval', t.pending_approval, 'pending_approval'],
-  ];
-  return (
-    <div className="space-y-5">
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-3">
-        {kpis.map(([label, value, status]) => (
-          <button key={label} type="button" onClick={() => status && onOpenList({ status })}
-            className={`${card} p-4 text-left ${status ? 'hover:border-slate-400' : 'cursor-default'}`}>
-            <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
-            <span className="block mt-1 text-2xl font-extrabold tabular-nums">{value}</span>
-          </button>
-        ))}
-        <div className="rounded-3xl p-4 bg-slate-900 text-white">
-          <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">Data complete</span>
-          <span className="block mt-1 text-2xl font-extrabold tabular-nums">{t.percentComplete ?? 0}%</span>
-        </div>
-      </div>
-
-      <section className={`${card} overflow-hidden`} aria-labelledby="prog-h">
-        <div className="px-5 py-4 border-b border-slate-100">
-          <h2 id="prog-h" className="text-base font-bold">Progress by salesman</h2>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
-              <tr>
-                {['Salesman', 'Type', 'Assigned', 'Not started', 'Submitted', 'Complete', 'Pending', 'Data complete', 'Last activity', ''].map((h) => (
-                  <th key={h} className="text-left font-bold px-4 py-2.5 whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {summary.salesmen.length === 0 && (
-                <tr><td colSpan={10} className="px-4 py-6 text-center text-slate-500">No customers yet. Import your list in the Import tab.</td></tr>
-              )}
-              {summary.salesmen.map((s) => {
-                return (
-                  <tr key={s.salesmanId}>
-                    <td className="px-4 py-3 font-semibold">{s.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{TYPE_LABEL[s.type] || s.type}</td>
-                    <td className="px-4 py-3 tabular-nums">{s.assigned}</td>
-                    <td className="px-4 py-3 tabular-nums font-bold">{s.remaining}</td>
-                    <td className="px-4 py-3 tabular-nums">{s.submitted}</td>
-                    <td className="px-4 py-3 tabular-nums">{s.complete}</td>
-                    <td className="px-4 py-3 tabular-nums">{s.pending}</td>
-                    <td className="px-4 py-3 whitespace-nowrap"><PercentBar value={s.percent} /></td>
-                    <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmt(s.lastActivity)}</td>
-                    <td className="px-4 py-3">
-                      <button type="button" className={btnLight} onClick={() => onOpenList({ salesmanId: s.salesmanId })}>View</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className={`${card} p-5 space-y-3`} aria-labelledby="miss-h">
-        <h2 id="miss-h" className="text-base font-bold">Missing details (submitted customers)</h2>
-        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-          {summary.missing.map((m) => (
-            <button key={m.key} type="button" disabled={!m.count} onClick={() => onOpenList({ missing: m.key })}
-              className="flex items-center justify-between min-h-[44px] px-4 rounded-2xl bg-slate-50 hover:bg-slate-100 disabled:hover:bg-slate-50 text-sm">
-              <span className="font-semibold text-slate-700">{m.label}</span>
-              <span className={`tabular-nums font-extrabold ${m.count ? 'text-[#CC1A22]' : 'text-slate-400'}`}>{m.count}</span>
-            </button>
-          ))}
-        </div>
-      </section>
-    </div>
-  );
-}
-
 // ---------------- Customer list ----------------
-function CustomerList({ authFetch, showToast, canManage, filter, setFilter, salesmen, fields, onOpen, onChanged }) {
+const STAGE_CHIPS = [
+  ['all', 'All'],
+  ['pending_approval', 'Needs approval'],
+  ['not_started', 'Not started'],
+  ['in_progress', 'In progress'],
+  ['complete', 'Complete'],
+];
+
+function CustomerList({ authFetch, showToast, canManage, initialFilter = {}, salesmen, fields, onOpen, onChanged }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState(initialFilter.search || '');
+  const [salesmanId, setSalesmanId] = useState(initialFilter.salesmanId || 'all');
+  const [stage, setStage] = useState(initialFilter.status === 'pending_approval' ? 'pending_approval' : initialFilter.stage || 'all');
+  const [missing, setMissing] = useState(initialFilter.missing || '');
   const [selected, setSelected] = useState([]);
   const [transferTo, setTransferTo] = useState('');
   const [adding, setAdding] = useState(false);
@@ -273,14 +172,33 @@ function CustomerList({ authFetch, showToast, canManage, filter, setFilter, sale
   const load = useCallback(async () => {
     setLoading(true);
     const qs = new URLSearchParams();
-    Object.entries(filter).forEach(([k, v]) => { if (v && v !== 'all') qs.set(k, v); });
+    if (salesmanId !== 'all') qs.set('salesmanId', salesmanId);
+    if (search.trim()) qs.set('search', search.trim());
     const res = await authFetch(`/api/customers?${qs.toString()}`);
     if (res.ok) setRows(await res.json());
     setLoading(false);
     setSelected([]);
-  }, [authFetch, filter]);
+  }, [authFetch, salesmanId, search]);
 
-  useEffect(() => { load().catch(() => setLoading(false)); }, [load]);
+  useEffect(() => {
+    const t = setTimeout(() => load().catch(() => setLoading(false)), 250);
+    return () => clearTimeout(t);
+  }, [load]);
+
+  const counts = useMemo(() => {
+    const c = { all: rows.length, pending_approval: 0, not_started: 0, in_progress: 0, complete: 0 };
+    rows.forEach((r) => { c[r.stage] = (c[r.stage] || 0) + 1; });
+    return c;
+  }, [rows]);
+
+  // "Missing" filter: how many started customers are missing each detail
+  const missingCounts = useMemo(() => {
+    const m = {};
+    rows.filter((r) => r.stage !== 'not_started').forEach((r) => r.missing.forEach((k) => { m[k] = (m[k] || 0) + 1; }));
+    return fields.filter((f) => m[f.key]).map((f) => ({ key: f.key, label: f.label, count: m[f.key] }));
+  }, [rows, fields]);
+
+  const shown = rows.filter((r) => (stage === 'all' || r.stage === stage) && (!missing || (r.stage !== 'not_started' && r.missing.includes(missing))));
 
   const transfer = async () => {
     if (!transferTo || !selected.length) return;
@@ -292,36 +210,41 @@ function CustomerList({ authFetch, showToast, canManage, filter, setFilter, sale
     if (res.ok) { showToast(`${body.moved} customer(s) transferred.`); load(); onChanged(); } else showToast(body.error || 'Transfer failed', 'error');
   };
 
-  const allChecked = rows.length > 0 && selected.length === rows.length;
+  const allChecked = shown.length > 0 && shown.every((r) => selected.includes(r.id));
 
   return (
     <div className="space-y-3">
+      <div role="tablist" aria-label="Filter by status" className="flex flex-wrap gap-2">
+        {STAGE_CHIPS.map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={stage === id} onClick={() => setStage(id)}
+            className={`min-h-[40px] px-4 rounded-full text-xs font-bold border inline-flex items-center gap-2 transition ${stage === id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400'}`}>
+            {label}
+            <span className={`tabular-nums text-[11px] px-1.5 rounded-full ${stage === id ? 'bg-white/20' : id === 'pending_approval' && counts[id] ? 'bg-blue-100 text-blue-800' : 'bg-slate-100'}`}>{counts[id] || 0}</span>
+          </button>
+        ))}
+      </div>
+
       <div className={`${card} p-3 flex flex-wrap items-center gap-2`}>
         <div className="relative flex-1 min-w-[200px]">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
           <label htmlFor="cust-search" className="sr-only">Search</label>
-          <input id="cust-search" type="search" placeholder="Name, mobile, CR or VAT" value={filter.search}
-            onChange={(e) => setFilter({ ...filter, search: e.target.value })}
+          <input id="cust-search" type="search" placeholder="Search name, mobile, CR or VAT" value={search}
+            onChange={(e) => setSearch(e.target.value)}
             className="w-full h-10 pl-9 pr-3 rounded-full border border-slate-300 text-sm" />
         </div>
         <label className="sr-only" htmlFor="cust-sm">Salesman</label>
-        <select id="cust-sm" value={filter.salesmanId} onChange={(e) => setFilter({ ...filter, salesmanId: e.target.value })}
+        <select id="cust-sm" value={salesmanId} onChange={(e) => setSalesmanId(e.target.value)}
           className="h-10 px-3 rounded-full border border-slate-300 text-sm bg-white">
           <option value="all">All salesmen</option>
-          <option value="unassigned">Unassigned</option>
+          <option value="unassigned">No salesman</option>
           {salesmen.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
-        <label className="sr-only" htmlFor="cust-st">Status</label>
-        <select id="cust-st" value={filter.status} onChange={(e) => setFilter({ ...filter, status: e.target.value })}
+        <label className="sr-only" htmlFor="cust-missing">Missing detail</label>
+        <select id="cust-missing" value={missing} onChange={(e) => setMissing(e.target.value)}
           className="h-10 px-3 rounded-full border border-slate-300 text-sm bg-white">
-          <option value="all">All statuses</option>
-          {Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          <option value="">Missing: any</option>
+          {missingCounts.map((m) => <option key={m.key} value={m.key}>Missing {m.label} ({m.count})</option>)}
         </select>
-        {filter.missing && (
-          <button type="button" className={btnLight} onClick={() => setFilter({ ...filter, missing: '' })}>
-            Missing: {fieldLabel[filter.missing] || filter.missing} <X className="w-3.5 h-3.5" />
-          </button>
-        )}
         {canManage && (
           <button type="button" className={btnRed} onClick={() => setAdding(true)}><Plus className="w-4 h-4" /> Add customer</button>
         )}
@@ -333,63 +256,59 @@ function CustomerList({ authFetch, showToast, canManage, filter, setFilter, sale
           <label htmlFor="cust-transfer" className="sr-only">Transfer to</label>
           <select id="cust-transfer" value={transferTo} onChange={(e) => setTransferTo(e.target.value)}
             className="h-9 px-3 rounded-full text-sm text-slate-900 bg-white">
-            <option value="">Transfer to…</option>
+            <option value="">Move to salesman…</option>
             {salesmen.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <button type="button" className={btnRed} disabled={!transferTo} onClick={transfer}><ArrowRightLeft className="w-4 h-4" /> Transfer</button>
+          <button type="button" className={btnRed} disabled={!transferTo} onClick={transfer}><ArrowRightLeft className="w-4 h-4" /> Move</button>
           <button type="button" className={`${btn} text-white hover:bg-white/10`} onClick={() => setSelected([])}>Clear</button>
         </div>
       )}
 
-      <div className={`${card} overflow-x-auto`}>
+      <div className={`${card} overflow-hidden`}>
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
             <tr>
               {canManage && (
-                <th className="px-3 py-2.5 w-10">
-                  <input type="checkbox" aria-label="Select all" checked={allChecked}
-                    onChange={() => setSelected(allChecked ? [] : rows.map((r) => r.id))} />
+                <th className="pl-4 pr-1 py-2.5 w-8">
+                  <input type="checkbox" aria-label="Select all shown" checked={allChecked}
+                    onChange={() => setSelected(allChecked ? [] : shown.map((r) => r.id))} />
                 </th>
               )}
-              {['Customer', 'Salesman', 'Status', 'Complete', 'Mobile', 'CR', 'Still missing', 'Files'].map((h) => (
-                <th key={h} className="text-left font-bold px-3 py-2.5 whitespace-nowrap">{h}</th>
-              ))}
+              <th className="text-left font-bold px-3 py-2.5">Customer</th>
+              <th className="text-left font-bold px-3 py-2.5 hidden md:table-cell">Salesman</th>
+              <th className="text-left font-bold px-3 py-2.5">Progress</th>
+              <th className="text-left font-bold px-3 py-2.5 hidden lg:table-cell">Still missing</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {loading && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500"><Loader2 className="w-5 h-5 animate-spin inline" /> Loading…</td></tr>}
-            {!loading && rows.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500">No customers match these filters.</td></tr>}
-            {!loading && rows.map((c) => (
-              <tr key={c.id} className="hover:bg-slate-50">
+            {loading && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500"><Loader2 className="w-5 h-5 animate-spin inline" /> Loading…</td></tr>}
+            {!loading && shown.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">No customers here.</td></tr>}
+            {!loading && shown.map((c) => (
+              <tr key={c.id} className="hover:bg-slate-50 cursor-pointer" onClick={() => onOpen(c.id)}>
                 {canManage && (
-                  <td className="px-3 py-2.5">
+                  <td className="pl-4 pr-1 py-3" onClick={(e) => e.stopPropagation()}>
                     <input type="checkbox" aria-label={`Select ${c.name}`} checked={selected.includes(c.id)}
                       onChange={() => setSelected((s) => (s.includes(c.id) ? s.filter((x) => x !== c.id) : [...s, c.id]))} />
                   </td>
                 )}
-                <td className="px-3 py-2.5">
-                  <button type="button" className="font-semibold text-slate-900 hover:text-[#CC1A22] text-left" onClick={() => onOpen(c.id)}>{c.name}</button>
-                  {c.reviewNote && c.status === 'pending_approval' && (
-                    <p className="text-[11px] text-blue-800 max-w-xs truncate" title={c.reviewNote}>{c.reviewNote}</p>
-                  )}
+                <td className="px-3 py-3">
+                  <button type="button" className="font-semibold text-slate-900 hover:text-[#CC1A22] text-left" onClick={(e) => { e.stopPropagation(); onOpen(c.id); }}>{c.name}</button>
+                  <span className="block text-xs text-slate-500 tabular-nums">
+                    {[c.mobile, c.noCr ? 'No CR' : c.crNumber && `CR ${c.crNumber}`].filter(Boolean).join(' · ') || 'No details yet'}
+                    {c.locked && <Lock className="w-3 h-3 inline ml-1" aria-label="Locked" />}
+                  </span>
+                  <span className="block md:hidden text-[11px] text-slate-500">{c.salesmanName || 'No salesman'}</span>
                 </td>
-                <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{c.salesmanName || 'Unassigned'}</td>
-                <td className="px-3 py-2.5 whitespace-nowrap"><StatusBadge status={c.status} />{c.locked && <Lock className="w-3.5 h-3.5 inline ml-1 text-slate-500" aria-label="Locked" />}</td>
-                <td className="px-3 py-2.5 whitespace-nowrap"><PercentBar value={c.percent} width="w-16" /></td>
-                <td className="px-3 py-2.5 tabular-nums whitespace-nowrap">{c.mobile || '—'}</td>
-                <td className="px-3 py-2.5 tabular-nums">{c.noCr ? <span className="text-amber-700 font-semibold">No CR</span> : c.crNumber || '—'}</td>
-                <td className="px-3 py-2.5">
-                  {c.status === 'not_started' ? <span className="text-xs text-slate-400">waiting for salesman</span> : (
-                    <div className="flex flex-wrap gap-1 max-w-xs">
-                      {c.missing.slice(0, 4).map((k) => (
-                        <span key={k} className="px-2 py-0.5 rounded-full bg-rose-50 text-rose-800 text-[10px] font-bold">{fieldLabel[k] || k}</span>
-                      ))}
-                      {c.missing.length > 4 && <span className="text-[10px] text-slate-500">+{c.missing.length - 4}</span>}
-                      {c.missing.length === 0 && <CheckCircle2 className="w-4 h-4 text-emerald-600" aria-label="Nothing missing" />}
-                    </div>
-                  )}
+                <td className="px-3 py-3 text-slate-600 whitespace-nowrap hidden md:table-cell">{c.salesmanName || 'No salesman'}</td>
+                <td className="px-3 py-3 whitespace-nowrap">
+                  <StatusBadge status={c.stage} />
+                  {c.stage !== 'not_started' && <span className="block mt-1"><PercentBar value={c.percent} width="w-16" /></span>}
                 </td>
-                <td className="px-3 py-2.5 tabular-nums">{c.photoCount}</td>
+                <td className="px-3 py-3 hidden lg:table-cell text-xs text-slate-600 max-w-[280px]">
+                  {c.stage === 'not_started' ? <span className="text-slate-400">Waiting for salesman</span>
+                    : c.missing.length === 0 ? <span className="text-emerald-700 font-semibold">Nothing missing</span>
+                    : <span className="line-clamp-2"><strong className="text-rose-700">{c.missing.length}</strong> · {c.missing.slice(0, 3).map((k) => fieldLabel[k] || k).join(', ')}{c.missing.length > 3 ? '…' : ''}</span>}
+                </td>
               </tr>
             ))}
           </tbody>
@@ -553,7 +472,7 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
     <Modal title={c.name} onClose={onClose} wide>
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
-          <StatusBadge status={c.status} />
+          <StatusBadge status={c.stage || c.status} />
           <PercentBar value={c.percent} />
           <span className="text-xs text-slate-500">Salesman: <strong>{c.salesmanName || 'Unassigned'}</strong> ({TYPE_LABEL[type]}) · Source: {c.source} · Submitted: {fmt(c.submittedAt)}</span>
           {canManage && c.status !== 'not_started' && (
@@ -564,6 +483,11 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
           )}
         </div>
         {c.locked && <p className="p-3 rounded-2xl bg-slate-100 text-slate-700 text-sm"><Lock className="w-4 h-4 inline mr-1" />Locked. The salesman can see this customer but can't add details or documents.</p>}
+        {c.status !== 'not_started' && (c.missing || []).length > 0 && (
+          <p className="p-3 rounded-2xl bg-rose-50 text-rose-900 text-sm">
+            <strong>Still missing ({c.missing.length}):</strong> {c.missing.map((k) => fields.find((f) => f.key === k)?.label || k).join(', ')}
+          </p>
+        )}
 
         <section className="grid sm:grid-cols-3 gap-2" aria-label="Business with this customer">
           {[['Enquiries', (c.leads || []).length], ['Quotations', (c.quotations || []).length], ['Won (OMR)', Number(c.wonValue || 0).toFixed(3)]].map(([label, v]) => (

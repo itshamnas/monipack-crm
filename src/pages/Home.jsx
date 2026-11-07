@@ -124,7 +124,7 @@ export default function Home({ authFetch, leads = [], quotations = [], currentUs
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {[
           ['Customers', t ? t.total : '…', () => onOpenCustomers({})],
-          ['Customer data complete', t ? `${t.percentComplete ?? 0}%` : '…', () => onOpenCustomers({ tab: 'overview' })],
+          ['Customer data complete', t ? `${t.percentComplete ?? 0}%` : '…', () => onOpenCustomers({})],
           ['Open leads', stats.openCount, () => onNavigate('leads')],
           ['Open pipeline', omr(stats.pipeline), () => onNavigate('leads')],
           ['Won this month', omr(stats.wonMonth), () => onNavigate('leads')],
