@@ -85,6 +85,55 @@ export default function Customers({ authFetch, showToast, canManage, initialFilt
   const changed = () => setReloadKey((k) => k + 1);
   const [busy, setBusy] = useState('');
 
+  // ---- Duplicates: find customers that are probably the same business and merge them ----
+  const d8 = (m) => String(m || '').replace(/\D/g, '').slice(-8);
+  const nn = (n) => String(n || '').toLowerCase().replace(/\b(llc|l\.l\.c|spc|s\.p\.c|co|company|trading|est|establishment)\b/g, '').replace(/[^a-z0-9\u0600-\u06ff]+/g, ' ').trim();
+  const matchWhy = (a, c) => {
+    const why = [];
+    if (d8(a.mobile).length === 8 && d8(a.mobile) === d8(c.mobile)) why.push('same mobile');
+    if (a.crNumber && a.crNumber !== 'NO CR' && a.crNumber.toLowerCase() === String(c.crNumber || '').toLowerCase()) why.push('same CR');
+    if (nn(a.name).length >= 4 && nn(a.name) === nn(c.name)) why.push('same name');
+    return why;
+  };
+  const [dupMerge, setDupMerge] = useState({}); // `${group}:${id}` -> true/false (default: direct match with the kept one)
+  const isMerging = (i, g, c) => { const k = `${i}:${c.id}`; if (dupMerge[k] !== undefined) return dupMerge[k]; const keep = g.customers.find((x) => x.id === (dupKeep[i] || g.customers[0].id)); return c.id !== keep.id && matchWhy(keep, c).includes('same name'); };
+  const [dupOpen, setDupOpen] = useState(false);
+  const [dups, setDups] = useState(null);
+  const [dupKeep, setDupKeep] = useState({}); // groupIndex -> id to keep
+  const [dupBusy, setDupBusy] = useState('');
+  const loadDups = async () => {
+    setDups(null);
+    try {
+      const r = await authFetch('/api/customers/duplicates');
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Could not check for duplicates');
+      setDups(d);
+      setDupMerge({});
+      setDupKeep(Object.fromEntries(d.map((g, i) => {
+        const best = [...g.customers].sort((a, b) => g.customers.filter((c) => c !== b && matchWhy(b, c).length).length - g.customers.filter((c) => c !== a && matchWhy(a, c).length).length)[0];
+        return [i, best.id];
+      })));
+    } catch (e) { showToast(e.message, 'error'); setDups([]); }
+  };
+  const toggleDups = () => { setDupOpen((v) => !v); if (!dupOpen) loadDups(); };
+  const mergeGroup = async (g, i) => {
+    const keepId = dupKeep[i] || g.customers[0].id;
+    const keep = g.customers.find((c) => c.id === keepId);
+    const others = g.customers.filter((c) => c.id !== keepId && isMerging(i, g, c));
+    if (!others.length) { showToast('Tick at least one customer to merge', 'error'); return; }
+    if (!window.confirm(`Merge ${others.map((c) => `"${c.name}"`).join(', ')} into "${keep.name}"?\n\nTheir enquiries and documents move to "${keep.name}", empty details are filled in, and the others are removed. This cannot be undone.`)) return;
+    setDupBusy(String(i));
+    try {
+      const r = await authFetch('/api/customers/merge', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ keepId, mergeIds: others.map((c) => c.id) }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || 'Could not merge');
+      showToast(`Merged into ${keep.name}: ${d.moved.enquiries} enquiries, ${d.moved.documents} documents moved`);
+      changed();
+      await loadDups();
+    } catch (e) { showToast(e.message, 'error'); }
+    setDupBusy('');
+  };
+
   // ---- Download centre: pick any sections, get Excel or PDF (watermarked) ----
   const [dlOpen, setDlOpen] = useState(false);
   const [sections, setSections] = useState([]); // [{ id, name, count }]
@@ -171,6 +220,9 @@ export default function Customers({ authFetch, showToast, canManage, initialFilt
             {onOpenSettings && (
               <button type="button" className={`${btnLight} shrink-0`} onClick={() => onOpenSettings('settings-links')}><Link2 className="w-4 h-4" /> Salesman links</button>
             )}
+            <button type="button" className={`${btnLight} shrink-0 ${dupOpen ? 'ring-2 ring-red-500/20 border-red-300' : ''}`} onClick={toggleDups} aria-expanded={dupOpen}>
+              <Users className="w-4 h-4 text-amber-600" /> Duplicates
+            </button>
             <button type="button" className={`${btnLight} shrink-0 ${dlOpen ? 'ring-2 ring-red-500/20 border-red-300' : ''}`} onClick={openDownloads} aria-expanded={dlOpen}>
               <Download className="w-4 h-4 text-emerald-600" /> Download data
             </button>
@@ -178,6 +230,63 @@ export default function Customers({ authFetch, showToast, canManage, initialFilt
           </div>
         )}
       </div>
+
+      {canManage && dupOpen && (
+        <section className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-5 animate-in fade-in slide-in-from-top-2" aria-label="Duplicate customers">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-[15px] font-bold">Possible duplicates</h2>
+              <p className="text-xs text-slate-500">Customers with the same mobile, CR number or name. Pick the one to keep and tick the ones to merge into it; their enquiries and documents move to it. Only same-name matches are ticked for you.</p>
+            </div>
+            <button type="button" className={btnLight} onClick={loadDups}>Check again</button>
+          </div>
+          {!dups ? (
+            <p className="mt-4 text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Checking all customers…</p>
+          ) : !dups.length ? (
+            <p className="mt-4 text-sm text-emerald-700 font-semibold">No duplicates found. Every customer looks unique.</p>
+          ) : (
+            <ul className="mt-3 space-y-3 mp-stagger">
+              {dups.map((g, i) => (
+                <li key={g.customers.map((c) => c.id).join('-')} className="rounded-2xl border border-slate-200 overflow-hidden">
+                  <div className="px-3 py-2 bg-slate-50 flex flex-wrap items-center gap-2 text-xs">
+                    {g.reasons.map((r) => <span key={r} className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 font-bold">{r}</span>)}
+                    <span className="text-slate-500">{g.customers.length} customers</span>
+                    <button type="button" className={`${btnRed} ml-auto`} disabled={dupBusy === String(i)} onClick={() => mergeGroup(g, i)}>
+                      {dupBusy === String(i) ? <Loader2 className="w-4 h-4 animate-spin" /> : null} Merge ticked into the kept one
+                    </button>
+                  </div>
+                  <div className="divide-y divide-slate-100">
+                    {g.customers.map((c) => (
+                      <div key={c.id} className={`flex flex-wrap sm:flex-nowrap items-center gap-3 px-3 py-2.5 ${dupKeep[i] === c.id ? 'bg-emerald-50/60' : isMerging(i, g, c) ? 'bg-red-50/40' : ''}`}>
+                        <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 cursor-pointer" title="Keep this customer">
+                          <input type="radio" name={`keep-${i}`} className="w-4 h-4" checked={dupKeep[i] === c.id} onChange={() => { setDupKeep((k) => ({ ...k, [i]: c.id })); setDupMerge((m) => Object.fromEntries(Object.entries(m).filter(([k]) => !k.startsWith(`${i}:`)))); }} /> Keep
+                        </label>
+                        {dupKeep[i] !== c.id && (
+                          <label className="flex items-center gap-1.5 text-[11px] font-bold text-slate-600 cursor-pointer" title="Merge this customer into the kept one">
+                            <input type="checkbox" className="w-4 h-4" checked={isMerging(i, g, c)} onChange={(e) => setDupMerge((m) => ({ ...m, [`${i}:${c.id}`]: e.target.checked }))} /> Merge
+                          </label>
+                        )}
+                        <span className="flex-1 min-w-[160px]">
+                          <b className="text-sm">{c.name}</b>
+                          {dupKeep[i] !== c.id && (() => { const keep = g.customers.find((x) => x.id === dupKeep[i]); const why = keep ? matchWhy(keep, c) : []; return why.length
+                            ? <span className={`ml-2 text-[11px] font-bold ${why.includes('same name') ? 'text-amber-700' : 'text-rose-600'}`}>{why.join(' · ')}{why.includes('same name') ? '' : ' · different name, check first'}</span>
+                            : <span className="ml-2 text-[11px] font-bold text-slate-400">no direct match with the kept one</span>; })()}
+                          <span className="block text-[11.5px] text-slate-500">{c.mobile || 'No mobile'} · CR {c.crNumber || '—'} · {c.salesmanName || 'No salesman'}</span>
+                        </span>
+                        <span className="flex gap-1.5 text-[11px] font-semibold text-slate-600">
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100">{c.leadCount} enquiries</span>
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100">{c.fileCount} documents</span>
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100">{c.filled} details</span>
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {canManage && dlOpen && (
         <section className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-5 animate-in fade-in slide-in-from-top-2" aria-label="Download data">

@@ -91,6 +91,8 @@ export function leadToApi(row) {
     lostReason: row.lost_reason || '',
     date: row.date ? new Date(row.date).toISOString() : new Date().toISOString(),
     lastContactedAt: row.last_contacted_at ? new Date(row.last_contacted_at).toISOString() : null,
+    nextFollowUpAt: row.next_follow_up_at ? new Date(row.next_follow_up_at).toISOString() : null,
+    followUpNote: row.follow_up_note || '',
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : new Date().toISOString(),
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : new Date().toISOString(),
   };

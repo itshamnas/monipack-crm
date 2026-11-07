@@ -14,6 +14,7 @@ import Login from './pages/Login.jsx';
 import ChangePassword from './pages/ChangePassword.jsx';
 import CustomerCare from './pages/CustomerCare.jsx';
 import DataCleanup from './pages/DataCleanup.jsx';
+import SalesTargets from './pages/SalesTargets.jsx';
 import Customers, { SalesmanLinksPage, CustomerFieldsPage } from './pages/Customers.jsx';
 import Home from './pages/Home.jsx';
 import SectionTabs from './components/layout/SectionTabs.jsx';
@@ -200,6 +201,9 @@ export default function App() {
       setActiveTab('dashboard');
     }
     if (['settings-links', 'settings-fields'].includes(activeTab) && currentUser && !currentUser.permissions?.includes('customers.manage')) {
+      setActiveTab('dashboard');
+    }
+    if (activeTab === 'settings-targets' && currentUser && !currentUser.permissions?.includes('settings.manage')) {
       setActiveTab('dashboard');
     }
     if (activeTab === 'settings-cleanup' && currentUser && currentUser.role !== 'super_admin') {
@@ -491,6 +495,7 @@ export default function App() {
   const titles = {
     analytics: { title: 'Charts', shortTitle: 'Charts', subtitle: 'Pipeline funnel, categories and branches' },
     'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: 'Each salesman\'s secret link, type and PIN' },
+    'settings-targets': { title: 'Sales targets', shortTitle: 'Targets', subtitle: 'Monthly OMR target for each salesman' },
     'settings-cleanup': { title: 'Data cleanup', shortTitle: 'Cleanup', subtitle: 'Super admin only: delete test or old data before going live' },
     'settings-fields': { title: 'Customer form', shortTitle: 'Customer form', subtitle: 'Fields salesmen fill in, required fields and dropdown choices' },
     customers: {
@@ -718,6 +723,10 @@ export default function App() {
 
         {activeTab === 'settings-fields' && can('customers.manage') && (
           <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-24 md:pb-8"><CustomerFieldsPage authFetch={authFetch} showToast={showToast} /></div>
+        )}
+
+        {activeTab === 'settings-targets' && can('settings.manage') && (
+          <div className="p-3 sm:p-6 lg:p-8 max-w-5xl mx-auto pb-24 md:pb-8"><SalesTargets authFetch={authFetch} showToast={showToast} /></div>
         )}
 
         {activeTab === 'settings-cleanup' && currentUser?.role === 'super_admin' && (

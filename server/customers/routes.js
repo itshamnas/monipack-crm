@@ -501,12 +501,12 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
           { label: 'Customer', width: 30 }, { label: 'Mobile', width: 16 }, { label: 'Product', width: 22 }, { label: 'Quantity', width: 25 },
           { label: 'Stage', width: 16 }, { label: 'Salesman', width: 20 }, { label: 'Branch', width: 14 }, { label: 'Location', width: 18 },
           { label: 'Deal value (OMR)', type: 'number', width: 14 }, { label: 'Lost reason', width: 20 }, { label: 'Notes', width: 50 },
-          { label: 'Last update', type: 'date', width: 17 },
+          { label: 'Last update', type: 'date', width: 17 }, { label: 'Next follow-up', type: 'date', width: 17 }, { label: 'Follow-up note', width: 30 },
         ],
         rows: leads.map((l) => [
           l.id, l.date || l.created_at, l.customer_id, l.customer_name_linked || l.name, l.mobile ? `${l.country_code || ''} ${l.mobile}`.trim() : l.phone,
           l.category, clean(l.quantity), LEAD_STAGES[l.status] || l.status, l.salesman_name, l.branch_name, clean(l.customer_location),
-          Number(l.deal_value || 0), l.lost_reason, clean(l.notes), l.updated_at,
+          Number(l.deal_value || 0), l.lost_reason, clean(l.notes), l.updated_at, l.next_follow_up_at, l.follow_up_note,
         ]),
       },
       {
@@ -576,6 +576,11 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
         columns: [{ label: 'Category', width: 30 }, { label: 'Added on', type: 'date', width: 17 }],
         rows: extra.categories.map((c) => [c.name, c.created_at]),
       },
+      {
+        id: 'targets', name: 'Sales targets',
+        columns: [{ label: 'Month', width: 10 }, { label: 'Salesman', width: 24 }, { label: 'Target (OMR)', type: 'number', width: 14 }, { label: 'Last changed', type: 'date', width: 17 }],
+        rows: (extra.targets || []).map((t) => [String(t.month instanceof Date ? t.month.toISOString() : t.month).slice(0, 7), t.salesman_name, Number(t.target_omr || 0), t.updated_at]),
+      },
       ...(isSuper ? [
         {
           id: 'staff', name: 'Staff logins',
@@ -628,6 +633,23 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     if (req.query.list === '1') return res.json(all.map((sh) => ({ id: sh.id, name: sh.name, count: sh.rows.length })));
     await audit(req, `Downloaded Customer Data Centre (PDF): ${picked.map((sh) => sh.name).join(', ')}`);
     res.json(picked.map((s) => ({ id: s.id, name: s.name, columns: s.columns, rows: s.rows })));
+  }));
+
+  // ---- Duplicate customers (same mobile / CR / name): list and merge ----
+  app.get('/api/customers/duplicates', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
+    res.json(await cdb.findDuplicateCustomers());
+  }));
+  app.post('/api/customers/merge', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
+    const { keepId, mergeIds } = req.body || {};
+    if (!keepId || !Array.isArray(mergeIds) || !mergeIds.length) return res.status(400).json({ error: 'Choose the customer to keep and at least one to merge into it.' });
+    try {
+      const r = await cdb.mergeCustomers(keepId, mergeIds);
+      await audit(req, `Merged ${r.names.join(', ')} into ${r.keptName} (#${r.keptId}): ${Object.entries(r.moved).map(([k, v]) => `${v} ${k}`).join(', ')}`);
+      res.json({ ok: true, ...r });
+    } catch (e) {
+      if (e.status) return res.status(e.status).json({ error: e.message });
+      throw e;
+    }
   }));
 
   app.get('/api/customers/export', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {

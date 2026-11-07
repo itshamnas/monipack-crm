@@ -708,7 +708,7 @@ export async function getDataCentreRows() {
 /** Everything else for the full Data Centre download (no passwords or secrets) */
 export async function getDataCentreExtras({ includeSecurity = false } = {}) {
   const safe = (sql) => query(sql).then((r) => r.rows).catch(() => []);
-  const [items, products, branches, activities, history, transfers, categories, users, auditLog] = await Promise.all([
+  const [items, products, branches, activities, history, transfers, categories, targets, users, auditLog] = await Promise.all([
     safe(`SELECT i.*, q.code, q.customer_name, q.date AS quote_date FROM quotation_items i JOIN quotations q ON q.id = i.quotation_id
           WHERE q.archived_at IS NULL ORDER BY q.created_at DESC, i.seq`),
     safe(`SELECT * FROM products WHERE archived_at IS NULL ORDER BY category, name`),
@@ -721,8 +721,106 @@ export async function getDataCentreExtras({ includeSecurity = false } = {}) {
           LEFT JOIN salesmen fs ON fs.id = t.from_salesman_id LEFT JOIN salesmen ts ON ts.id = t.to_salesman_id
           LEFT JOIN users u ON u.id = t.by_user_id ORDER BY t.transferred_at DESC`),
     safe(`SELECT * FROM categories ORDER BY name`),
+    safe(`SELECT t.month, t.target_omr, t.updated_at, s.name AS salesman_name FROM sales_targets t JOIN salesmen s ON s.id = t.salesman_id ORDER BY t.month DESC, s.name`),
     includeSecurity ? safe(`SELECT id, name, email, role, can_export, is_active, last_login_at, created_at FROM users WHERE archived_at IS NULL ORDER BY role, name`) : [],
     includeSecurity ? safe(`SELECT event_type, user_name, target_email, ip_address, description, created_at FROM audit_log ORDER BY created_at DESC LIMIT 50000`) : [],
   ]);
-  return { items, products, branches, activities, history, transfers, categories, users, auditLog };
+  return { items, products, branches, activities, history, transfers, categories, targets, users, auditLog };
+}
+
+// ---------------- Duplicate customers: find and merge ----------------
+const digits8 = (m) => String(m || '').replace(/\D/g, '').slice(-8);
+const normName = (n) => String(n || '').toLowerCase().replace(/\b(llc|l\.l\.c|spc|s\.p\.c|co|company|trading|est|establishment)\b/g, '').replace(/[^a-z0-9؀-ۿ]+/g, ' ').trim();
+
+/** Groups of customers that are probably the same business (same mobile, same CR, or same name) */
+export async function findDuplicateCustomers() {
+  const { rows } = await query(
+    `SELECT c.id, c.name, c.mobile, c.cr_number, c.no_cr, c.vat_number, c.status, c.salesman_id, c.created_at, c.data,
+            s.name AS salesman_name,
+            (SELECT COUNT(*) FROM leads l WHERE l.customer_id = c.id AND l.archived_at IS NULL) AS lead_count,
+            (SELECT COUNT(*) FROM customer_files f WHERE f.customer_id = c.id AND f.archived_at IS NULL) AS file_count
+       FROM customers c LEFT JOIN salesmen s ON s.id = c.salesman_id
+      WHERE c.archived_at IS NULL`
+  );
+  // union-find over the three keys
+  const parent = new Map(rows.map((r) => [r.id, r.id]));
+  const find = (x) => { while (parent.get(x) !== x) { parent.set(x, parent.get(parent.get(x))); x = parent.get(x); } return x; };
+  const join = (a, b) => { const ra = find(a); const rb = find(b); if (ra !== rb) parent.set(rb, ra); };
+  const reasons = new Map(); // id -> Set(reason)
+  const addReason = (id, r) => { if (!reasons.has(id)) reasons.set(id, new Set()); reasons.get(id).add(r); };
+  for (const [key, label] of [[(r) => (digits8(r.mobile).length === 8 ? digits8(r.mobile) : ''), 'same mobile'],
+    [(r) => (!r.no_cr && String(r.cr_number || '').trim() ? String(r.cr_number).trim().toLowerCase() : ''), 'same CR number'],
+    [(r) => (normName(r.name).length >= 4 ? normName(r.name) : ''), 'same name']]) {
+    const seen = new Map();
+    for (const r of rows) {
+      const k = key(r);
+      if (!k) continue;
+      if (seen.has(k)) { join(seen.get(k), r.id); addReason(r.id, label); addReason(seen.get(k), label); } else seen.set(k, r.id);
+    }
+  }
+  const groups = new Map();
+  for (const r of rows) {
+    if (!reasons.has(r.id)) continue;
+    const g = find(r.id);
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(r);
+  }
+  return [...groups.values()].filter((g) => g.length > 1).map((g) => ({
+    reasons: [...new Set(g.flatMap((r) => [...(reasons.get(r.id) || [])]))],
+    customers: g
+      .sort((a, b) => Number(b.lead_count) + Number(b.file_count) - (Number(a.lead_count) + Number(a.file_count)) || new Date(a.created_at) - new Date(b.created_at))
+      .map((r) => ({
+        id: String(r.id), name: r.name, mobile: r.mobile || '', crNumber: r.no_cr ? 'NO CR' : r.cr_number || '', vatNumber: r.vat_number || '',
+        status: r.status, salesmanId: r.salesman_id != null ? String(r.salesman_id) : null, salesmanName: r.salesman_name || '',
+        leadCount: Number(r.lead_count), fileCount: Number(r.file_count), filled: Object.values(r.data || {}).filter((v) => v !== '' && v != null && !(Array.isArray(v) && !v.length)).length,
+        createdAt: r.created_at,
+      })),
+  }));
+}
+
+/**
+ * Merge customers into one: enquiries, documents, submissions and transfers move to the kept customer;
+ * empty details on the kept customer are filled from the others; the others are archived.
+ */
+export async function mergeCustomers(keepId, mergeIds) {
+  const keep = parseInt(keepId, 10);
+  const others = [...new Set(mergeIds.map((x) => parseInt(x, 10)))].filter((x) => !Number.isNaN(x) && x !== keep);
+  if (Number.isNaN(keep) || !others.length) throw Object.assign(new Error('Choose the customer to keep and at least one to merge into it.'), { status: 400 });
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT * FROM customers WHERE id = ANY($1::int[]) AND archived_at IS NULL FOR UPDATE', [[keep, ...others]]);
+    const main = rows.find((r) => r.id === keep);
+    const dups = rows.filter((r) => r.id !== keep);
+    if (!main || dups.length !== others.length) throw Object.assign(new Error('One of these customers no longer exists. Refresh and try again.'), { status: 404 });
+
+    const empty = (v) => v === null || v === undefined || v === '' || (Array.isArray(v) && !v.length);
+    const data = { ...(main.data || {}) };
+    let { mobile, cr_number: cr, no_cr: noCr, no_cr_reason: noCrReason, vat_number: vat, salesman_id: salesmanId } = main;
+    for (const d of dups) {
+      for (const [k, v] of Object.entries(d.data || {})) if (empty(data[k]) && !empty(v)) data[k] = v;
+      if (empty(mobile) && !empty(d.mobile)) mobile = d.mobile;
+      if (empty(cr) && !noCr && !empty(d.cr_number)) cr = d.cr_number;
+      if (empty(vat) && !empty(d.vat_number)) vat = d.vat_number;
+      if (salesmanId == null && d.salesman_id != null) salesmanId = d.salesman_id;
+      if (empty(cr) && !noCr && d.no_cr) { noCr = true; noCrReason = d.no_cr_reason; }
+    }
+    await client.query(
+      `UPDATE customers SET data = $2, mobile = $3, cr_number = $4, no_cr = $5, no_cr_reason = $6, vat_number = $7, salesman_id = $8, updated_at = now() WHERE id = $1`,
+      [keep, JSON.stringify(data), mobile, cr, Boolean(noCr), noCrReason, vat, salesmanId]
+    );
+    const moved = {};
+    for (const [table, label] of [['leads', 'enquiries'], ['customer_files', 'documents'], ['customer_submissions', 'submissions'], ['customer_transfers', 'transfers']]) {
+      const r = await client.query(`UPDATE ${table} SET customer_id = $1 WHERE customer_id = ANY($2::int[])`, [keep, others]);
+      moved[label] = r.rowCount;
+    }
+    await client.query('UPDATE customers SET archived_at = now(), updated_at = now(), review_note = $2 WHERE id = ANY($1::int[])', [others, `Merged into customer #${keep}`]);
+    await client.query('COMMIT');
+    return { keptId: String(keep), mergedIds: others.map(String), moved, names: dups.map((d) => d.name), keptName: main.name };
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    throw e;
+  } finally {
+    client.release();
+  }
 }
