@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { openPrintable, chipsHtml, tableHtml } from '../utils/pdfReport.js';
 import {
   AlertTriangle, CheckCircle2, ChevronRight, ContactRound, FileText, Link2, Plus, Upload, Phone, Clock, ShieldCheck, FileWarning,
 } from 'lucide-react';
@@ -96,6 +97,22 @@ export default function Home({ authFetch, leads = [], quotations = [], currentUs
   }, [summary, leads, quotations]);
 
   const t = summary?.totals;
+
+  const exportPdf = () => {
+    openPrintable({
+      title: 'Daily report',
+      subtitle: 'Customers, leads and salesmen',
+      bodyHtml: chipsHtml([
+        ['Customers', t ? t.total : 0], ['Customer data complete', `${t?.percentComplete ?? 0}%`], ['Open leads', stats.openCount],
+        ['Open pipeline (OMR)', stats.pipeline.toFixed(3)], ['Won this month (OMR)', stats.wonMonth.toFixed(3)],
+      ])
+        + '<h2>Needs attention</h2>' + tableHtml([{ label: 'Item' }, { label: 'Count', num: true }], todo.map((x) => [x.text, x.n]))
+        + '<h2>Salesmen</h2>' + tableHtml(
+          [{ label: 'Salesman' }, { label: 'Customers', num: true }, { label: 'Customer data', num: true }, { label: 'Open leads', num: true }, { label: 'Quotes', num: true }, { label: 'Won (OMR)', num: true }, { label: 'Last activity' }],
+          rows.map((r) => [r.name, r.customers, r.customers ? `${r.percent}%` : '', r.openLeads, r.quotes, r.won ? r.won.toFixed(3) : '', ago(r.last)])
+        ),
+    });
+  };
   const hour = new Date().getHours();
   const hello = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
@@ -112,6 +129,9 @@ export default function Home({ authFetch, leads = [], quotations = [], currentUs
           </button>
           <button type="button" onClick={() => onNavigate('quotations')} className="min-h-[40px] px-4 rounded-full bg-white border border-slate-300 text-xs font-bold inline-flex items-center gap-1.5">
             <FileText className="w-4 h-4" /> New quote
+          </button>
+          <button type="button" onClick={exportPdf} className="min-h-[40px] px-4 rounded-full bg-white border border-slate-300 text-xs font-bold inline-flex items-center gap-1.5">
+            <FileText className="w-4 h-4" /> PDF report
           </button>
           {canManageCustomers && (
             <button type="button" onClick={() => onOpenCustomers({ tab: 'import' })} className="min-h-[40px] px-4 rounded-full bg-white border border-slate-300 text-xs font-bold inline-flex items-center gap-1.5">
