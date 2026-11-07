@@ -23,7 +23,7 @@ const card = 'bg-white rounded-3xl border border-slate-200 shadow-[0_1px_2px_rgb
 const btn = 'inline-flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[36px] px-3 rounded-full text-xs font-bold transition active:scale-[0.97] disabled:opacity-50';
 const btnDark = `${btn} bg-slate-900 text-white hover:bg-slate-800`;
 const btnRed = `${btn} bg-[#CC1A22] text-white hover:bg-[#A3141B]`;
-const btnLight = `${btn} bg-white text-slate-800 border border-slate-300 hover:bg-slate-50`;
+const btnLight = `${btn} bg-white text-slate-800 border border-slate-200 shadow-[0_1px_2px_rgba(16,24,40,0.05)] hover:bg-slate-50 hover:border-slate-300`;
 
 const slug = (s) => String(s || 'salesman').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'salesman';
 const linkUrl = (l) => (l.linkToken ? `${window.location.origin}/c/${slug(l.name)}-${l.linkToken}` : '');
@@ -144,21 +144,21 @@ export default function Customers({ authFetch, showToast, canManage, initialFilt
     <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 pb-24 md:pb-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Customer Data Centre</h1>
-          <p className="text-sm text-slate-500">Every customer with their details, documents, enquiries and quotations. Tap a customer to open it.</p>
+          <h1 className="text-[24px] leading-tight font-extrabold text-slate-900">Customer Data Centre</h1>
+          <p className="hidden sm:block text-sm text-slate-500 mt-0.5">Every customer with their details, documents, enquiries and quotations. Tap a customer to open it.</p>
         </div>
         {canManage && (
-          <div className="flex flex-wrap gap-2">
-            <button type="button" className={btnLight} onClick={() => setImporting((v) => !v)}><Upload className="w-4 h-4" /> Import list</button>
-            <button type="button" className={`${btn} bg-emerald-700 text-white hover:bg-emerald-800`} disabled={busy === 'excel'} onClick={downloadExcel}>
-              {busy === 'excel' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Download all · Excel
-            </button>
-            <button type="button" className={btnDark} disabled={busy === 'pdf'} onClick={downloadPdf}>
-              {busy === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Download all · PDF
-            </button>
+          <div className="flex gap-2 overflow-x-auto mp-noscrollbar max-w-full -mx-3 px-3 sm:mx-0 sm:px-0 pb-1">
             {onOpenSettings && (
-              <button type="button" className={btnLight} onClick={() => onOpenSettings('settings-links')}><Link2 className="w-4 h-4" /> Salesman links</button>
+              <button type="button" className={`${btnLight} shrink-0`} onClick={() => onOpenSettings('settings-links')}><Link2 className="w-4 h-4" /> Salesman links</button>
             )}
+            <button type="button" className={`${btnLight} shrink-0`} disabled={busy === 'excel'} onClick={downloadExcel}>
+              {busy === 'excel' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4 text-emerald-600" />} Excel
+            </button>
+            <button type="button" className={`${btnLight} shrink-0`} disabled={busy === 'pdf'} onClick={downloadPdf}>
+              {busy === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-[#CC1A22]" />} PDF
+            </button>
+            <button type="button" className={`${btnDark} shrink-0`} onClick={() => setImporting((v) => !v)}><Upload className="w-4 h-4" /> Import list</button>
           </div>
         )}
       </div>

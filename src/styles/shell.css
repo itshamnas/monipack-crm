@@ -213,3 +213,5 @@ html.dark .mp-kbd { background: #0E1522; border-color: #1F2A3C; color: #8A96A8; 
   html.dark .mp-sheet { background: #111827; }
   html.dark .mp-sheet-foot { background: #111827 !important; }
 }
+.mp-fn-row { display: grid; grid-template-columns: minmax(0, 110px) 1fr auto; align-items: center; gap: 12px; text-align: left; }
+@media (min-width: 640px) { .mp-fn-row { grid-template-columns: 170px 1fr minmax(120px, auto); } }

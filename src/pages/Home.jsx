@@ -201,7 +201,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
               <span className={`w-7 h-7 rounded-lg grid place-items-center ${tone}`}><Icon className="w-4 h-4" /></span>
               <span className="text-[10.5px] font-bold uppercase tracking-[0.09em] text-slate-400 truncate">{label}</span>
             </span>
-            <span className="block mt-2.5 text-[24px] leading-none font-extrabold tabular-nums truncate mp-display"><CountUp value={value} /></span>
+            <span className={`block mt-2.5 leading-none font-extrabold tabular-nums truncate mp-display ${String(value).length > 16 ? 'text-[17px]' : String(value).length > 12 ? 'text-[20px]' : 'text-[24px]'}`} title={String(value)}><CountUp value={value} /></span>
             <span className="block mt-3 h-[30px]">{foot}</span>
           </button>
         ))}
@@ -246,13 +246,13 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
               </div>
               <div className="px-5 pb-5 pt-2 grid gap-2.5">
                 {funnel.list.map((x, i) => (
-                  <button key={x.id} type="button" onClick={() => onNavigate('leads')} className="grid grid-cols-[minmax(0,130px)_1fr_auto] sm:grid-cols-[180px_1fr_120px] items-center gap-3 text-left group">
+                  <button key={x.id} type="button" onClick={() => onNavigate('leads')} className="mp-fn-row group">
                     <span className="flex items-center gap-2 text-[12.5px] font-semibold truncate"><i className="w-2 h-2 rounded-[3px] shrink-0" style={{ background: x.color }} />{x.label}</span>
                     <span className="relative h-7 rounded-lg bg-slate-50 overflow-hidden">
                       <i className="absolute inset-y-0 left-0 rounded-lg mp-bar group-hover:brightness-110 transition" style={{ width: `${Math.max(x.count ? 6 : 0, (x.count / funnel.max) * 100)}%`, background: `linear-gradient(90deg, ${x.color}cc, ${x.color})`, animationDelay: `${i * 70}ms` }} />
                       <span className={`absolute left-2.5 top-1/2 -translate-y-1/2 text-[11.5px] font-bold tabular-nums ${x.count ? 'text-white drop-shadow-sm' : 'text-slate-400'}`}>{x.count}</span>
                     </span>
-                    <span className="text-right text-[12.5px] font-bold tabular-nums">{omr(x.value)}</span>
+                    <span className="text-right text-[12.5px] font-bold tabular-nums whitespace-nowrap">{omr(x.value)}</span>
                   </button>
                 ))}
               </div>
