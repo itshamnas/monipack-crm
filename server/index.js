@@ -844,6 +844,14 @@ app.get('/api/settings', authMiddleware, requirePermission('settings.manage'), a
 }));
 
 // Update Settings
+// Company details printed on quotations (any signed-in user; no system settings)
+app.get('/api/company', authMiddleware, asyncHandler(async (req, res) => {
+  const st = await db.getSettings();
+  const pick = ['companyName', 'companyNameAr', 'brandName', 'website', 'phone', 'email', 'headquarters', 'poBox',
+    'crNumber', 'vatNumber', 'bankName', 'bankAccountName', 'bankAccountNumber', 'iban'];
+  res.json(Object.fromEntries(pick.map((k) => [k, st[k] || ''])));
+}));
+
 app.patch('/api/settings', authMiddleware, requirePermission('settings.manage'), asyncHandler(async (req, res) => {
   const updated = await db.updateSettings(req.body);
   await db.addActivity({
