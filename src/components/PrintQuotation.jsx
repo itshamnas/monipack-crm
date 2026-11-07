@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { getApiUrl } from '../api/config.js';
+import { getCompany } from '../utils/pdfReport.js';
 import { 
   Printer, 
   X, 
@@ -73,13 +73,7 @@ function omrInWords(amount) {
 
 export default function PrintQuotation({ quotation, onClose, onUpdateTerms, onUpdateVat }) {
   const [company, setCompany] = useState(null);
-  useEffect(() => {
-    const token = localStorage.getItem('monipack_auth_token') || '';
-    fetch(getApiUrl('/api/company'), { headers: { Authorization: `Bearer ${token}` } })
-      .then((r) => (r.ok ? r.json() : null))
-      .then(setCompany)
-      .catch(() => {});
-  }, []);
+  useEffect(() => { getCompany().then(setCompany); }, []);
   if (!quotation) return null;
 
   const defaultStandardTerms = [

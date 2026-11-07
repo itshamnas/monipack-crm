@@ -100,8 +100,10 @@ export default function Home({ authFetch, leads = [], quotations = [], currentUs
 
   const exportPdf = () => {
     openPrintable({
-      title: 'Daily report',
-      subtitle: 'Customers, leads and salesmen',
+      docType: 'Daily report',
+      title: 'Sales & customer summary',
+      subtitle: 'Customers, leads and salesmen as of today',
+      meta: [['Open leads', stats.openCount]],
       bodyHtml: chipsHtml([
         ['Customers', t ? t.total : 0], ['Customer data complete', `${t?.percentComplete ?? 0}%`], ['Open leads', stats.openCount],
         ['Open pipeline (OMR)', stats.pipeline.toFixed(3)], ['Won this month (OMR)', stats.wonMonth.toFixed(3)],

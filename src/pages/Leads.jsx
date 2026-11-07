@@ -532,6 +532,8 @@ export default function Leads({
                       const stageName = (id) => (activeStages.find((st) => st.id === id)?.label || id).replace(/^STEP \d+:\s*/, '');
                       const open = filteredLeads.filter((l) => !['won', 'lost'].includes(l.status));
                       const ok = openPrintable({
+                        docType: 'Leads report',
+                        meta: [['Records', filteredLeads.length]],
                         title: 'Leads',
                         subtitle: [selectedCategory, selectedBranch, searchQuery && `Search “${searchQuery}”`].filter((x) => x && !/^All/.test(x)).join(' · ') || 'All leads',
                         bodyHtml: chipsHtml([
