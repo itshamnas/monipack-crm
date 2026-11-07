@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
 import { FILE_LABEL_NAMES, prepareUpload } from '../utils/fileUpload.js';
-import { openPrintable, chipsHtml, tableHtml, kvHtml, esc } from '../utils/pdfReport.js';
+import { openPrintable, openPendingWindow, chipsHtml, tableHtml, kvHtml, esc } from '../utils/pdfReport.js';
 
 const STATUS = {
   pending_approval: { label: 'Needs approval', cls: 'bg-blue-50 text-blue-800 border-blue-200' },
@@ -81,20 +81,76 @@ export default function Customers({ authFetch, showToast, canManage, initialFilt
   }, [authFetch]);
   useEffect(() => { loadMeta().catch(() => showToast('Could not load customer data', 'error')); }, [loadMeta]);
   const changed = () => setReloadKey((k) => k + 1);
+  const [busy, setBusy] = useState('');
+
+  const downloadExcel = async () => {
+    setBusy('excel');
+    try {
+      await downloadBlob(authFetch, '/api/data-centre.xlsx', `monipack_data_centre_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (e) { showToast(e.message, 'error'); }
+    setBusy('');
+  };
+
+  // Everything as one PDF: summary, customers, enquiries, quotations, documents, salesmen
+  const downloadPdf = async () => {
+    const win = openPendingWindow();
+    if (!win) { showToast('Allow pop-ups to download the PDF', 'error'); return; }
+    setBusy('pdf');
+    try {
+      const res = await authFetch('/api/data-centre');
+      if (!res.ok) throw new Error('Could not prepare the report');
+      const sheets = await res.json();
+      const by = Object.fromEntries(sheets.map((x) => [x.name, x]));
+      const pick = (sheet, labels) => {
+        const idx = labels.map((l) => sheet.columns.findIndex((c) => c.label === l));
+        return {
+          cols: labels.map((l, i) => ({ label: l, num: ['number', 'percent'].includes(sheet.columns[idx[i]]?.type) })),
+          rows: sheet.rows.map((r) => idx.map((j) => {
+            const col = sheet.columns[j];
+            const v = r[j];
+            if (v === null || v === undefined || v === '') return '';
+            if (col?.type === 'percent') return `${Math.round(v * 100)}%`;
+            if (col?.type === 'date') return new Date(v).toLocaleDateString();
+            if (col?.type === 'number' && /OMR/.test(col.label)) return Number(v).toFixed(3);
+            return v;
+          })),
+        };
+      };
+      const cu = pick(by.Customers, ['Customer', 'Mobile', 'CR number', 'Salesman', 'Status', '% complete', 'Enquiries', 'Won (OMR)', 'Still missing']);
+      const en = pick(by.Enquiries, ['Date', 'Customer', 'Product', 'Quantity', 'Stage', 'Salesman', 'Deal value (OMR)']);
+      const qu = pick(by.Quotations, ['Date', 'Quotation', 'Customer', 'Sales rep', 'Status', 'Total (OMR)']);
+      const sm = pick(by.Salesmen, ['Salesman', 'Type', 'Customers', 'Customer data done', 'Open enquiries', 'Won (OMR)']);
+      const won = by.Enquiries.rows.filter((r) => r[7] === 'Won').reduce((t, r) => t + Number(r[11] || 0), 0);
+      openPrintable({
+        win,
+        title: 'Customer Data Centre',
+        subtitle: 'All customers with their enquiries, quotations and documents',
+        bodyHtml: chipsHtml([['Customers', by.Customers.rows.length], ['Enquiries', by.Enquiries.rows.length], ['Quotations', by.Quotations.rows.length],
+          ['Documents', by.Documents.rows.length], ['Won (OMR)', won.toFixed(3)]])
+          + '<h2>Salesmen</h2>' + tableHtml(sm.cols, sm.rows)
+          + '<h2>Customers</h2>' + tableHtml(cu.cols, cu.rows)
+          + '<h2>Enquiries</h2>' + tableHtml(en.cols, en.rows)
+          + '<h2>Quotations</h2>' + tableHtml(qu.cols, qu.rows),
+      });
+    } catch (e) { win.close(); showToast(e.message, 'error'); }
+    setBusy('');
+  };
 
   return (
     <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 pb-24 md:pb-8">
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-extrabold text-slate-900">Customers</h1>
-          <p className="text-sm text-slate-500">Tap a customer to see details, documents, enquiries and quotations.</p>
+          <h1 className="text-2xl font-extrabold text-slate-900">Customer Data Centre</h1>
+          <p className="text-sm text-slate-500">Every customer with their details, documents, enquiries and quotations. Tap a customer to open it.</p>
         </div>
         {canManage && (
           <div className="flex flex-wrap gap-2">
             <button type="button" className={btnLight} onClick={() => setImporting((v) => !v)}><Upload className="w-4 h-4" /> Import list</button>
-            <button type="button" className={btnLight}
-              onClick={() => downloadBlob(authFetch, '/api/customers/export', `monipack_customers_${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => showToast(e.message, 'error'))}>
-              <Download className="w-4 h-4" /> Excel
+            <button type="button" className={`${btn} bg-emerald-700 text-white hover:bg-emerald-800`} disabled={busy === 'excel'} onClick={downloadExcel}>
+              {busy === 'excel' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Download all · Excel
+            </button>
+            <button type="button" className={btnDark} disabled={busy === 'pdf'} onClick={downloadPdf}>
+              {busy === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} Download all · PDF
             </button>
             {onOpenSettings && (
               <button type="button" className={btnLight} onClick={() => onOpenSettings('settings-links')}><Link2 className="w-4 h-4" /> Salesman links</button>
@@ -263,7 +319,7 @@ function CustomerList({ authFetch, showToast, canManage, initialFilter = {}, sal
           <option value="">Missing: any</option>
           {missingCounts.map((m) => <option key={m.key} value={m.key}>Missing {m.label} ({m.count})</option>)}
         </select>
-        <button type="button" className={btnLight} onClick={exportPdf} disabled={!shown.length}><FileText className="w-4 h-4" /> PDF</button>
+        <button type="button" className={btnLight} onClick={exportPdf} disabled={!shown.length}><FileText className="w-4 h-4" /> PDF of this list</button>
         {canManage && (
           <button type="button" className={btnRed} onClick={() => setAdding(true)}><Plus className="w-4 h-4" /> Add customer</button>
         )}
@@ -316,6 +372,11 @@ function CustomerList({ authFetch, showToast, canManage, initialFilter = {}, sal
                     {[c.mobile, c.noCr ? 'No CR' : c.crNumber && `CR ${c.crNumber}`].filter(Boolean).join(' · ') || 'No details yet'}
                     {c.locked && <Lock className="w-3 h-3 inline ml-1" aria-label="Locked" />}
                   </span>
+                  {(c.leadCount > 0 || c.quoteCount > 0) && (
+                    <span className="block text-[11px] text-slate-600">
+                      {c.leadCount} enquir{c.leadCount === 1 ? 'y' : 'ies'}{c.openLeads ? ` (${c.openLeads} open)` : ''}{c.quoteCount ? ` · ${c.quoteCount} quote${c.quoteCount === 1 ? '' : 's'}` : ''}{c.wonValue ? ` · OMR ${c.wonValue.toFixed(3)} won` : ''}
+                    </span>
+                  )}
                   <span className="block md:hidden text-[11px] text-slate-500">{c.salesmanName || 'No salesman'}</span>
                 </td>
                 <td className="px-3 py-3 text-slate-600 whitespace-nowrap hidden md:table-cell">{c.salesmanName || 'No salesman'}</td>

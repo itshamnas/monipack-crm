@@ -48,6 +48,12 @@ export function customerToApi(r) {
     photoCount: Number(r.photo_count || 0),
     fileLabels: Array.isArray(r.file_labels) ? r.file_labels : [],
     locked: Boolean(r.locked),
+    leadCount: Number(r.lead_count || 0),
+    openLeads: Number(r.open_leads || 0),
+    wonValue: Number(r.won_value || 0),
+    openValue: Number(r.open_value || 0),
+    quoteCount: Number(r.quote_count || 0),
+    lastEnquiryAt: iso(r.last_enquiry_at),
     submittedAt: iso(r.submitted_at),
     approvedAt: iso(r.approved_at),
     createdAt: iso(r.created_at),
@@ -58,9 +64,20 @@ export function customerToApi(r) {
 const CUSTOMER_SELECT = `
   SELECT c.*, s.name AS salesman_name, s.type AS salesman_type,
     (SELECT COUNT(*) FROM customer_files f WHERE f.customer_id = c.id AND f.archived_at IS NULL) AS photo_count,
-    ARRAY(SELECT DISTINCT f.label FROM customer_files f WHERE f.customer_id = c.id AND f.archived_at IS NULL) AS file_labels
+    ARRAY(SELECT DISTINCT f.label FROM customer_files f WHERE f.customer_id = c.id AND f.archived_at IS NULL) AS file_labels,
+    ls.lead_count, ls.open_leads, ls.won_value, ls.open_value, ls.last_enquiry_at,
+    (SELECT COUNT(*) FROM quotations q JOIN leads lq ON lq.id = q.lead_id
+      WHERE lq.customer_id = c.id AND q.archived_at IS NULL) AS quote_count
   FROM customers c
-  LEFT JOIN salesmen s ON s.id = c.salesman_id`;
+  LEFT JOIN salesmen s ON s.id = c.salesman_id
+  LEFT JOIN LATERAL (
+    SELECT COUNT(*) AS lead_count,
+      COUNT(*) FILTER (WHERE l.status NOT IN ('won', 'lost')) AS open_leads,
+      COALESCE(SUM(l.deal_value) FILTER (WHERE l.status = 'won'), 0) AS won_value,
+      COALESCE(SUM(l.deal_value) FILTER (WHERE l.status NOT IN ('won', 'lost')), 0) AS open_value,
+      MAX(COALESCE(l.date, l.created_at)) AS last_enquiry_at
+    FROM leads l WHERE l.customer_id = c.id AND l.archived_at IS NULL
+  ) ls ON true`;
 
 // ---------------- Fields ----------------
 
@@ -657,4 +674,20 @@ export async function getCustomerActivity(customerId) {
     })),
     wonValue: leads.filter((l) => l.status === 'won').reduce((s, l) => s + Number(l.deal_value || 0), 0),
   };
+}
+
+/** Everything for the Customer Data Centre download: customers, enquiries, quotations, documents. */
+export async function getDataCentreRows() {
+  const [customers, fields, { rows: leads }, { rows: quotes }, { rows: files }] = await Promise.all([
+    listCustomers({}),
+    getCustomerFields({ includeHidden: false }),
+    query(`SELECT l.*, c.name AS customer_name_linked FROM leads l LEFT JOIN customers c ON c.id = l.customer_id
+           WHERE l.archived_at IS NULL ORDER BY COALESCE(l.date, l.created_at) DESC`),
+    query(`SELECT q.*, l.customer_id, c.name AS customer_name_linked FROM quotations q
+           LEFT JOIN leads l ON l.id = q.lead_id LEFT JOIN customers c ON c.id = l.customer_id
+           WHERE q.archived_at IS NULL ORDER BY q.created_at DESC`),
+    query(`SELECT f.*, c.name AS customer_name FROM customer_files f JOIN customers c ON c.id = f.customer_id
+           WHERE f.archived_at IS NULL AND c.archived_at IS NULL ORDER BY c.name, f.uploaded_at`),
+  ]);
+  return { customers, fields, leads, quotes, files };
 }
