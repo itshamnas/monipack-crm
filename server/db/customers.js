@@ -708,7 +708,7 @@ export async function getDataCentreRows() {
 /** Everything else for the full Data Centre download (no passwords or secrets) */
 export async function getDataCentreExtras({ includeSecurity = false } = {}) {
   const safe = (sql) => query(sql).then((r) => r.rows).catch(() => []);
-  const [items, products, branches, activities, history, transfers, categories, targets, users, auditLog] = await Promise.all([
+  const [items, products, branches, activities, history, transfers, categories, targets, tasks, users, auditLog] = await Promise.all([
     safe(`SELECT i.*, q.code, q.customer_name, q.date AS quote_date FROM quotation_items i JOIN quotations q ON q.id = i.quotation_id
           WHERE q.archived_at IS NULL ORDER BY q.created_at DESC, i.seq`),
     safe(`SELECT * FROM products WHERE archived_at IS NULL ORDER BY category, name`),
@@ -722,10 +722,15 @@ export async function getDataCentreExtras({ includeSecurity = false } = {}) {
           LEFT JOIN users u ON u.id = t.by_user_id ORDER BY t.transferred_at DESC`),
     safe(`SELECT * FROM categories ORDER BY name`),
     safe(`SELECT t.month, t.target_omr, t.updated_at, s.name AS salesman_name FROM sales_targets t JOIN salesmen s ON s.id = t.salesman_id ORDER BY t.month DESC, s.name`),
+    safe(`SELECT t.*, u.name AS assignee_user_name, sm.name AS assignee_salesman_name, l.name AS lead_name, c.name AS customer_name,
+                 (SELECT COUNT(*) FROM task_comments tc WHERE tc.task_id = t.id) AS comment_count
+            FROM tasks t LEFT JOIN users u ON u.id = t.assignee_user_id LEFT JOIN salesmen sm ON sm.id = t.assignee_salesman_id
+            LEFT JOIN leads l ON l.id = t.lead_id LEFT JOIN customers c ON c.id = t.customer_id
+           WHERE t.archived_at IS NULL ORDER BY (t.status = 'done'), t.due_at NULLS LAST, t.created_at DESC`),
     includeSecurity ? safe(`SELECT id, name, email, role, can_export, is_active, last_login_at, created_at FROM users WHERE archived_at IS NULL ORDER BY role, name`) : [],
     includeSecurity ? safe(`SELECT event_type, user_name, target_email, ip_address, description, created_at FROM audit_log ORDER BY created_at DESC LIMIT 50000`) : [],
   ]);
-  return { items, products, branches, activities, history, transfers, categories, targets, users, auditLog };
+  return { items, products, branches, activities, history, transfers, categories, targets, tasks, users, auditLog };
 }
 
 // ---------------- Duplicate customers: find and merge ----------------

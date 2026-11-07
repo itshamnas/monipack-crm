@@ -15,6 +15,7 @@ import ChangePassword from './pages/ChangePassword.jsx';
 import CustomerCare from './pages/CustomerCare.jsx';
 import DataCleanup from './pages/DataCleanup.jsx';
 import SalesTargets from './pages/SalesTargets.jsx';
+import Tasks from './pages/Tasks.jsx';
 import Customers, { SalesmanLinksPage, CustomerFieldsPage } from './pages/Customers.jsx';
 import Home from './pages/Home.jsx';
 import SectionTabs from './components/layout/SectionTabs.jsx';
@@ -46,6 +47,7 @@ export default function App() {
 
   // Core Data States
   const [stats, setStats] = useState(null);
+  const [taskDue, setTaskDue] = useState(0);
   const [leads, setLeads] = useState([]);
   const [products, setProducts] = useState([]);
   const [quotations, setQuotations] = useState([]);
@@ -123,6 +125,23 @@ export default function App() {
     },
     [token]
   );
+
+  // Badge: my open tasks due today or overdue
+  const refreshTaskDue = useCallback(async () => {
+    if (!token || currentUser?.mustChangePassword || !currentUser?.permissions?.includes('tasks.use')) { setTaskDue(0); return; }
+    try {
+      const r = await authFetch('/api/tasks?scope=mine');
+      if (!r.ok) return;
+      const list = await r.json();
+      const end = new Date(); end.setHours(23, 59, 59, 999);
+      setTaskDue(list.filter((t) => t.status !== 'done' && t.dueAt && new Date(t.dueAt) <= end).length);
+    } catch { /* ignore */ }
+  }, [token, currentUser, authFetch]);
+  useEffect(() => {
+    refreshTaskDue();
+    const t = setInterval(refreshTaskDue, 120000);
+    return () => clearInterval(t);
+  }, [refreshTaskDue]);
 
   // Fetch all CRM data
   const fetchData = useCallback(async () => {
@@ -204,6 +223,9 @@ export default function App() {
       setActiveTab('dashboard');
     }
     if (activeTab === 'settings-targets' && currentUser && !currentUser.permissions?.includes('settings.manage')) {
+      setActiveTab('dashboard');
+    }
+    if (activeTab === 'tasks' && currentUser && !currentUser.permissions?.includes('tasks.use')) {
       setActiveTab('dashboard');
     }
     if (activeTab === 'settings-cleanup' && currentUser && currentUser.role !== 'super_admin') {
@@ -495,6 +517,7 @@ export default function App() {
   const titles = {
     analytics: { title: 'Charts', shortTitle: 'Charts', subtitle: 'Pipeline funnel, categories and branches' },
     'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: 'Each salesman\'s secret link, type and PIN' },
+    tasks: { title: 'Tasks', shortTitle: 'Tasks', subtitle: 'To-dos for you and the team' },
     'settings-targets': { title: 'Sales targets', shortTitle: 'Targets', subtitle: 'Monthly OMR target for each salesman' },
     'settings-cleanup': { title: 'Data cleanup', shortTitle: 'Cleanup', subtitle: 'Super admin only: delete test or old data before going live' },
     'settings-fields': { title: 'Customer form', shortTitle: 'Customer form', subtitle: 'Fields salesmen fill in, required fields and dropdown choices' },
@@ -569,6 +592,7 @@ export default function App() {
             stats={stats}
             currentUser={currentUser}
             onNewLead={handleOpenNewLead}
+            taskDue={taskDue}
           />
         }
         sidebar={
@@ -584,6 +608,7 @@ export default function App() {
             onNewQuote={() => setActiveTab('quotations')}
             onCloseMobileDrawer={() => setIsMobileDrawerOpen(false)}
             onLogout={handleLogout}
+            taskDue={taskDue}
           />
         }
         header={
@@ -614,6 +639,7 @@ export default function App() {
               onNavigate={setActiveTab}
               onNewLead={handleOpenNewLead}
               canManageCustomers={can('customers.manage')}
+              taskDue={taskDue}
               onOpenCustomers={(f) => { setCustomerFilter({ ...f, _k: Date.now() }); setActiveTab('customers'); }}
             />
           )}
@@ -723,6 +749,10 @@ export default function App() {
 
         {activeTab === 'settings-fields' && can('customers.manage') && (
           <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-24 md:pb-8"><CustomerFieldsPage authFetch={authFetch} showToast={showToast} /></div>
+        )}
+
+        {activeTab === 'tasks' && can('tasks.use') && (
+          <Tasks authFetch={authFetch} showToast={showToast} currentUser={currentUser} onTasksChanged={refreshTaskDue} />
         )}
 
         {activeTab === 'settings-targets' && can('settings.manage') && (

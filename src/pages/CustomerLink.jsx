@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Search, Plus, ChevronRight, X, Camera, FileText, CheckCircle2, AlertCircle, Loader2, Lock, Trash2, RefreshCw, Inbox, Phone, MessageCircle, Users, Briefcase } from 'lucide-react';
+import { Search, Plus, ChevronRight, X, Camera, FileText, CheckCircle2, AlertCircle, Loader2, Lock, Trash2, RefreshCw, Inbox, Phone, MessageCircle, Users, Briefcase, ListChecks, Check, Calendar, Flag } from 'lucide-react';
 import { getApiUrl } from '../api/config.js';
 import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
 import SlidingTabs from '../components/ui/SlidingTabs.jsx';
@@ -38,6 +38,8 @@ export default function CustomerLink() {
   const [tab, setTab] = useState('customers'); // customers | leads
   const [leadData, setLeadData] = useState({ stages: [], leads: [] });
   const [openLead, setOpenLead] = useState(null);
+  const [myTasks, setMyTasks] = useState([]);
+  const [openTask, setOpenTask] = useState(null);
 
   const api = useCallback(async (path, options = {}) => {
     const res = await fetch(getApiUrl(`/api/link/${token}${path}`), {
@@ -90,8 +92,9 @@ export default function CustomerLink() {
 
   const loadData = useCallback(async () => {
     try {
-      const [f, c, l] = await Promise.all([api('/fields'), api('/customers'), api('/leads')]);
+      const [f, c, l, t] = await Promise.all([api('/fields'), api('/customers'), api('/leads'), api('/tasks')]);
       if (f.ok) setFields(f.body);
+      if (t.ok && Array.isArray(t.body)) setMyTasks(t.body);
       if (l.ok) setLeadData(l.body);
       if (c.ok) { setList(c.body); setListState('ok'); } else if (c.status !== 401) setListState('error');
     } catch {
@@ -199,8 +202,9 @@ export default function CustomerLink() {
         </div>
         <SlidingTabs ariaLabel="My work" value={tab} onChange={setTab} className="w-full [&>button]:flex-1 [&>button]:justify-center [&>button]:min-h-[44px] [&>button]:text-sm"
           tabs={[
-            { id: 'customers', label: 'My customers', count: list.total },
-            { id: 'leads', label: 'My leads', count: leadData.leads.filter((x) => !['won', 'lost'].includes(x.status)).length },
+            { id: 'customers', label: 'Customers', count: list.total },
+            { id: 'leads', label: 'Leads', count: leadData.leads.filter((x) => !['won', 'lost'].includes(x.status)).length },
+            { id: 'tasks', label: 'Tasks', count: myTasks.filter((x) => x.status !== 'done').length },
           ]} />
         <div className="relative">
           <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" aria-hidden="true" />
@@ -211,7 +215,17 @@ export default function CustomerLink() {
         </div>
       </header>
 
-      {tab === 'leads' ? (
+      {tab === 'tasks' ? (
+        <LinkTasks tasks={myTasks} search={search} onOpen={setOpenTask}
+          onToggle={async (t) => {
+            const status = t.status === 'done' ? 'todo' : 'done';
+            setMyTasks((list) => list.map((x) => (x.id === t.id ? { ...x, status } : x)));
+            const r = await api(`/tasks/${t.id}`, { method: 'POST', body: JSON.stringify({ status }) });
+            if (!r.ok) { showToast(r.body.error || 'Could not update the task', 'error'); }
+            else if (status === 'done') showToast('Task done. Thank you!');
+            loadData();
+          }} />
+      ) : tab === 'leads' ? (
         <LeadsList data={leadData} search={search} onOpen={setOpenLead} />
       ) : (
       <main className="px-5 space-y-2.5">
@@ -289,6 +303,12 @@ export default function CustomerLink() {
         className="fixed right-5 bottom-6 mp-safe-bottom z-20 h-14 px-5 rounded-full bg-[#CC1A22] hover:bg-[#A3141B] text-white font-bold flex items-center gap-2 shadow-[0_10px_24px_-8px_rgba(204,26,34,0.6)]">
         <Plus className="w-5 h-5" /> Add new customer
       </button>
+      )}
+
+      {openTask && (
+        <LinkTaskSheet task={openTask} api={api} onClose={() => setOpenTask(null)}
+          onSaved={(msg) => { setOpenTask(null); showToast(msg); loadData(); }}
+          onError={(msg) => showToast(msg, 'error')} />
       )}
 
       {editing && (
@@ -552,6 +572,110 @@ const STAGE_STYLE = {
   new: 'bg-blue-50 text-blue-800', contacted: 'bg-indigo-50 text-indigo-800', quotation_sent: 'bg-amber-50 text-amber-800',
   sample_sent: 'bg-purple-50 text-purple-800', won: 'bg-emerald-50 text-emerald-800', lost: 'bg-rose-50 text-rose-800',
 };
+
+const T_DAY = 86400000;
+const linkDue = (iso) => {
+  if (!iso) return null;
+  const d = new Date(iso); const t0 = new Date(); t0.setHours(0, 0, 0, 0);
+  const days = Math.floor((d - t0) / T_DAY);
+  const label = days < 0 ? `${-days} day${days === -1 ? '' : 's'} late` : days === 0 ? 'Today' : days === 1 ? 'Tomorrow' : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  return { label, tone: days < 0 ? 'bg-red-50 text-red-700' : days === 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600' };
+};
+const FLAG = { urgent: '#DC2626', high: '#EA580C' };
+
+function LinkTasks({ tasks, search, onOpen, onToggle }) {
+  const q = search.trim().toLowerCase();
+  const list = q ? tasks.filter((t) => `${t.title} ${t.description}`.toLowerCase().includes(q)) : tasks;
+  const open = list.filter((t) => t.status !== 'done');
+  const done = list.filter((t) => t.status === 'done').slice(0, 20);
+  const row = (t) => {
+    const due = t.status !== 'done' ? linkDue(t.dueAt) : null;
+    const isDone = t.status === 'done';
+    return (
+      <li key={t.id} className="bg-white rounded-2xl border border-slate-200 flex items-stretch shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <button type="button" onClick={() => onToggle(t)} aria-label={isDone ? 'Mark as not done' : 'Mark as done'} className="pl-4 pr-2 grid place-items-center">
+          <span className={`w-7 h-7 rounded-full border-2 grid place-items-center ${isDone ? 'bg-emerald-500 border-emerald-500 text-white' : 'border-slate-300 text-transparent'}`}><Check className="w-4 h-4" strokeWidth={3} /></span>
+        </button>
+        <button type="button" onClick={() => onOpen(t)} className="flex-1 min-w-0 text-left py-3 pr-4 min-h-[64px]">
+          <span className="flex items-center gap-1.5">
+            {FLAG[t.priority] && <Flag className="w-3.5 h-3.5 shrink-0" style={{ color: FLAG[t.priority] }} fill="currentColor" />}
+            <span className={`font-bold truncate ${isDone ? 'line-through text-slate-400' : ''}`}>{t.title}</span>
+          </span>
+          <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[11.5px]">
+            {due && <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full font-semibold ${due.tone}`}><Calendar className="w-3 h-3" />{due.label}</span>}
+            {t.status === 'in_progress' && <span className="px-2 py-0.5 rounded-full font-semibold bg-blue-50 text-blue-700">In progress</span>}
+            {(t.leadName || t.customerName) && <span className="truncate text-slate-500">{t.leadName || t.customerName}</span>}
+            <span className="text-slate-400">from {t.createdByName || 'office'}</span>
+          </span>
+        </button>
+      </li>
+    );
+  };
+  return (
+    <main className="px-5 space-y-2.5">
+      {open.length === 0 ? (
+        <div className="bg-white rounded-3xl border border-slate-200 p-6 text-center space-y-2">
+          <ListChecks className="w-8 h-8 text-emerald-500 mx-auto" />
+          <p className="font-bold">{q ? `No task matches “${search}”.` : 'No tasks for you right now'}</p>
+          {!q && <p className="text-sm text-slate-500">When the office gives you a task it will show here.</p>}
+        </div>
+      ) : <ul className="mp-stagger space-y-2.5">{open.map(row)}</ul>}
+      {done.length > 0 && (
+        <>
+          <h2 className="pt-3 text-[12px] font-bold uppercase tracking-[0.08em] text-emerald-700">Done</h2>
+          <ul className="space-y-2.5 opacity-80">{done.map(row)}</ul>
+        </>
+      )}
+    </main>
+  );
+}
+
+function LinkTaskSheet({ task, api, onClose, onSaved, onError }) {
+  const [status, setStatus] = useState(task.status);
+  const [comment, setComment] = useState('');
+  const [saving, setSaving] = useState(false);
+  const due = linkDue(task.dueAt);
+  const save = async () => {
+    if (status === task.status && !comment.trim()) { onClose(); return; }
+    setSaving(true);
+    const r = await api(`/tasks/${task.id}`, { method: 'POST', body: JSON.stringify({ status: status !== task.status ? status : undefined, comment }) });
+    setSaving(false);
+    if (!r.ok) { onError(r.body.error || 'Could not save'); return; }
+    onSaved(status === 'done' && task.status !== 'done' ? 'Task done. Thank you!' : 'Saved');
+  };
+  return (
+    <div className="fixed inset-0 z-40 bg-slate-900/50 flex items-end sm:items-center justify-center" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div role="dialog" aria-modal="true" aria-label="Task" className="w-full sm:max-w-lg bg-white rounded-t-3xl sm:rounded-3xl max-h-[92dvh] overflow-y-auto p-5 space-y-4 mp-safe-bottom">
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <h2 className="text-lg font-extrabold leading-snug">{task.title}</h2>
+            <p className="text-xs text-slate-500 mt-0.5">From {task.createdByName || 'office'}{due ? ` · due ${due.label.toLowerCase()}` : ''}</p>
+          </div>
+          <button type="button" onClick={onClose} className="w-11 h-11 grid place-items-center rounded-full bg-slate-100" aria-label="Close"><X className="w-5 h-5" /></button>
+        </div>
+        {task.description && <p className="text-[15px] text-slate-700 whitespace-pre-wrap bg-slate-50 rounded-2xl p-3">{task.description}</p>}
+        {(task.leadName || task.customerName) && <p className="text-sm text-slate-600">For: <b>{task.leadName || task.customerName}</b></p>}
+        <div>
+          <p className="text-sm font-bold mb-2">Status</p>
+          <div className="grid grid-cols-3 gap-2">
+            {[['todo', 'To do'], ['in_progress', 'Doing'], ['done', 'Done']].map(([id, label]) => (
+              <button key={id} type="button" onClick={() => setStatus(id)} aria-pressed={status === id}
+                className={`h-12 rounded-2xl font-bold text-sm border-2 ${status === id ? (id === 'done' ? 'border-emerald-600 bg-emerald-50 text-emerald-800' : 'border-slate-900 bg-slate-900 text-white') : 'border-slate-200 text-slate-600'}`}>{label}</button>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label htmlFor="task-note" className="text-sm font-bold mb-2 block">Note for the office (optional)</label>
+          <textarea id="task-note" rows={3} value={comment} onChange={(e) => setComment(e.target.value)} maxLength={2000} placeholder="e.g. Visited, customer wants samples next week"
+            className="w-full rounded-2xl border border-slate-300 p-3 text-base focus:outline-none focus:ring-2 focus:ring-red-100 focus:border-[#CC1A22]" />
+        </div>
+        <button type="button" onClick={save} disabled={saving} className="w-full h-13 min-h-[52px] rounded-2xl bg-[#CC1A22] text-white font-bold disabled:opacity-60 flex items-center justify-center gap-2">
+          {saving ? <Loader2 className="w-5 h-5 animate-spin" /> : <CheckCircle2 className="w-5 h-5" />} Save
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function LeadsList({ data, search, onOpen }) {
   const label = (id) => data.stages.find((st) => st.id === id)?.label || id;

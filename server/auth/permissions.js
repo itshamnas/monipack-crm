@@ -36,6 +36,9 @@ const ALL_PERMISSIONS = [
   'backup.download',
   'customers.view',
   'customers.manage',
+  'tasks.use',
+  'tasks.assign',
+  'tasks.manage',
 ];
 
 const ROLE_PERMISSIONS = {
@@ -49,6 +52,7 @@ const ROLE_PERMISSIONS = {
     'branches.view',
     'audit.view',
     'customers.view',
+    'tasks.use', 'tasks.assign', 'tasks.manage',
   ],
   customer_care: [
     'dashboard.view',
@@ -56,6 +60,7 @@ const ROLE_PERMISSIONS = {
     'quotations.view', 'quotations.create',
     'products.view',
     'branches.view',
+    'tasks.use', 'tasks.assign',
   ],
   salesman: [
     'dashboard.view',
@@ -63,6 +68,7 @@ const ROLE_PERMISSIONS = {
     'quotations.view', 'quotations.create', 'quotations.update',
     'products.view',
     'branches.view',
+    'tasks.use',
   ],
 };
 

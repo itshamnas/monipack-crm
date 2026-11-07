@@ -27,6 +27,7 @@ import {
 } from './leadImportService.js';
 import { registerCustomerRoutes } from './customers/routes.js';
 import { registerCleanupRoutes } from './admin/cleanup.js';
+import { registerTaskRoutes } from './tasks/tasks.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1172,6 +1173,7 @@ app.delete('/api/settings/branches/:id', authMiddleware, requirePermission('sett
 // ---- Customer Data Collection (salesman links + admin) ----
 registerCustomerRoutes(app, { authMiddleware, requirePermission, asyncHandler, largeJsonParser, JWT_SECRET, db });
 registerCleanupRoutes(app, { authMiddleware, asyncHandler, db });
+registerTaskRoutes(app, { authMiddleware, requirePermission, asyncHandler, db });
 
 // ---- Central Error Handlers ----
 

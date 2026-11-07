@@ -12,6 +12,7 @@ import {
   FILE_LABELS, MAX_FILE_BYTES, SALESMAN_TYPES,
 } from './logic.js';
 import { saveFile, readFile } from './storage.js';
+import * as tdb from '../tasks/tasks.js';
 import { workbook } from './xlsx.js';
 
 const LINK_SESSION_HOURS = 12;
@@ -382,6 +383,23 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     });
   }));
 
+  // Salesman's tasks (given by the office)
+  app.get('/api/link/:token/tasks', linkGuard, loadLinkSalesman, linkAuth, asyncHandler(async (req, res) => {
+    res.json(await tdb.tasksForSalesman(req.linkSalesman.id));
+  }));
+  app.post('/api/link/:token/tasks/:id', linkGuard, loadLinkSalesman, linkAuth, asyncHandler(async (req, res) => {
+    const found = await tdb.getTask(req.params.id);
+    if (!found || found.row.assignee_salesman_id !== Number(req.linkSalesman.id)) return res.status(404).json({ error: 'Task not found.' });
+    const { status, comment } = req.body || {};
+    if (status !== undefined) {
+      if (!tdb.STATUSES.includes(status)) return res.status(400).json({ error: 'Unknown status.' });
+      await tdb.updateTask({ id: null, permissions: [] }, found.row, { status }, { status: true, edit: false });
+    }
+    if (comment && String(comment).trim()) await tdb.addComment(found.row.id, { salesmanId: Number(req.linkSalesman.id), name: `${req.linkSalesman.name} (link)` }, comment);
+    await log(req, 'task_update');
+    res.json({ ok: true, task: (await tdb.getTask(found.row.id)).task });
+  }));
+
   // Salesman moves his lead to another stage and/or adds a note
   app.post('/api/link/:token/leads/:id', linkGuard, loadLinkSalesman, linkAuth, asyncHandler(async (req, res) => {
     const sm = req.linkSalesman;
@@ -575,6 +593,15 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
         id: 'categories', name: 'Categories',
         columns: [{ label: 'Category', width: 30 }, { label: 'Added on', type: 'date', width: 17 }],
         rows: extra.categories.map((c) => [c.name, c.created_at]),
+      },
+      {
+        id: 'tasks', name: 'Tasks',
+        columns: [{ label: 'Task', width: 36 }, { label: 'Status', width: 12 }, { label: 'Priority', width: 9 }, { label: 'Due', type: 'date', width: 17 },
+          { label: 'Assigned to', width: 22 }, { label: 'Created by', width: 20 }, { label: 'Lead', width: 24 }, { label: 'Customer', width: 24 },
+          { label: 'Details', width: 50 }, { label: 'Comments', type: 'number', width: 10 }, { label: 'Done on', type: 'date', width: 17 }, { label: 'Created', type: 'date', width: 17 }],
+        rows: (extra.tasks || []).map((t) => [t.title, { todo: 'To do', in_progress: 'In progress', done: 'Done' }[t.status] || t.status, t.priority, t.due_at,
+          t.assignee_user_name || (t.assignee_salesman_name ? `${t.assignee_salesman_name} (salesman)` : ''), t.created_by_name, t.lead_name, t.customer_name,
+          t.description, Number(t.comment_count || 0), t.completed_at, t.created_at]),
       },
       {
         id: 'targets', name: 'Sales targets',
