@@ -489,9 +489,9 @@ export default function App() {
     'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: 'Each salesman\'s secret link, type and PIN' },
     'settings-fields': { title: 'Customer form', shortTitle: 'Customer form', subtitle: 'Fields salesmen fill in, required fields and dropdown choices' },
     customers: {
-      title: 'Customers',
+      title: 'Customer Data Centre',
       shortTitle: 'Customers',
-      subtitle: 'Details, documents, enquiries and quotations of every customer'
+      subtitle: 'Every customer, enquiry, quotation and document in one place'
     },
     dashboard: { 
       title: 'Home', 

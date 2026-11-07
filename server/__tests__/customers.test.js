@@ -432,6 +432,18 @@ describe('Customer data collection (salesman links)', () => {
       expect(upd.body.lead.notes).toContain('Visited, sent prices');
     });
 
+    it('Customer Data Centre downloads everything (Excel + data for the PDF); super admin only', async () => {
+      const xlsx = await request(app).get('/api/data-centre.xlsx').set(auth(t.super)).buffer(true).parse(binary);
+      expect(xlsx.status).toBe(200);
+      expect(xlsx.headers['content-type']).toContain('spreadsheetml');
+      expect(xlsx.body.subarray(0, 2).toString()).toBe('PK');
+      const json = await request(app).get('/api/data-centre').set(auth(t.super));
+      expect(json.body.map((sh) => sh.name)).toEqual(['Customers', 'Enquiries', 'Quotations', 'Documents', 'Salesmen']);
+      const enquiries = json.body.find((sh) => sh.name === 'Enquiries');
+      expect(enquiries.rows.some((r) => r.includes('Rusayl Restaurant'))).toBe(true);
+      expect((await request(app).get('/api/data-centre.xlsx').set(auth(t.manager))).status).toBe(403);
+    });
+
     it('lost needs a reason; another salesman cannot touch the lead', async () => {
       const lost = await request(app).post(`/api/link/${hamadLink}/leads/${leadA.id}`).set(linkHdr(hamadSession)).send({ status: 'lost' });
       expect(lost.status).toBe(400);

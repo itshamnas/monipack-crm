@@ -33,9 +33,10 @@ const STYLE = `
 `;
 
 /** Open the page and the print dialog. bodyHtml is trusted HTML built with esc(). */
-export function openPrintable({ title, subtitle = '', bodyHtml }) {
-  const w = window.open('', '_blank');
+export function openPrintable({ title, subtitle = '', bodyHtml, win }) {
+  const w = win || window.open('', '_blank');
   if (!w) return false;
+  w.document.open();
   const when = new Date().toLocaleString();
   w.document.write(`<!doctype html><html dir="auto"><head><meta charset="utf-8"><title>${esc(title)}</title><style>${STYLE}</style></head><body>
     <header><img src="${window.location.origin}/assets/logo.png" alt=""><div class="co"><b>Morooj Nizwa International LLC</b><span>monipack CRM</span></div><div class="when">${esc(when)}</div></header>
@@ -60,3 +61,10 @@ export function tableHtml(columns, rows) {
 
 /** Two-column details table: [[label, value], …] */
 export const kvHtml = (pairs) => `<table class="kv"><tbody>${pairs.map(([k, v]) => `<tr><th>${esc(k)}</th><td>${esc(v ?? '') || '—'}</td></tr>`).join('')}</tbody></table>`;
+
+/** Open the tab right away (pop-up blockers allow it only during the click), fill it later. */
+export function openPendingWindow() {
+  const w = window.open('', '_blank');
+  if (w) w.document.write('<p style="font-family:Arial;padding:24px">Preparing your PDF…</p>');
+  return w;
+}

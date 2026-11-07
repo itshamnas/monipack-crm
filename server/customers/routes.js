@@ -12,6 +12,7 @@ import {
   FILE_LABELS, MAX_FILE_BYTES, SALESMAN_TYPES,
 } from './logic.js';
 import { saveFile, readFile } from './storage.js';
+import { workbook } from './xlsx.js';
 
 const LINK_SESSION_HOURS = 12;
 
@@ -371,6 +372,111 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     if (req.query.stage) list = list.filter((c) => c.stage === req.query.stage);
     if (missing) list = list.filter((c) => c.status !== 'not_started' && c.missing.includes(String(missing)));
     res.json(list);
+  }));
+
+  // ---- Customer Data Centre: everything in one Excel workbook (or JSON for the PDF report) ----
+  const STAGE_NAMES = { pending_approval: 'Needs approval', not_started: 'Not started', in_progress: 'In progress', complete: 'Complete' };
+  const LEAD_STAGES = { new: 'New', contacted: 'Assigned', quotation_sent: 'Quote sent', sample_sent: 'Sample / negotiation', won: 'Won', lost: 'Lost' };
+  const FILE_NAMES = { cr_certificate: 'CR paper', vat_certificate: 'VAT certificate', shop_front: 'Shop front', other: 'Other' };
+
+  async function dataCentreSheets() {
+    const { customers, fields, leads, quotes, files } = await cdb.getDataCentreRows();
+    const label = Object.fromEntries(fields.map((f) => [f.key, f.label]));
+    const dataFields = fields.filter((f) => !['mobile', 'cr_number', 'vat_number'].includes(f.key) && f.type !== 'photo' && f.type !== 'document');
+    const docFields = fields.filter((f) => f.type === 'document');
+    const summary = await cdb.getSummary();
+    const clean = (v) => (v && /Needs Intake/.test(String(v)) ? '' : v);
+
+    const customerRows = customers.map((c) => {
+      const comp = completeness(c, fields, c.salesmanType || 'branch');
+      const stage = stageOf(c, comp.percent);
+      return [
+        Number(c.id), c.name, c.salesmanName || '', c.salesmanType === 'route_b2b' ? 'Route / B2B' : c.salesmanType ? 'Branch' : '',
+        STAGE_NAMES[stage], comp.percent / 100, stage === 'not_started' ? '' : comp.missing.map((k) => label[k] || k).join(', '),
+        c.mobile, c.noCr ? 'NO CR' : c.crNumber, c.noCrReason, c.vatNumber,
+        ...dataFields.map((f) => c.data[f.key]),
+        ...docFields.map((f) => (c.fileLabels.includes(f.docLabel) ? 'Yes' : 'No')),
+        c.leadCount, c.openLeads, c.openValue, c.wonValue, c.quoteCount, c.lastEnquiryAt,
+        c.source, c.createdAt, c.locked ? 'Yes' : 'No',
+      ];
+    });
+
+    return [
+      {
+        name: 'Customers',
+        columns: [
+          { label: 'ID', type: 'number', width: 7 }, { label: 'Customer', width: 32 }, { label: 'Salesman', width: 20 }, { label: 'Salesman type', width: 13 },
+          { label: 'Status', width: 14 }, { label: '% complete', type: 'percent', width: 11 }, { label: 'Still missing', width: 45 },
+          { label: 'Mobile', width: 15 }, { label: 'CR number', width: 13 }, { label: 'No CR reason', width: 20 }, { label: 'VAT number', width: 15 },
+          ...dataFields.map((f) => ({ label: f.label, width: f.type === 'location' ? 40 : 18 })),
+          ...docFields.map((f) => ({ label: `${f.label} uploaded`, width: 12 })),
+          { label: 'Enquiries', type: 'number', width: 10 }, { label: 'Open enquiries', type: 'number', width: 10 },
+          { label: 'Open value (OMR)', type: 'number', width: 14 }, { label: 'Won (OMR)', type: 'number', width: 13 },
+          { label: 'Quotations', type: 'number', width: 10 }, { label: 'Last enquiry', type: 'date', width: 17 },
+          { label: 'Source', width: 10 }, { label: 'Added on', type: 'date', width: 17 }, { label: 'Locked', width: 8 },
+        ],
+        rows: customerRows,
+      },
+      {
+        name: 'Enquiries',
+        columns: [
+          { label: 'Lead ID', type: 'number', width: 8 }, { label: 'Date', type: 'date', width: 17 }, { label: 'Customer ID', type: 'number', width: 10 },
+          { label: 'Customer', width: 30 }, { label: 'Mobile', width: 16 }, { label: 'Product', width: 22 }, { label: 'Quantity', width: 25 },
+          { label: 'Stage', width: 16 }, { label: 'Salesman', width: 20 }, { label: 'Branch', width: 14 }, { label: 'Location', width: 18 },
+          { label: 'Deal value (OMR)', type: 'number', width: 14 }, { label: 'Lost reason', width: 20 }, { label: 'Notes', width: 50 },
+          { label: 'Last update', type: 'date', width: 17 },
+        ],
+        rows: leads.map((l) => [
+          l.id, l.date || l.created_at, l.customer_id, l.customer_name_linked || l.name, l.mobile ? `${l.country_code || ''} ${l.mobile}`.trim() : l.phone,
+          l.category, clean(l.quantity), LEAD_STAGES[l.status] || l.status, l.salesman_name, l.branch_name, clean(l.customer_location),
+          Number(l.deal_value || 0), l.lost_reason, clean(l.notes), l.updated_at,
+        ]),
+      },
+      {
+        name: 'Quotations',
+        columns: [
+          { label: 'Quotation', width: 14 }, { label: 'Date', type: 'date', width: 17 }, { label: 'Customer ID', type: 'number', width: 10 },
+          { label: 'Customer', width: 30 }, { label: 'Lead ID', type: 'number', width: 8 }, { label: 'Sales rep', width: 20 }, { label: 'Status', width: 12 },
+          { label: 'Subtotal (OMR)', type: 'number', width: 14 }, { label: 'VAT (OMR)', type: 'number', width: 12 }, { label: 'Total (OMR)', type: 'number', width: 14 },
+        ],
+        rows: quotes.map((q) => [
+          q.code, q.date || q.created_at, q.customer_id, q.customer_name_linked || q.customer_name, q.lead_id, q.sales_rep, q.status,
+          Number(q.subtotal_omr || 0), Number(q.vat_amount_omr || 0), Number(q.grand_total_omr || 0),
+        ]),
+      },
+      {
+        name: 'Documents',
+        columns: [{ label: 'Customer ID', type: 'number', width: 10 }, { label: 'Customer', width: 30 }, { label: 'Document', width: 16 },
+          { label: 'File type', width: 10 }, { label: 'Uploaded', type: 'date', width: 17 }, { label: 'Uploaded by', width: 12 }],
+        rows: files.map((f) => [f.customer_id, f.customer_name, FILE_NAMES[f.label] || f.label, f.mime === 'application/pdf' ? 'PDF' : 'Photo', f.uploaded_at, f.uploaded_via === 'link' ? 'Salesman' : 'Office']),
+      },
+      {
+        name: 'Salesmen',
+        columns: [{ label: 'Salesman', width: 24 }, { label: 'Type', width: 13 }, { label: 'Customers', type: 'number', width: 10 },
+          { label: 'Not started', type: 'number', width: 11 }, { label: 'Customer data done', type: 'percent', width: 14 },
+          { label: 'Open enquiries', type: 'number', width: 12 }, { label: 'Won (OMR)', type: 'number', width: 13 }, { label: 'Link on', width: 8 }],
+        rows: summary.salesmen.map((sm) => {
+          const mine = customers.filter((c) => c.salesmanId === sm.salesmanId);
+          return [sm.name, sm.type === 'route_b2b' ? 'Route / B2B' : 'Branch', sm.assigned, sm.remaining, (sm.percent || 0) / 100,
+            mine.reduce((t, c) => t + c.openLeads, 0), mine.reduce((t, c) => t + c.wonValue, 0), sm.linkEnabled ? 'Yes' : 'No'];
+        }),
+      },
+    ];
+  }
+
+  app.get('/api/data-centre.xlsx', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
+    const sheets = await dataCentreSheets();
+    const buf = workbook(sheets);
+    await audit(req, `Downloaded Customer Data Centre (Excel): ${sheets[0].rows.length} customers, ${sheets[1].rows.length} enquiries`);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=monipack_data_centre_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    res.send(buf);
+  }));
+
+  app.get('/api/data-centre', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
+    const sheets = await dataCentreSheets();
+    await audit(req, 'Downloaded Customer Data Centre (PDF)');
+    res.json(sheets.map((s) => ({ name: s.name, columns: s.columns, rows: s.rows })));
   }));
 
   app.get('/api/customers/export', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
