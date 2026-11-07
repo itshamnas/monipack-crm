@@ -6,6 +6,7 @@ import {
 import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
 import { FILE_LABEL_NAMES, prepareUpload } from '../utils/fileUpload.js';
 import { openPrintable, openPendingWindow, chipsHtml, tableHtml, kvHtml, noteHtml, esc } from '../utils/pdfReport.js';
+import { pdfToImages } from '../utils/pdfPages.js';
 
 const STATUS = {
   pending_approval: { label: 'Needs approval', cls: 'bg-blue-50 text-blue-800 border-blue-200' },
@@ -529,7 +530,11 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
     } catch (err) { showToast(err.message, 'error'); }
   };
 
-  const printProfile = (version) => {
+  // Customer PDF: details + every uploaded document (photos and PDFs), each document on its own page
+  // under a header that shows the number on file (CR / VAT) so the paper can be checked against it.
+  const printProfile = async (version) => {
+    const win = openPendingWindow();
+    if (!win) { showToast('Allow pop-ups to download the PDF', 'error'); return; }
     const snap = c.submissions[c.submissions.length - 1]?.snapshot; // first (original) submission
     const src = version === 'submitted' && snap
       ? { name: snap.name || c.name, mobile: snap.mobile, crNumber: snap.crNumber, noCr: snap.noCr, noCrReason: snap.noCrReason, vatNumber: snap.vatNumber, data: snap.data || {} }
@@ -538,10 +543,42 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
       let v = f.key === 'mobile' ? src.mobile : f.key === 'cr_number' ? (src.noCr ? `No CR – ${src.noCrReason}` : src.crNumber) : f.key === 'vat_number' ? src.vatNumber : src.data[f.key];
       return Array.isArray(v) ? v.join(', ') : v;
     };
-    const docs = docFields.map((f) => [f.label, c.files.some((x) => x.label === f.docLabel) ? 'Uploaded (attached below)' : 'Missing']);
-    const imgs = c.files.filter((f) => thumbs[f.id]).map((f) => `<figure><img src="${thumbs[f.id]}"><figcaption>${esc(FILE_LABEL_NAMES[f.label])} · ${esc(fmt(f.uploadedAt))}</figcaption></figure>`).join('');
-    const pdfs = c.files.filter((f) => f.mime === 'application/pdf').length;
-    const ok = openPrintable({
+    // What each document should be checked against
+    const onFile = {
+      cr_certificate: c.noCr ? `No CR (${c.noCrReason || 'no reason given'})` : (c.crNumber ? `CR No. on file: ${c.crNumber}` : 'CR No. not entered yet'),
+      vat_certificate: c.data?.vat_registered === 'No' ? 'Customer says: not VAT registered' : (c.vatNumber ? `VAT No. on file: ${c.vatNumber}` : 'VAT No. not entered yet'),
+      shop_front: [c.data?.shop_name, c.data?.address, c.data?.city].filter(Boolean).join(', ') || '',
+      other: '',
+    };
+    const by = (f) => (f.uploadedVia === 'link' ? `${c.salesmanName || 'salesman'} (salesman link)` : 'office');
+    const ORDER = ['cr_certificate', 'vat_certificate', 'shop_front', 'other'];
+    const files = [...c.files].sort((a, b) => ORDER.indexOf(a.label) - ORDER.indexOf(b.label));
+
+    let pages = '';
+    let failed = 0;
+    for (const f of files) {
+      try {
+        const res = await authFetch(`/api/customers/${c.id}/files/${f.id}`);
+        if (!res.ok) throw new Error('download failed');
+        const blob = await res.blob();
+        const imgs = f.mime === 'application/pdf'
+          ? (await pdfToImages(blob)).images
+          : [await new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(blob); })];
+        imgs.forEach((img, i) => {
+          pages += `<div class="docpage"><div class="dochead"><div><b>${esc(FILE_LABEL_NAMES[f.label] || f.label)}</b>${imgs.length > 1 ? ` <span>page ${i + 1} of ${imgs.length}</span>` : ''}<br><span class="match">${esc(onFile[f.label] || '')}</span></div><span>${esc(src.name)}<br>Uploaded ${esc(fmt(f.uploadedAt))} by ${esc(by(f))}</span></div><div class="docimg"><img src="${img}" alt=""></div></div>`;
+        });
+      } catch { failed++; }
+    }
+
+    const docRows = docFields.map((f) => {
+      const have = c.files.filter((x) => x.label === f.docLabel);
+      return [f.label, onFile[f.docLabel] || '', have.length ? `${have.length} file${have.length > 1 ? 's' : ''} (attached)` : 'Missing', have.length ? fmt(have.at(-1).uploadedAt) : '', have.length ? by(have.at(-1)) : ''];
+    });
+    const otherCount = c.files.filter((x) => !docFields.some((f) => f.docLabel === x.label)).length;
+    if (otherCount) docRows.push(['Other photos', '', `${otherCount} file${otherCount > 1 ? 's' : ''} (attached)`, '', '']);
+
+    openPrintable({
+      win,
       docType: 'Customer profile',
       meta: [['Customer No.', c.id], ['Salesman', c.salesmanName || '—'], ['Status', STATUS[c.stage]?.label || c.status], ['Complete', `${c.percent}%`]],
       title: src.name,
@@ -550,15 +587,14 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
         : `Customer #${c.id} · Salesman: ${c.salesmanName || '—'} · ${STATUS[c.stage]?.label || c.status} · ${c.percent}% complete`,
       bodyHtml: (version !== 'submitted' && (c.missing || []).length ? noteHtml(`<b>Still missing:</b> ${esc(c.missing.map((k) => fields.find((f) => f.key === k)?.label || k).join(', '))}`) : '')
         + '<h2>Details</h2>' + kvHtml(editFields.map((f) => [f.label, value(f)]))
-        + (docs.length ? '<h2>Documents</h2>' + kvHtml(docs) : '')
+        + (docRows.length ? '<h2>Documents</h2>' + tableHtml([{ label: 'Document' }, { label: 'Check against' }, { label: 'Status' }, { label: 'Uploaded' }, { label: 'By' }], docRows) : '')
+        + (failed ? noteHtml(`${failed} document(s) could not be added. Download them from the customer page.`) : '')
         + (version !== 'submitted' ? '<h2>Enquiries</h2>' + tableHtml([{ label: 'Date' }, { label: 'Product' }, { label: 'Quantity' }, { label: 'Stage' }, { label: 'Salesman' }, { label: 'OMR', num: true }],
           (c.leads || []).map((l) => [fmt(l.date), l.category, l.quantity, STAGE_NAMES[l.status] || l.status, l.salesman, l.dealValue ? l.dealValue.toFixed(3) : '']))
           + '<h2>Quotations</h2>' + tableHtml([{ label: 'Date' }, { label: 'Number' }, { label: 'Status' }, { label: 'OMR', num: true }],
           (c.quotations || []).map((q) => [fmt(q.date), q.number, q.status, q.total.toFixed(3)])) : '')
-        + (pdfs ? `<p class="sub">${pdfs} document(s) were uploaded as PDF files; download them from the customer page.</p>` : '')
-        + imgs,
+        + pages,
     });
-    if (!ok) showToast('Allow pop-ups to download the PDF', 'error');
   };
 
   return (
@@ -696,6 +732,10 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
                     <span className="flex-1 text-sm font-semibold">
                       {have.length ? <CheckCircle2 className="w-4 h-4 inline mr-1 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 inline mr-1 text-rose-600" />}
                       {f.label}: {have.length ? `${have.length} file${have.length > 1 ? 's' : ''}` : 'missing'}
+                      <span className="block text-[11px] font-normal text-slate-600">
+                        {f.docLabel === 'cr_certificate' ? (c.noCr ? 'Customer has no CR' : `Check against CR No. ${c.crNumber || '(not entered)'}`)
+                          : f.docLabel === 'vat_certificate' ? `Check against VAT No. ${c.vatNumber || '(not entered)'}` : ''}
+                      </span>
                     </span>
                     {have.length > 0 && (
                       <button type="button" className={btnDark}

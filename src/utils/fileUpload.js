@@ -59,7 +59,7 @@ export async function prepareUpload(file) {
 }
 
 export const FILE_LABEL_NAMES = {
-  cr_certificate: 'CR certificate',
+  cr_certificate: 'CR paper',
   vat_certificate: 'VAT certificate',
   shop_front: 'Shop front',
   other: 'Other',
