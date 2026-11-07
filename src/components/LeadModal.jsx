@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Building, Phone, Mail, MapPin, Tag, DollarSign, FileText, Trash2, UserCheck } from 'lucide-react';
 import CustomerPicker from './customers/CustomerPicker.jsx';
+import BranchPicker from './ui/BranchPicker.jsx';
 
 const CATEGORIES = [
   'Packaging Products',
@@ -19,6 +20,18 @@ const STAGES = [
   { id: 'won', label: 'STEP 5: Converted (Won)' },
   { id: 'lost', label: 'STEP 6: Lost / Closed' },
 ];
+
+// Form section card (defined at module level so inputs keep focus while typing)
+function Section({ n, title, children }) {
+  return (
+    <section className="rounded-2xl border border-slate-200 p-4 mp-sheet-sec">
+      <h4 className="flex items-center gap-2 text-[13px] font-bold text-slate-900 mb-3 mp-display">
+        <span className="w-6 h-6 rounded-lg grid place-items-center bg-slate-100 text-slate-500 text-[11px] font-bold">{n}</span>{title}
+      </h4>
+      {children}
+    </section>
+  );
+}
 
 export default function LeadModal({ 
   isOpen, 
@@ -185,104 +198,120 @@ export default function LeadModal({
     });
   };
 
+  const inp = 'w-full h-11 text-[13.5px] bg-white border border-slate-200 rounded-xl px-3 focus:outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500 transition placeholder:text-slate-400';
+  const lbl = 'block text-[12px] font-semibold text-slate-700 mb-1.5';
+  const stepName = (l = '') => String(l).replace(/^STEP\s*\d+\s*:\s*/i, '');
+  const branchValue = formData.branchId || branches.find((b) => b.name === formData.branch)?.id || '';
+
   return (
-    <div className="fixed inset-0 z-50 mp-overlay bg-slate-900/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4 overflow-y-auto">
-      <div className="bg-white rounded-t-2xl sm:rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl max-h-[92vh] sm:max-h-[88vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+    <div className="mp-sheet-layer" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <form
+        onSubmit={handleSubmit}
+        onKeyDown={(e) => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); e.currentTarget.requestSubmit(); } }}
+        className="mp-sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-label={lead ? 'Edit lead' : 'New enquiry'}
+      >
         {/* Header */}
-        <div className="px-4 sm:px-6 py-3.5 sm:py-4 bg-slate-900 text-white flex items-center justify-between border-b border-slate-800 shrink-0">
-          <div>
-            <h3 className="text-base font-bold">
-              {lead ? 'Edit Lead' : (
-                <>Create New <span className="font-monipack lowercase text-lg font-normal">monipack</span> Lead</>
-              )}
+        <div className="px-5 sm:px-6 pt-5 pb-4 border-b border-slate-200 flex items-start gap-3 shrink-0">
+          <div className="flex-1 min-w-0">
+            <h3 className="text-[19px] font-bold text-slate-900 mp-display">
+              {lead ? 'Edit lead' : <>New <span className="font-monipack lowercase font-normal">monipack</span> enquiry</>}
             </h3>
-            <p className="text-xs text-slate-400">
-              {lead ? `Updating: ${lead.name}` : 'Add client contact & product requirements'}
-            </p>
+            <p className="text-[12.5px] text-slate-500 truncate">{lead ? `Updating: ${lead.name}` : 'Customer, what they need, who follows up'}</p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-          >
+          <button type="button" onClick={onClose} className="w-10 h-10 grid place-items-center rounded-xl border border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50 transition cursor-pointer" aria-label="Close">
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
+        {/* Body */}
+        <div className="flex-1 overflow-y-auto px-5 sm:px-6 py-5 space-y-4 overscroll-contain">
           {formError && (
-            <div className="p-3 rounded-lg bg-red-50 text-red-700 text-xs font-semibold border border-red-200 animate-in fade-in">
-              ⚠️ {formError}
+            <div className="p-3 rounded-xl bg-red-50 text-red-700 text-[12.5px] font-semibold border border-red-200 animate-in fade-in" role="alert">
+              {formError}
             </div>
           )}
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Company / Client Name *
-            </label>
+          <Section n="1" title="Customer">
+            <label className={lbl}>Company / client name <span className="text-[#CC1A22]">*</span></label>
             <CustomerPicker
               authFetch={authFetch}
               name={formData.name}
               onNameChange={(v) => { setFormData((prev) => ({ ...prev, name: v })); if (formError) setFormError(''); }}
               customer={customer}
               onPick={pickCustomer}
-              inputClass="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
+              inputClass="w-full h-11 text-[13.5px] bg-white border border-slate-200 rounded-xl pl-9 pr-3 focus:outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500 transition"
             />
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Product Category
-              </label>
-              <div className="relative">
-                <Tag className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <select
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-                >
-                  {(() => {
-                    const cats = [...activeCategories];
-                    if (formData.category && !cats.includes(formData.category)) {
-                      cats.push(formData.category);
-                    }
-                    return cats.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ));
-                  })()}
-                </select>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              <div>
+                <label className={lbl}>Mobile / WhatsApp <span className="text-[#CC1A22]">*</span></label>
+                <div className="flex h-11 rounded-xl border border-slate-200 bg-white overflow-hidden focus-within:ring-4 focus-within:ring-red-500/10 focus-within:border-red-500 transition">
+                  <span className="inline-flex items-center px-3 text-[12px] font-bold text-slate-500 border-r border-slate-200 bg-slate-50">+968</span>
+                  <input
+                    type="text"
+                    inputMode="tel"
+                    required
+                    minLength={7}
+                    placeholder="e.g. 91386771"
+                    value={formData.mobile}
+                    onChange={(e) => {
+                      setFormData({ ...formData, mobile: e.target.value });
+                      if (formError) setFormError('');
+                    }}
+                    className="flex-1 min-w-0 px-3 text-[13.5px] outline-none bg-transparent"
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>Email</label>
+                <div className="relative">
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input type="email" placeholder="purchasing@company.om" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} className={`${inp} pl-9`} />
+                </div>
               </div>
             </div>
+          </Section>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Assigned Oman Branch / Hub
-              </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <select
-                  value={formData.branchId || branches.find((b) => b.name === formData.branch)?.id || formData.branch}
-                  onChange={(e) => handleBranchSelect(e.target.value)}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition cursor-pointer"
-                >
-                  {branches.map((b) => (
-                    <option key={b.id || `${b.name}-${b.salesman}`} value={b.id}>
-                      {b.name}{b.city ? ` (${b.city})` : ''}{b.salesman ? ` - Sales: ${b.salesman}` : ''}
-                    </option>
-                  ))}
-                </select>
+          <Section n="2" title="Requirement">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={lbl}>Product category</label>
+                <div className="relative">
+                  <Tag className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <select value={formData.category} onChange={(e) => setFormData({ ...formData, category: e.target.value })} className={`${inp} pl-9 cursor-pointer`}>
+                    {(() => {
+                      const cats = [...activeCategories];
+                      if (formData.category && !cats.includes(formData.category)) cats.push(formData.category);
+                      return cats.map((c) => (<option key={c} value={c}>{c}</option>));
+                    })()}
+                  </select>
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>Delivery location (wilayat)</label>
+                <div className="relative">
+                  <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input type="text" placeholder="e.g. Muscat, Seeb, Nizwa, Sohar" value={formData.customerLocation} onChange={(e) => setFormData({ ...formData, customerLocation: e.target.value })} className={`${inp} pl-9`} />
+                </div>
               </div>
             </div>
-          </div>
+            <div className="mt-3">
+              <label className={lbl}>Quantity / products requested</label>
+              <input type="text" placeholder="e.g. 50 cartons 16oz PET cups, 20 rolls cling film" value={formData.quantity} onChange={(e) => setFormData({ ...formData, quantity: e.target.value })} className={inp} />
+            </div>
+            <div className="mt-3">
+              <label className={lbl}>Notes & meeting discussion</label>
+              <textarea rows="3" placeholder="Delivery preferences, quotation requests…" value={formData.notes} onChange={(e) => setFormData({ ...formData, notes: e.target.value })} className={`${inp} h-auto py-2.5`} />
+            </div>
+          </Section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Assigned Sales Representative
-              </label>
+          <Section n="3" title="Assign">
+            <label className={lbl}>Branch / hub</label>
+            <BranchPicker value={branchValue} onChange={handleBranchSelect} branches={branches || []} allowAll={false} variant="light" placeholder="Choose branch / hub" />
+            <div className="mt-3">
+              <label className={lbl}>Sales representative</label>
               <div className="relative">
                 <UserCheck className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                 <input
@@ -291,178 +320,68 @@ export default function LeadModal({
                   placeholder="e.g. AFSAL, ANAS, JAMSHID"
                   value={formData.salesman}
                   onChange={(e) => setFormData({ ...formData, salesman: e.target.value })}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition font-bold"
+                  className={`${inp} pl-9 font-semibold`}
                 />
                 <datalist id="leadmodal-salesmen">
-                  {Array.from(new Set(branches.map((b) => b.salesman).filter(Boolean))).map((sm) => (
-                    <option key={sm} value={sm} />
-                  ))}
+                  {Array.from(new Set(branches.map((b) => b.salesman).filter(Boolean))).map((sm) => (<option key={sm} value={sm} />))}
                 </datalist>
               </div>
+              <p className="text-[11.5px] text-slate-500 mt-1.5">Choosing a branch fills in its rep. You can change it.</p>
             </div>
+          </Section>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Customer Wilayat / Delivery Location in Oman
-              </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="text"
-                  placeholder="e.g. Muscat, Seeb, Nizwa, Sohar"
-                  value={formData.customerLocation}
-                  onChange={(e) => setFormData({ ...formData, customerLocation: e.target.value })}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Mobile / WhatsApp (Oman) *
-              </label>
-              <div className="flex">
-                <span className="inline-flex items-center px-3 text-xs bg-slate-100 border border-r-0 border-slate-300 rounded-l-lg text-slate-600 font-medium">
-                  +968
-                </span>
-                <input
-                  type="text"
-                  required
-                  minLength={7}
-                  placeholder="e.g. 91386771"
-                  value={formData.mobile}
-                  onChange={(e) => {
-                    setFormData({ ...formData, mobile: e.target.value });
-                    if (formError) setFormError('');
-                  }}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-r-lg px-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Email Address
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                <input
-                  type="email"
-                  placeholder="purchasing@company.om"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Sales Pipeline Stage
-              </label>
-              <select
-                value={formData.status}
-                onChange={(e) => setFormData({ ...formData, status: e.target.value })}
-                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg px-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-              >
-                {activeStages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Estimated Deal Value (OMR)
-              </label>
-              <div className="relative">
-                <span className="text-[10px] font-bold text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none">
-                  OMR
-                </span>
-                <input
-                  type="number"
-                  step="0.001"
-                  placeholder="0.000"
-                  value={formData.dealValue}
-                  onChange={(e) => setFormData({ ...formData, dealValue: e.target.value })}
-                  className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-12 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-                />
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Quantity / Products Requested
-            </label>
-            <input
-              type="text"
-              placeholder="e.g. 50 Cartons 16oz PET cups, 20 Rolls cling film"
-              value={formData.quantity}
-              onChange={(e) => setFormData({ ...formData, quantity: e.target.value })}
-              className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg px-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-            />
-          </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1">
-              Notes & Meeting Discussion
-            </label>
-            <textarea
-              rows="3"
-              placeholder="Add key notes, delivery preferences, or quotation requests..."
-              value={formData.notes}
-              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-              className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-3 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-            />
-          </div>
-
-          {/* Footer Actions */}
-          <div className="pt-3 border-t border-slate-200 flex items-center justify-between gap-2">
-            <div>
-              {lead && onDeleteLead && (
+          <Section n="4" title="Stage & value">
+            <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label="Pipeline stage">
+              {activeStages.map((st, i) => (
                 <button
+                  key={st.id}
                   type="button"
-                  onClick={() => {
-                    if (window.confirm(`Are you sure you want to permanently delete lead "${formData.name || lead.name}"? This action cannot be undone.`)) {
-                      onDeleteLead(lead.id);
-                      onClose();
-                    }
-                  }}
-                  className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                  role="radio"
+                  aria-checked={formData.status === st.id}
+                  onClick={() => setFormData({ ...formData, status: st.id })}
+                  className={`min-h-[34px] px-3 rounded-lg text-[12px] font-semibold border transition cursor-pointer ${formData.status === st.id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'}`}
                 >
-                  <Trash2 className="w-4 h-4" />
-                  <span>Delete Lead</span>
+                  {i + 1}. {stepName(st.label)}
                 </button>
-              )}
+              ))}
             </div>
+            <div className="mt-3 max-w-xs">
+              <label className={lbl}>Estimated deal value</label>
+              <div className="flex h-11 rounded-xl border border-slate-200 bg-white overflow-hidden focus-within:ring-4 focus-within:ring-red-500/10 focus-within:border-red-500 transition">
+                <span className="inline-flex items-center px-3 text-[11px] font-bold text-slate-500 border-r border-slate-200 bg-slate-50">OMR</span>
+                <input type="number" inputMode="decimal" step="0.001" placeholder="0.000" value={formData.dealValue} onChange={(e) => setFormData({ ...formData, dealValue: e.target.value })} className="flex-1 min-w-0 px-3 text-[13.5px] outline-none bg-transparent tabular-nums" />
+              </div>
+            </div>
+          </Section>
+        </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                className="flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white rounded-lg shadow-sm transition active:scale-95 cursor-pointer"
-                style={{ backgroundColor: 'var(--color-primary, #CC1A22)' }}
-              >
-                <Save className="w-4 h-4" />
-                <span>{lead ? 'Update Lead' : 'Save Lead'}</span>
-              </button>
-            </div>
-          </div>
-        </form>
-      </div>
+        {/* Footer */}
+        <div className="px-5 sm:px-6 py-3.5 border-t border-slate-200 flex items-center gap-2 shrink-0 bg-white mp-sheet-foot">
+          {lead && onDeleteLead && (
+            <button
+              type="button"
+              onClick={() => {
+                if (window.confirm(`Are you sure you want to permanently delete lead "${formData.name || lead.name}"? This action cannot be undone.`)) {
+                  onDeleteLead(lead.id);
+                  onClose();
+                }
+              }}
+              className="flex items-center gap-1.5 px-3 min-h-[42px] text-[12.5px] font-semibold text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
+            >
+              <Trash2 className="w-4 h-4" />
+              <span className="hidden sm:inline">Delete lead</span>
+            </button>
+          )}
+          <span className="hidden md:inline text-[11.5px] text-slate-400 mr-auto"><kbd className="mp-kbd">Ctrl</kbd> + <kbd className="mp-kbd">Enter</kbd> to save</span>
+          <button type="button" onClick={onClose} className="ml-auto md:ml-0 px-4 min-h-[42px] text-[13px] font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition cursor-pointer">
+            Cancel
+          </button>
+          <button type="submit" className="mp-btn mp-btn-red min-h-[42px] px-5 text-[13px]">
+            <Save className="w-4 h-4" />
+            <span>{lead ? 'Update lead' : 'Save lead'}</span>
+          </button>
+        </div>
+      </form>
     </div>
   );
 }
