@@ -263,7 +263,7 @@ export default function Leads({
             type="button"
             onClick={(e) => handleToggleMenu(e, lead)}
             title="Lead Actions"
-            className={`p-1 rounded-md transition cursor-pointer ${
+            className={`p-2.5 -m-1.5 rounded-xl transition cursor-pointer ${
               activeMenuLeadId === lead.id
                 ? 'text-[#CC1A22] bg-red-50 ring-1 ring-red-200'
                 : 'text-slate-400 hover:text-slate-700 hover:bg-slate-100'
@@ -450,10 +450,10 @@ export default function Leads({
 
         <div className="flex items-center gap-2.5 self-start md:self-auto flex-wrap">
           {/* View switcher: clean [Kanban Pipeline] | [Table View] */}
-          <div className="flex bg-slate-200/80 p-0.5 rounded-lg border border-slate-300/80">
+          <div className="flex bg-slate-200/80 p-1 rounded-full border border-slate-300/80">
             <button
               onClick={() => setViewMode('kanban')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-full text-xs font-bold transition cursor-pointer ${
                 viewMode === 'kanban'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -464,7 +464,7 @@ export default function Leads({
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-bold transition cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3.5 min-h-[36px] rounded-full text-xs font-bold transition cursor-pointer ${
                 viewMode === 'table'
                   ? 'bg-white text-slate-900 shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
@@ -677,12 +677,12 @@ export default function Leads({
             <div className="lg:hidden space-y-2.5">
               {/* View Switcher on Mobile: [📱 Single Stage Focus] | [➡️ All Columns] */}
               <div className="flex items-center justify-between text-xs px-1">
-                <span className="font-bold text-slate-700">Mobile Funnel View:</span>
-                <div className="flex bg-slate-200/80 p-0.5 rounded-lg border border-slate-300">
+                <span className="font-bold text-slate-700">View:</span>
+                <div className="flex bg-slate-200/80 p-1 rounded-full border border-slate-300">
                   <button
                     type="button"
                     onClick={() => setMobileViewStyle('focus')}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                    className={`px-3 min-h-[36px] rounded-full text-xs font-bold transition cursor-pointer ${
                       mobileViewStyle === 'focus' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
                     }`}
                   >
@@ -691,7 +691,7 @@ export default function Leads({
                   <button
                     type="button"
                     onClick={() => setMobileViewStyle('columns')}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition cursor-pointer ${
+                    className={`px-3 min-h-[36px] rounded-full text-xs font-bold transition cursor-pointer ${
                       mobileViewStyle === 'columns' ? 'bg-white text-slate-900 shadow-2xs' : 'text-slate-600'
                     }`}
                   >
@@ -874,7 +874,7 @@ export default function Leads({
       {viewMode === 'table' && (
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] overflow-hidden">
           {/* Mobile Card Feed for Table Mode (< md only) */}
-          <div className="md:hidden divide-y divide-slate-100">
+          <div className="lg:hidden divide-y divide-slate-100">
             {filteredLeads.slice(0, tableLimit).map((lead) => (
               <div key={lead.id} className="p-3.5 space-y-2 hover:bg-slate-50 transition-colors">
                 <div className="flex items-center justify-between gap-2">
@@ -951,7 +951,7 @@ export default function Leads({
           </div>
 
           {/* Desktop Table (hidden on mobile, visible md:) */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-600 uppercase text-[10px] tracking-wider border-b border-slate-200">
                 <tr>

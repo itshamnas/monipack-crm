@@ -286,7 +286,7 @@ export default function CustomerLink() {
 
       {tab === 'customers' && (
       <button type="button" onClick={() => setEditing({ isNew: true, data: {} })}
-        className="fixed right-5 bottom-6 z-20 h-14 px-5 rounded-full bg-[#CC1A22] hover:bg-[#A3141B] text-white font-bold flex items-center gap-2 shadow-[0_10px_24px_-8px_rgba(204,26,34,0.6)]">
+        className="fixed right-5 bottom-6 mp-safe-bottom z-20 h-14 px-5 rounded-full bg-[#CC1A22] hover:bg-[#A3141B] text-white font-bold flex items-center gap-2 shadow-[0_10px_24px_-8px_rgba(204,26,34,0.6)]">
         <Plus className="w-5 h-5" /> Add new customer
       </button>
       )}

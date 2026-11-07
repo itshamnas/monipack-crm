@@ -46,13 +46,13 @@ export default function Navbar({
       }}
     >
       {/* Left: Mobile Drawer Trigger + Brand Logo (mobile) + Responsive Page Title */}
-      <div className="flex items-center gap-2 sm:gap-3.5 min-w-0 sm:shrink-0 pr-2 sm:pr-4">
+      <div className="flex items-center gap-2 sm:gap-3.5 min-w-0 pr-2 sm:pr-4">
         {/* Hamburger Toggle (mobile only) */}
         {onOpenMobileDrawer && (
           <button
             type="button"
             onClick={onOpenMobileDrawer}
-            className="md:hidden w-8 h-8 flex items-center justify-center text-slate-700 bg-white/80 hover:bg-slate-100 rounded-lg border border-slate-200 transition active:scale-95 cursor-pointer shrink-0 shadow-xs"
+            className="hidden w-9 h-9 flex items-center justify-center text-slate-700 bg-white/80 hover:bg-slate-100 rounded-lg border border-slate-200 transition active:scale-95 cursor-pointer shrink-0 shadow-xs"
             aria-label="Open Navigation Drawer"
             title="Open Menu"
           >
@@ -61,11 +61,11 @@ export default function Navbar({
         )}
 
         {/* Brand Logo: Shown on mobile (on desktop, sidebar already displays the brand logo) */}
-        <BrandLogo sizeClass="h-7 w-7 md:hidden aspect-square object-contain drop-shadow-xs shrink-0" />
+        <BrandLogo sizeClass="h-7 w-7 lg:hidden aspect-square object-contain drop-shadow-xs shrink-0" />
 
-        <div className="min-w-0 sm:shrink-0">
+        <div className="min-w-0">
           <h2 
-            className="text-sm sm:text-base font-bold text-slate-900 leading-tight truncate sm:whitespace-nowrap"
+            className="text-sm sm:text-base font-bold text-slate-900 leading-tight truncate"
           >
             <span className="sm:hidden">{shortTitle || title}</span>
             <span className="hidden sm:inline">{title}</span>
@@ -83,7 +83,7 @@ export default function Navbar({
       <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         
         {/* Desktop Search Input (hidden on mobile) */}
-        <div className="relative hidden md:block w-36 lg:w-52 xl:w-64">
+        <div className="relative hidden lg:block w-44 xl:w-64">
           <Search 
             className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" 
           />
@@ -108,7 +108,7 @@ export default function Navbar({
         <button
           type="button"
           onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
-          className="md:hidden w-8 h-8 flex items-center justify-center text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-100 rounded-lg border border-slate-200 transition active:scale-95 cursor-pointer shadow-xs"
+          className="lg:hidden w-10 h-10 flex items-center justify-center text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-100 rounded-lg border border-slate-200 transition active:scale-95 cursor-pointer shadow-xs"
           title={isMobileSearchOpen ? 'Close Search' : 'Search Leads'}
         >
           {isMobileSearchOpen ? (
@@ -121,15 +121,17 @@ export default function Navbar({
         {/* PWA Install Button (Header) */}
         <InstallPromptButton variant="header" />
 
-        {/* Sound + theme switches */}
-        <HeaderToggles />
+        {/* Sound + theme switches (on phones they live in the Menu) */}
+        <div className="hidden sm:flex items-center gap-1.5 sm:gap-2.5">
+          <HeaderToggles />
+        </div>
 
         {/* Sync / Refresh Button */}
         <button
           onClick={onRefresh}
           title="Refresh Data"
           disabled={loading}
-          className="w-8 h-8 sm:w-9 sm:h-9 flex items-center justify-center text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-100 rounded-lg border border-slate-200 transition active:scale-95 disabled:opacity-50 cursor-pointer shadow-xs"
+          className="w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-100 rounded-lg border border-slate-200 transition active:scale-95 disabled:opacity-50 cursor-pointer shadow-xs"
         >
           <RefreshCw 
             className={`w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-600 ${loading ? 'animate-spin text-red-600' : ''}`}
@@ -155,14 +157,14 @@ export default function Navbar({
           {/* User Avatar (On mobile, tap triggers sign out prompt/action) */}
           <button
             type="button"
-            onClick={onLogout}
-            className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs shadow-xs hover:ring-2 hover:ring-red-400/50 transition cursor-pointer shrink-0"
-            title={`${userName} • Tap to Sign Out`}
+            onClick={() => (onOpenMobileDrawer && window.innerWidth < 1024 ? onOpenMobileDrawer() : onLogout())}
+            className="w-10 h-10 sm:w-9 sm:h-9 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs shadow-xs hover:ring-2 hover:ring-red-400/50 transition cursor-pointer shrink-0"
+            title={`${userName} • Menu and sign out`}
           >
             {userInitials || <User className="w-3.5 h-3.5 text-white" />}
           </button>
 
-          <div className="hidden sm:flex flex-col text-left">
+          <div className="hidden sm:flex lg:hidden xl:flex flex-col text-left">
             <span 
               className="text-xs font-bold leading-tight truncate max-w-[120px] text-slate-900"
             >
@@ -197,7 +199,7 @@ export default function Navbar({
       {/* Mobile Collapsible Search Bar Overlay */}
       {isMobileSearchOpen && (
         <div 
-          className="absolute top-16 left-0 right-0 p-3 bg-white border-b border-surface-silver shadow-md z-30 md:hidden animate-in slide-in-from-top-2 duration-150"
+          className="absolute top-16 left-0 right-0 p-3 bg-white border-b border-surface-silver shadow-md z-30 lg:hidden animate-in slide-in-from-top-2 duration-150"
           style={{ borderColor: 'var(--color-surface-silver, #E5E7EB)' }}
         >
           <div className="relative">
@@ -211,7 +213,7 @@ export default function Navbar({
               placeholder="Search leads, phone, wilayat, quotes..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full text-xs rounded-lg pl-9 pr-8 py-2.5 border transition-all placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20"
+              className="w-full text-base sm:text-sm rounded-xl pl-9 pr-8 py-3 border transition-all placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-primary/20"
               style={{
                 backgroundColor: 'var(--color-app-bg, #F3F4F6)',
                 borderColor: 'var(--color-surface-silver, #E5E7EB)',

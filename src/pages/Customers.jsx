@@ -20,7 +20,7 @@ const TYPE_LABEL = { branch: 'Branch', route_b2b: 'Route / B2B' };
 const STAGE_NAMES = { new: 'New', contacted: 'Assigned', quotation_sent: 'Quote sent', sample_sent: 'Sample / negotiation', won: 'Won', lost: 'Lost' };
 
 const card = 'bg-white rounded-3xl border border-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.04)]';
-const btn = 'inline-flex items-center justify-center gap-1.5 min-h-[36px] px-3 rounded-full text-xs font-bold transition active:scale-[0.97] disabled:opacity-50';
+const btn = 'inline-flex items-center justify-center gap-1.5 min-h-[40px] sm:min-h-[36px] px-3 rounded-full text-xs font-bold transition active:scale-[0.97] disabled:opacity-50';
 const btnDark = `${btn} bg-slate-900 text-white hover:bg-slate-800`;
 const btnRed = `${btn} bg-[#CC1A22] text-white hover:bg-[#A3141B]`;
 const btnLight = `${btn} bg-white text-slate-800 border border-slate-300 hover:bg-slate-50`;
@@ -612,7 +612,7 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
           </p>
         )}
 
-        <section className="grid sm:grid-cols-3 gap-2" aria-label="Business with this customer">
+        <section className="grid grid-cols-3 gap-2" aria-label="Business with this customer">
           {[['Enquiries', (c.leads || []).length], ['Quotations', (c.quotations || []).length], ['Won (OMR)', Number(c.wonValue || 0).toFixed(3)]].map(([label, v]) => (
             <div key={label} className="p-3 rounded-2xl bg-slate-50 border border-slate-200">
               <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
@@ -837,6 +837,27 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged }) {
     window.open(`https://api.whatsapp.com/send?${phone ? `phone=${phone}&` : ''}text=${encodeURIComponent(text)}`, '_blank', 'noopener');
   };
 
+  const actions = (l) => (
+    <div className="flex flex-wrap gap-1.5">
+      {!l.linkEnabled && <button type="button" className={btnRed} onClick={() => call(l, { action: 'enable' }, `Link switched on for ${l.name}.`)}><Power className="w-3.5 h-3.5" /> Switch on</button>}
+      {l.linkEnabled && (
+        <>
+          <button type="button" className={btnDark} onClick={() => copy(l)}><Copy className="w-3.5 h-3.5" /> Copy</button>
+          <button type="button" className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`} onClick={() => whatsapp(l)}><MessageCircle className="w-3.5 h-3.5" /> WhatsApp</button>
+          <button type="button" className={btnLight} onClick={() => window.confirm(`Reset ${l.name}'s link? The old link stops working immediately.`) && call(l, { action: 'regenerate' }, 'New link created. Send it to the salesman.')}><RefreshCw className="w-3.5 h-3.5" /> Reset</button>
+          <button type="button" className={btnLight} onClick={() => { setPinFor(l); setPin(''); }}><KeyRound className="w-3.5 h-3.5" /> PIN</button>
+          <button type="button" className={`${btn} text-rose-700 hover:bg-rose-50`} onClick={() => call(l, { action: 'disable' }, `Link switched off for ${l.name}.`)}><Power className="w-3.5 h-3.5" /> Off</button>
+        </>
+      )}
+    </div>
+  );
+  const typeSelect = (l, idSuffix = '') => (
+    <select id={`type-${l.salesmanId}${idSuffix}`} aria-label={`Type for ${l.name}`} value={l.type} onChange={(e) => setType(l, e.target.value)} className="h-10 px-3 rounded-full border border-slate-300 text-xs bg-white">
+      <option value="branch">Branch</option>
+      <option value="route_b2b">Route / B2B</option>
+    </select>
+  );
+
   return (
     <div className="space-y-3">
       <div className={`${card} p-4 text-sm text-slate-600 flex flex-wrap items-center justify-between gap-3`}>
@@ -846,7 +867,23 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged }) {
         </p>
         <button type="button" className={btnRed} onClick={() => setCreating(true)}><Plus className="w-4 h-4" /> New salesman</button>
       </div>
-      <div className={`${card} overflow-x-auto`}>
+      <ul className="md:hidden space-y-2" aria-label="Salesmen">
+        {links.map((l) => (
+          <li key={l.salesmanId} className={`${card} p-4 space-y-3`}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="font-bold truncate">{l.name}</p>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  {l.linkEnabled ? <span className="text-emerald-700 font-bold">Link on</span> : 'Link off'} · PIN {l.hasPin ? 'set' : 'none'} · opened {fmt(l.linkLastUsedAt)}
+                </p>
+              </div>
+              {typeSelect(l, '-m')}
+            </div>
+            {actions(l)}
+          </li>
+        ))}
+      </ul>
+      <div className={`${card} overflow-x-auto hidden md:block`}>
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
             <tr>{['Salesman', 'Type', 'Link', 'PIN', 'Last opened', 'Actions'].map((h) => <th key={h} className="text-left font-bold px-4 py-2.5">{h}</th>)}</tr>
@@ -856,11 +893,7 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged }) {
               <tr key={l.salesmanId}>
                 <td className="px-4 py-3 font-semibold whitespace-nowrap">{l.name}</td>
                 <td className="px-4 py-3">
-                  <label className="sr-only" htmlFor={`type-${l.salesmanId}`}>Type for {l.name}</label>
-                  <select id={`type-${l.salesmanId}`} value={l.type} onChange={(e) => setType(l, e.target.value)} className="h-9 px-2 rounded-full border border-slate-300 text-xs bg-white">
-                    <option value="branch">Branch</option>
-                    <option value="route_b2b">Route / B2B</option>
-                  </select>
+                  {typeSelect(l)}
                 </td>
                 <td className="px-4 py-3">
                   {l.linkEnabled ? (
@@ -869,20 +902,7 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged }) {
                 </td>
                 <td className="px-4 py-3 text-xs">{l.hasPin ? 'Set' : '—'}</td>
                 <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmt(l.linkLastUsedAt)}</td>
-                <td className="px-4 py-3">
-                  <div className="flex flex-wrap gap-1.5">
-                    {!l.linkEnabled && <button type="button" className={btnRed} onClick={() => call(l, { action: 'enable' }, `Link switched on for ${l.name}.`)}><Power className="w-3.5 h-3.5" /> Switch on</button>}
-                    {l.linkEnabled && (
-                      <>
-                        <button type="button" className={btnDark} onClick={() => copy(l)}><Copy className="w-3.5 h-3.5" /> Copy</button>
-                        <button type="button" className={`${btn} bg-emerald-600 text-white hover:bg-emerald-700`} onClick={() => whatsapp(l)}><MessageCircle className="w-3.5 h-3.5" /> WhatsApp</button>
-                        <button type="button" className={btnLight} onClick={() => window.confirm(`Reset ${l.name}'s link? The old link stops working immediately.`) && call(l, { action: 'regenerate' }, 'New link created. Send it to the salesman.')}><RefreshCw className="w-3.5 h-3.5" /> Reset</button>
-                        <button type="button" className={btnLight} onClick={() => { setPinFor(l); setPin(''); }}><KeyRound className="w-3.5 h-3.5" /> PIN</button>
-                        <button type="button" className={`${btn} text-rose-700 hover:bg-rose-50`} onClick={() => call(l, { action: 'disable' }, `Link switched off for ${l.name}.`)}><Power className="w-3.5 h-3.5" /> Off</button>
-                      </>
-                    )}
-                  </div>
-                </td>
+                <td className="px-4 py-3">{actions(l)}</td>
               </tr>
             ))}
           </tbody>

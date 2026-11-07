@@ -538,7 +538,7 @@ export default function App() {
         notifications={
           toast && (
             <div
-              className={`fixed bottom-5 right-5 z-50 px-4 py-3 rounded-xl shadow-xl border text-xs font-bold animate-in fade-in slide-in-from-bottom-4 duration-200 ${
+              className={`fixed mp-toast z-50 px-4 py-3 rounded-2xl text-center sm:text-left shadow-xl border text-xs font-bold animate-in fade-in slide-in-from-bottom-4 duration-200 ${
                 toast.type === 'error'
                   ? 'bg-primary text-white border-primary-hover'
                   : 'bg-text-main text-white border-slate-800'
