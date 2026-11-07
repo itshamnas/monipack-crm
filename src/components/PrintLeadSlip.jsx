@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { getCompany } from '../utils/pdfReport.js';
 import { createPortal } from 'react-dom';
 import { Printer, X, MapPin, Phone, Building2, UserCheck, Calendar, Clock, CheckCircle2, ShieldCheck, ArrowRight } from 'lucide-react';
 
@@ -14,6 +15,8 @@ import { Printer, X, MapPin, Phone, Building2, UserCheck, Calendar, Clock, Check
  * - Official corporate layout: MNI letterhead, client specs, assigned salesman, SLA checklist, stamp box, 4-brand footer
  */
 export default function PrintLeadSlip({ lead, branches = [], onClose }) {
+  const [company, setCompany] = useState(null);
+  useEffect(() => { getCompany().then(setCompany); }, []);
   // Close on Escape key - must be called unconditionally above any early return
   useEffect(() => {
     if (!lead) return;
@@ -200,10 +203,13 @@ export default function PrintLeadSlip({ lead, branches = [], onClose }) {
               />
             </div>
             <div className="text-slate-800 text-xs leading-tight">
-              <div className="font-extrabold text-slate-950 text-sm">Morooj Nizwa International LLC</div>
-              <div className="text-[11px] font-arabic font-bold text-slate-700">شركة مروج نزوى العالمية ش.م.م</div>
-              <div className="text-[11px] text-slate-600 mt-0.5">Ghala Industrial Area, Muscat, Sultanate of Oman</div>
-              <div className="text-[10px] font-mono text-slate-500">Commercial Hotline: +968 79062219 | info@monipack.com</div>
+              <div className="font-extrabold text-slate-950 text-sm">{company?.companyName || 'Morooj Nizwa International LLC'}</div>
+              <div className="text-[11px] font-arabic font-bold text-slate-700">{company?.companyNameAr || 'شركة مروج نزوى العالمية ش.م.م'}</div>
+              <div className="text-[11px] text-slate-600 mt-0.5">{company?.headquarters || 'Ghala Industrial Area, Muscat, Sultanate of Oman'}{company?.poBox ? ` · ${company.poBox}` : ''}</div>
+              <div className="text-[10px] font-mono text-slate-500">{[company?.phone || '+968 79062219', company?.email || 'info@monipack.com'].join(' | ')}</div>
+              {(company?.crNumber || company?.vatNumber) && (
+                <div className="text-[10px] font-semibold text-slate-600">{[company.crNumber && `CR No. ${company.crNumber}`, company.vatNumber && `VATIN ${company.vatNumber}`].filter(Boolean).join(' · ')}</div>
+              )}
             </div>
           </div>
 

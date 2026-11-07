@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
 import { FILE_LABEL_NAMES, prepareUpload } from '../utils/fileUpload.js';
-import { openPrintable, openPendingWindow, chipsHtml, tableHtml, kvHtml, esc } from '../utils/pdfReport.js';
+import { openPrintable, openPendingWindow, chipsHtml, tableHtml, kvHtml, noteHtml, esc } from '../utils/pdfReport.js';
 
 const STATUS = {
   pending_approval: { label: 'Needs approval', cls: 'bg-blue-50 text-blue-800 border-blue-200' },
@@ -123,8 +123,10 @@ export default function Customers({ authFetch, showToast, canManage, initialFilt
       const won = by.Enquiries.rows.filter((r) => r[7] === 'Won').reduce((t, r) => t + Number(r[11] || 0), 0);
       openPrintable({
         win,
+        docType: 'Data report',
         title: 'Customer Data Centre',
         subtitle: 'All customers with their enquiries, quotations and documents',
+        meta: [['Customers', by.Customers.rows.length], ['Enquiries', by.Enquiries.rows.length]],
         bodyHtml: chipsHtml([['Customers', by.Customers.rows.length], ['Enquiries', by.Enquiries.rows.length], ['Quotations', by.Quotations.rows.length],
           ['Documents', by.Documents.rows.length], ['Won (OMR)', won.toFixed(3)]])
           + '<h2>Salesmen</h2>' + tableHtml(sm.cols, sm.rows)
@@ -274,8 +276,10 @@ function CustomerList({ authFetch, showToast, canManage, initialFilter = {}, sal
     const filters = [STAGE_CHIPS.find(([id]) => id === stage)?.[1], sm || (salesmanId === 'unassigned' ? 'No salesman' : 'All salesmen'),
       missing ? `Missing ${fieldLabel[missing] || missing}` : '', search ? `Search “${search}”` : ''].filter(Boolean).join(' · ');
     const ok = openPrintable({
+      docType: 'Customer list',
       title: 'Customers',
       subtitle: filters,
+      meta: [['Records', shown.length]],
       bodyHtml: chipsHtml(STAGE_CHIPS.map(([id, label]) => [label, counts[id] || 0]))
         + tableHtml(
           [{ label: 'Customer' }, { label: 'Mobile' }, { label: 'CR' }, { label: 'Salesman' }, { label: 'Status' }, { label: '%', num: true }, { label: 'Still missing' }],
@@ -538,11 +542,13 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
     const imgs = c.files.filter((f) => thumbs[f.id]).map((f) => `<figure><img src="${thumbs[f.id]}"><figcaption>${esc(FILE_LABEL_NAMES[f.label])} · ${esc(fmt(f.uploadedAt))}</figcaption></figure>`).join('');
     const pdfs = c.files.filter((f) => f.mime === 'application/pdf').length;
     const ok = openPrintable({
+      docType: 'Customer profile',
+      meta: [['Customer No.', c.id], ['Salesman', c.salesmanName || '—'], ['Status', STATUS[c.stage]?.label || c.status], ['Complete', `${c.percent}%`]],
       title: src.name,
       subtitle: version === 'submitted' && snap
         ? `As first submitted by ${snap.submittedBy || c.salesmanName} on ${fmt(c.submissions[c.submissions.length - 1].submittedAt)}`
         : `Customer #${c.id} · Salesman: ${c.salesmanName || '—'} · ${STATUS[c.stage]?.label || c.status} · ${c.percent}% complete`,
-      bodyHtml: (version !== 'submitted' && (c.missing || []).length ? `<p><b>Still missing:</b> ${esc(c.missing.map((k) => fields.find((f) => f.key === k)?.label || k).join(', '))}</p>` : '')
+      bodyHtml: (version !== 'submitted' && (c.missing || []).length ? noteHtml(`<b>Still missing:</b> ${esc(c.missing.map((k) => fields.find((f) => f.key === k)?.label || k).join(', '))}`) : '')
         + '<h2>Details</h2>' + kvHtml(editFields.map((f) => [f.label, value(f)]))
         + (docs.length ? '<h2>Documents</h2>' + kvHtml(docs) : '')
         + (version !== 'submitted' ? '<h2>Enquiries</h2>' + tableHtml([{ label: 'Date' }, { label: 'Product' }, { label: 'Quantity' }, { label: 'Stage' }, { label: 'Salesman' }, { label: 'OMR', num: true }],
