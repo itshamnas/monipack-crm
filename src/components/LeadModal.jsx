@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Save, Building, Phone, Mail, MapPin, Tag, DollarSign, FileText, Trash2, UserCheck } from 'lucide-react';
+import CustomerPicker from './customers/CustomerPicker.jsx';
 
 const CATEGORIES = [
   'Packaging Products',
@@ -27,8 +28,10 @@ export default function LeadModal({
   lead, 
   branches,
   categories: propCategories,
-  pipelineStages: propStages 
+  pipelineStages: propStages,
+  authFetch,
 }) {
+  const [customer, setCustomer] = useState(null); // existing customer this enquiry belongs to
   const activeCategories = propCategories && propCategories.length > 0 ? propCategories : CATEGORIES;
   const activeStages = propStages && propStages.length > 0 ? propStages : STAGES;
 
@@ -71,6 +74,7 @@ export default function LeadModal({
 
   useEffect(() => {
     setFormError('');
+    setCustomer(lead?.customerId ? { id: lead.customerId, name: lead.name, mobile: lead.mobile } : null);
     if (lead) {
       const matched = (branches && branches.length > 0)
         ? (branches.find((b) => lead.branchId && b.id === lead.branchId) ||
@@ -127,6 +131,21 @@ export default function LeadModal({
     }
   };
 
+  // Picking an existing customer fills the details we already know
+  const pickCustomer = (c) => {
+    setCustomer(c);
+    if (!c) return;
+    const branchMatch = (branches || []).find((b) => c.branchId && String(b.id) === String(c.branchId));
+    setFormData((prev) => ({
+      ...prev,
+      name: c.name,
+      mobile: c.mobile ? extractMobileAndCode({ mobile: c.mobile }).mobile : prev.mobile,
+      customerLocation: prev.customerLocation || c.city || c.address || '',
+      ...(branchMatch ? { branchId: branchMatch.id, branch: branchMatch.name } : {}),
+      ...(c.salesmanName ? { salesman: c.salesmanName } : {}),
+    }));
+  };
+
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
@@ -162,6 +181,7 @@ export default function LeadModal({
       salesman: formData.salesman?.trim() || foundBranch?.salesman || '',
       customerLocation: formData.customerLocation?.trim() || '',
       dealValue: Number(formData.dealValue) || 0,
+      ...(customer ? { customerId: customer.id } : (lead ? {} : { customerId: null })),
     });
   };
 
@@ -200,21 +220,14 @@ export default function LeadModal({
             <label className="block text-xs font-semibold text-slate-700 mb-1">
               Company / Client Name *
             </label>
-            <div className="relative">
-              <Building className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="text"
-                required
-                minLength={3}
-                placeholder="e.g. Grand Muscat Hotel & Cafe"
-                value={formData.name}
-                onChange={(e) => {
-                  setFormData({ ...formData, name: e.target.value });
-                  if (formError) setFormError('');
-                }}
-                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
-              />
-            </div>
+            <CustomerPicker
+              authFetch={authFetch}
+              name={formData.name}
+              onNameChange={(v) => { setFormData((prev) => ({ ...prev, name: v })); if (formError) setFormError(''); }}
+              customer={customer}
+              onPick={pickCustomer}
+              inputClass="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

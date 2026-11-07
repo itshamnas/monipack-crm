@@ -283,9 +283,75 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     res.status(201).json({ id: String(file.id), label: file.label });
   }));
 
+  // ---- My leads (enquiries) on the salesman link ----
+  const STAGE_LABELS = { new: 'New', contacted: 'Assigned', quotation_sent: 'Quote sent', sample_sent: 'Sample / negotiation', won: 'Won', lost: 'Lost' };
+  // The pipeline stages from Settings, or the standard six when none are configured
+  const pipelineStages = async () => {
+    const list = await db.getPipelineStages();
+    return list.length ? list : Object.keys(STAGE_LABELS).map((id) => ({ id, label: STAGE_LABELS[id] }));
+  };
+
+  app.get('/api/link/:token/leads', linkGuard, loadLinkSalesman, linkAuth, asyncHandler(async (req, res) => {
+    const [leads, stages] = await Promise.all([db.getLeads({ salesmanId: req.linkSalesman.id }), pipelineStages()]);
+    const closed = new Set(['won', 'lost']);
+    leads.sort((a, b) => (closed.has(a.status) - closed.has(b.status)) || String(b.updatedAt).localeCompare(String(a.updatedAt)));
+    res.json({
+      stages: stages.map((st) => ({ id: st.id, label: STAGE_LABELS[st.id] || String(st.label || st.id).replace(/^STEP \d+:\s*/, '') })),
+      leads: leads.map((l) => ({
+        id: l.id, name: l.name, customerId: l.customerId, category: l.category, quantity: l.quantity,
+        mobile: l.mobile ? `${l.countryCode || '+968'} ${l.mobile}` : l.phone, location: l.customerLocation,
+        status: l.status, dealValue: l.dealValue, notes: l.notes, lostReason: l.lostReason, date: l.date, updatedAt: l.updatedAt,
+      })),
+    });
+  }));
+
+  // Salesman moves his lead to another stage and/or adds a note
+  app.post('/api/link/:token/leads/:id', linkGuard, loadLinkSalesman, linkAuth, asyncHandler(async (req, res) => {
+    const sm = req.linkSalesman;
+    const lead = await db.getLeadById(req.params.id);
+    if (!lead || String(lead.salesmanId) !== String(sm.id)) return res.status(404).json({ error: 'Lead not found.' });
+    const { status, note, dealValue, lostReason } = req.body || {};
+    const updates = {};
+    if (status && status !== lead.status) {
+      const stages = await pipelineStages();
+      if (!stages.some((st) => st.id === status)) return res.status(400).json({ error: 'Unknown stage.' });
+      if (status === 'lost' && !String(lostReason || '').trim()) return res.status(400).json({ error: 'Please give the reason the deal was lost.', fields: { lostReason: 'Reason required.' } });
+      updates.status = status;
+      if (status === 'lost') updates.lostReason = String(lostReason).trim().slice(0, 255);
+    }
+    if (dealValue !== undefined && dealValue !== '') {
+      const v = Number(dealValue);
+      if (!Number.isFinite(v) || v < 0) return res.status(400).json({ error: 'Deal value must be a number.', fields: { dealValue: 'Numbers only.' } });
+      updates.dealValue = v;
+    }
+    const cleanNote = String(note || '').trim().slice(0, 2000);
+    if (cleanNote) {
+      const stamp = new Date().toISOString().slice(0, 10);
+      updates.notes = `${lead.notes ? `${lead.notes}\n` : ''}[${stamp} ${sm.name}]: ${cleanNote}`;
+    }
+    if (!Object.keys(updates).length) return res.status(400).json({ error: 'Nothing to save.' });
+    updates.lastContactedAt = new Date().toISOString();
+    const updated = await db.updateLead(lead.id, updates, { changedBy: `${sm.name} (link)` });
+    if (updates.status) {
+      await db.addActivity({ leadId: updated.id, leadName: updated.name, type: 'status_change',
+        description: `Stage changed from "${lead.status}" to "${updates.status}" by ${sm.name} (salesman link)` });
+    }
+    if (cleanNote) {
+      await db.addActivity({ leadId: updated.id, leadName: updated.name, type: 'note', description: `${sm.name}: ${cleanNote}` });
+    }
+    await log(req, 'lead_update');
+    res.json({ ok: true, message: 'Lead updated.', lead: { id: updated.id, status: updated.status, dealValue: updated.dealValue, notes: updated.notes } });
+  }));
+
   // =============== ADMIN (login required) ===============
 
   const audit = (req, description) => db.addAuditEntry({ type: 'customers', userId: req.user.id, userName: req.user.name, description }).catch(() => {});
+
+  // "New enquiry" form: find an existing customer by name or mobile (salesmen only see their own)
+  app.get('/api/customer-lookup', authMiddleware, requirePermission('leads.create', 'customers.view'), asyncHandler(async (req, res) => {
+    const scope = req.user.role === 'salesman' ? { salesmanId: req.user.salesmanId ?? -1 } : {};
+    res.json(await cdb.lookupCustomers(req.query.q, scope));
+  }));
 
   app.get('/api/customers/summary', authMiddleware, requirePermission('customers.view'), asyncHandler(async (req, res) => {
     const summary = await cdb.getSummary();
@@ -333,7 +399,8 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     const c = await cdb.getCustomer(req.params.id);
     if (!c) return res.status(404).json({ error: 'Customer not found.' });
     const comp = completeness(c, await cdb.getCustomerFields({ includeHidden: false }), c.salesmanType || 'branch');
-    res.json({ ...c, percent: comp.percent, missing: comp.missing });
+    const activity = await cdb.getCustomerActivity(c.id);
+    res.json({ ...c, percent: comp.percent, missing: comp.missing, ...activity });
   }));
 
   app.post('/api/customers', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { roleLabel } from '../auth/roles.js';
 import BrandWordmark from './BrandWordmark';
 import InstallPromptButton from './pwa/InstallPromptButton.jsx';
+import { navFor } from './layout/navigation.js';
 import { 
   LayoutDashboard, 
   Users, 
@@ -37,47 +38,17 @@ export default function Sidebar({
   onCloseMobileDrawer,
   onLogout
 }) {
-  const canOpenSettings = Boolean(currentUser?.permissions?.includes('settings.manage'));
-
-  const coreOperations = [
-    { id: 'dashboard', label: 'Executive Dashboard', icon: LayoutDashboard },
-    { 
-      id: 'customercare', 
-      label: 'Customer Care Desk', 
-      icon: Headphones, 
-      badge: stats?.newLeads || 0,
-      highlight: true
-    },
-    { 
-      id: 'leads', 
-      label: 'Leads & Pipeline', 
-      icon: Users, 
-      badge: stats?.totalLeads || 0 
-    },
-    { 
-      id: 'quotations', 
-      label: 'Official Quotations', 
-      icon: FileText,
-      badge: stats?.totalQuotations || 0
-    },
-  ];
-
-  const canViewCustomers = Boolean(currentUser?.permissions?.includes('customers.view'));
-
-  const networkOperations = [
-    ...(canViewCustomers ? [{ id: 'customers', label: 'Customer Data', icon: ContactRound }] : []),
-    { id: 'products', label: 'Product Catalog', icon: Package },
-    { 
-      id: 'branches', 
-      label: 'Oman Branches', 
-      icon: Building2,
-      badge: branches?.length > 0 ? branches.length : 10
-    },
-  ];
-
-  const systemOperations = canOpenSettings
-    ? [{ id: 'settings', label: 'System Settings', icon: Settings }]
-    : [];
+  // Simplified menu: Home · Customers · Leads · Quotations · Settings
+  const ICONS = { home: LayoutDashboard, customers: ContactRound, leads: Users, quotations: FileText, settings: Settings };
+  const BADGES = { leads: stats?.newLeads || 0, quotations: 0 };
+  const mainItems = navFor(currentUser).map((sec) => ({
+    id: sec.pages[0].id,
+    pages: sec.pages.map((p) => p.id),
+    label: sec.label,
+    icon: ICONS[sec.id] || LayoutDashboard,
+    badge: BADGES[sec.id],
+    highlight: sec.id === 'leads',
+  }));
 
   const handleSelectTab = (tabId) => {
     setActiveTab(tabId);
@@ -91,7 +62,7 @@ export default function Sidebar({
 
   const renderNavItem = (item) => {
     const Icon = item.icon;
-    const isActive = activeTab === item.id;
+    const isActive = item.pages ? item.pages.includes(activeTab) : activeTab === item.id;
     return (
       <button
         key={item.id}
@@ -230,7 +201,7 @@ export default function Sidebar({
           className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 bg-[#CC1A22] hover:bg-[#b0161d] text-white text-xs font-bold rounded-xl shadow-xs transition active:scale-95 cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span>New Lead</span>
+          <span>New enquiry</span>
         </button>
         <button
           type="button"
@@ -247,37 +218,9 @@ export default function Sidebar({
 
       {/* 3. Grouped Navigation Menu */}
       <nav className="flex-1 py-3 px-3 space-y-4 overflow-y-auto">
-        {/* Core Operations */}
-        <div>
-          <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-            Core Operations
-          </p>
-          <div className="space-y-1">
-            {coreOperations.map(renderNavItem)}
-          </div>
+        <div className="space-y-1">
+          {mainItems.map(renderNavItem)}
         </div>
-
-        {/* Inventory & Network */}
-        <div>
-          <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-            Network & Catalog
-          </p>
-          <div className="space-y-1">
-            {networkOperations.map(renderNavItem)}
-          </div>
-        </div>
-
-        {/* System Settings (Super Admin Only) */}
-        {systemOperations.length > 0 && (
-          <div>
-            <p className="px-3 text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">
-              System Admin
-            </p>
-            <div className="space-y-1">
-              {systemOperations.map(renderNavItem)}
-            </div>
-          </div>
-        )}
 
         {/* Monipack Ecosystem Portals Card */}
         <div className="pt-1">

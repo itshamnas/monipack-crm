@@ -376,4 +376,67 @@ describe('Customer data collection (salesman links)', () => {
       });
     });
   });
+
+  describe('one CRM: enquiries belong to customers', () => {
+    let leadA;
+    let hamadLink;
+    let hamadSession;
+
+    it('a new enquiry creates (or finds) its customer by mobile', async () => {
+      const a = await request(app).post('/api/leads').set(auth(t.super))
+        .send({ name: 'Rusayl Restaurant', mobile: '97771111', countryCode: '+968', category: 'Disposable Products', salesmanId: String(routeSm.id), salesman: 'Hamad Al Kindi' });
+      expect(a.status).toBe(201);
+      expect(a.body.customerId).toBeTruthy();
+      leadA = a.body;
+      const b = await request(app).post('/api/leads').set(auth(t.super))
+        .send({ name: 'Rusayl Restaurant LLC', mobile: '+968 9777 1111', countryCode: '+968', category: 'Packaging Products', salesmanId: String(routeSm.id), salesman: 'Hamad Al Kindi' });
+      expect(b.body.customerId).toBe(a.body.customerId);
+    });
+
+    it('lookup finds the customer by name or mobile; picking one links the enquiry', async () => {
+      const byName = await request(app).get('/api/customer-lookup?q=rusayl').set(auth(t.care));
+      expect(byName.status).toBe(200);
+      expect(byName.body[0].id).toBe(leadA.customerId);
+      const byMobile = await request(app).get('/api/customer-lookup?q=97771111').set(auth(t.super));
+      expect(byMobile.body.map((c) => c.id)).toContain(leadA.customerId);
+      const c = await request(app).post('/api/leads').set(auth(t.super))
+        .send({ name: 'Different name typed', mobile: '90001234', customerId: leadA.customerId, salesmanId: String(routeSm.id) });
+      expect(c.body.customerId).toBe(leadA.customerId);
+    });
+
+    it('the customer page lists its enquiries', async () => {
+      const res = await request(app).get(`/api/customers/${leadA.customerId}`).set(auth(t.super));
+      expect(res.body.leads).toHaveLength(3);
+      expect(Array.isArray(res.body.quotations)).toBe(true);
+    });
+
+    it('the new customer appears in the salesman link list to complete', async () => {
+      const link = await request(app).post(`/api/salesmen/${routeSm.id}/link`).set(auth(t.super)).send({ action: 'enable' });
+      hamadLink = link.body.linkToken;
+      await request(app).post(`/api/salesmen/${routeSm.id}/link`).set(auth(t.super)).send({ pin: '' });
+      hamadSession = (await request(app).post(`/api/link/${hamadLink}/session`).send({})).body.session;
+      const list = await request(app).get(`/api/link/${hamadLink}/customers`).set(linkHdr(hamadSession));
+      expect(list.body.customers.map((c) => c.id)).toContain(leadA.customerId);
+    });
+
+    it('salesman sees his leads on the link and moves the stage with a note', async () => {
+      const res = await request(app).get(`/api/link/${hamadLink}/leads`).set(linkHdr(hamadSession));
+      expect(res.status).toBe(200);
+      expect(res.body.leads.length).toBeGreaterThanOrEqual(3);
+      expect(res.body.stages.map((st) => st.id)).toContain('won');
+      const upd = await request(app).post(`/api/link/${hamadLink}/leads/${leadA.id}`).set(linkHdr(hamadSession))
+        .send({ status: 'quotation_sent', note: 'Visited, sent prices', dealValue: '150.500' });
+      expect(upd.status).toBe(200);
+      expect(upd.body.lead.status).toBe('quotation_sent');
+      expect(upd.body.lead.dealValue).toBe(150.5);
+      expect(upd.body.lead.notes).toContain('Visited, sent prices');
+    });
+
+    it('lost needs a reason; another salesman cannot touch the lead', async () => {
+      const lost = await request(app).post(`/api/link/${hamadLink}/leads/${leadA.id}`).set(linkHdr(hamadSession)).send({ status: 'lost' });
+      expect(lost.status).toBe(400);
+      const other = await request(app).post(`/api/link/${branchLink}/leads/${leadA.id}`).set(linkHdr(branchSession)).send({ note: 'hi' });
+      expect(other.status).toBe(404);
+    });
+  });
 });

@@ -1,5 +1,6 @@
 import React from 'react';
-import { LayoutDashboard, Headphones, Users, FileText, Menu } from 'lucide-react';
+import { LayoutDashboard, ContactRound, Users, FileText, Menu } from 'lucide-react';
+import { sectionOf } from './navigation.js';
 
 /**
  * monipack Enterprise CRM - Mobile Bottom Navigation Bar
@@ -11,36 +12,22 @@ export default function MobileBottomNav({
   onTabChange,
   onOpenDrawer,
   stats,
+  currentUser,
 }) {
   const newLeadsBadge = stats?.newLeads ?? 0;
 
+  const canCustomers = Boolean(currentUser?.permissions?.includes('customers.view'));
   const navItems = [
+    { id: 'dashboard', section: 'home', label: 'Home', icon: LayoutDashboard, badge: null },
+    ...(canCustomers ? [{ id: 'customers', section: 'customers', label: 'Customers', icon: ContactRound, badge: null }] : []),
     {
-      id: 'dashboard',
-      label: 'Overview',
-      icon: LayoutDashboard,
-      badge: null,
-    },
-    {
-      id: 'customercare',
-      label: 'Care Desk',
-      icon: Headphones,
+      id: 'leads', section: 'leads', label: 'Leads', icon: Users,
       badge: newLeadsBadge > 0 ? (newLeadsBadge > 99 ? '99+' : newLeadsBadge) : null,
       badgeColor: 'bg-[#CC1A22] text-white',
     },
-    {
-      id: 'leads',
-      label: 'Pipeline',
-      icon: Users,
-      badge: null,
-    },
-    {
-      id: 'quotations',
-      label: 'Quotes',
-      icon: FileText,
-      badge: null,
-    },
+    { id: 'quotations', section: 'quotations', label: 'Quotes', icon: FileText, badge: null },
   ];
+  const activeSection = sectionOf(activeTab, currentUser)?.id;
 
   return (
     <nav
@@ -56,7 +43,7 @@ export default function MobileBottomNav({
       <div className="flex items-center justify-around h-16 px-1">
         {navItems.map((item) => {
           const Icon = item.icon;
-          const isActive = activeTab === item.id;
+          const isActive = activeSection === item.section;
 
           return (
             <button

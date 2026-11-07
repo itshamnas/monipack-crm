@@ -80,6 +80,7 @@ export function leadToApi(row) {
     branch: row.branch_name || '',
     salesman: row.salesman_name || '',
     salesmanId: row.salesman_id != null ? String(row.salesman_id) : null,
+    customerId: row.customer_id != null ? String(row.customer_id) : null,
     customerLocation: row.customer_location || '',
     status: row.status || 'new',
     dealValue: Number(row.deal_value || 0),

@@ -142,3 +142,13 @@ Notes:
 - If a mobile, CR or VAT number already belongs to another customer, the customer goes to **Pending approval** and shows a note about the possible duplicate.
 - Uploaded files are saved in a private folder (`UPLOAD_DIR`, default `./uploads`). The web server never shares this folder directly. Back it up together with the database.
 - Fields: add new fields, choose which ones are required for each salesman type, hide fields, and edit the dropdown options. Mobile and CR are always required.
+
+## One CRM: menu and how things connect
+
+Menu: **Home · Customers · Leads · Quotations · Settings**.
+
+- **Home**: what needs attention today (approvals, enquiries not called yet, leads with no update for 7+ days, quotes with no answer, missing CR papers, salesmen links off), then one row per salesman with customer data %, open leads, quotes and won value. "Charts" has the old dashboard.
+- **Customers**: one record per customer. The customer page shows the details, documents, % complete, and **all enquiries and quotations** for that customer.
+- **Leads**: Pipeline + New enquiries (call queue). **New enquiry**: type a name or mobile and pick the existing customer (mobile, salesman and location fill in automatically), or type a new name and a new customer is created. Enquiries with the same mobile number always go to the same customer.
+- **Settings**: Salesmen & links, Customer form (fields, routes, dropdowns), Products, Branches, Staff & system.
+- **Salesman link**: two tabs. **My customers** (fill in details) and **My leads** (call/WhatsApp, move the stage, deal value, add a note). A new customer created from an enquiry appears in the salesman's customer list so he can complete it.
