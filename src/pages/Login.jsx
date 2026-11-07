@@ -1,25 +1,33 @@
-import React, { useState } from 'react';
-import { Lock, Mail, ShieldCheck, AlertCircle, ArrowRight } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowRight, Zap } from 'lucide-react';
 import { getApiUrl } from '../api/config.js';
 
 /**
- * monipack CRM - Production-Grade White Glassmorphism Login Portal
- * Morooj Nizwa International LLC
- * 
- * Design System Specifications:
- * - Canvas Base: Ultra-clean light grey/slate (#F8FAFC)
- * - Light Leaks: Soft radial crimson & slate glows for visible refraction
- * - Brand Logo: Strictly unboxed, transparent 3D ribbon with unboxed radial warm aura
- * - Glassmorphic Card: rgba(255, 255, 255, 0.75), backdrop-blur-xl saturate-150,
- *   specular edge border-white/80, dual drop-shadow + inset highlight
- * - Inputs: Frosted h-12 (48px) fields, text-base (prevents iOS auto-zoom)
- * - Actions: Gradient CTA with specular top highlight, sub-glass quick-fill role tiles
+ * monipack CRM – Sign in
+ * Morooj Nizwa International Co. LLC
+ *
+ * Left: animated brand panel (red light ribbons, Morooj Nizwa shield, floating Monipack banner,
+ * word-by-word headline, group brands marquee). Right: sign-in form.
+ * Phones and portrait tablets: the brand panel becomes a short banner above the form.
+ * Sign-in logic is unchanged.
  */
+const HEADLINE = [
+  { t: 'Packaging' }, { t: 'that' }, { t: 'moves' },
+  { t: "Oman's businesses", hl: true }, { t: 'forward.' },
+];
+const FAMILY = [
+  { src: '/brands/login/monipack.png', alt: 'monipack' },
+  { src: '/brands/login/moniclean.png', alt: 'moniclean' },
+  { src: '/brands/login/monifood.png', alt: 'monifood' },
+  { src: '/brands/login/kohe.png', alt: 'KOHE' },
+];
+
 export default function Login({ onLoginSuccess }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -57,166 +65,145 @@ export default function Login({ onLoginSuccess }) {
     }
   };
 
+  // brands twice so the marquee loops without a gap
+  const marquee = useMemo(() => [...FAMILY, ...FAMILY], []);
+  const year = new Date().getFullYear();
+
   return (
-    <div className="min-h-screen w-full bg-[#F8FAFC] flex flex-col justify-center items-center px-4 py-8 relative overflow-x-hidden overflow-y-auto select-none font-sans">
-      
-      {/* 1. Ambient Background Glows & Light Leaks for Glass Refraction */}
-      <div 
-        className="absolute -top-32 -left-32 w-96 sm:w-[32rem] h-96 sm:h-[32rem] rounded-full pointer-events-none"
-        style={{
-          backgroundColor: 'rgba(239, 68, 68, 0.06)',
-          filter: 'blur(80px)',
-        }}
-      />
-      <div 
-        className="absolute -bottom-32 -right-32 w-96 sm:w-[36rem] h-96 sm:h-[36rem] rounded-full pointer-events-none"
-        style={{
-          backgroundColor: 'rgba(148, 163, 184, 0.08)',
-          filter: 'blur(90px)',
-        }}
-      />
+    <div className="mp-login">
+      <div className="stage">
+        <main className="shell">
+          {/* ======== Animated brand panel ======== */}
+          <section className="brand" aria-label="Morooj Nizwa International">
+            <svg className="ribbons" viewBox="0 0 800 900" preserveAspectRatio="xMidYMid slice" aria-hidden="true">
+              <defs>
+                <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#ff3b47" stopOpacity="0" /><stop offset=".45" stopColor="#e5252d" /><stop offset="1" stopColor="#7a0614" stopOpacity="0" /></linearGradient>
+                <linearGradient id="g2" x1="1" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#ff8a8a" stopOpacity="0" /><stop offset=".5" stopColor="#ff2d3a" /><stop offset="1" stopColor="#9e0a22" stopOpacity="0" /></linearGradient>
+                <linearGradient id="g3" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stopColor="#fff" stopOpacity="0" /><stop offset=".5" stopColor="#ffd1d1" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></linearGradient>
+                <filter id="soft"><feGaussianBlur stdDeviation="14" /></filter>
+                <filter id="blur"><feGaussianBlur stdDeviation="40" /></filter>
+              </defs>
+              <path className="r4" d="M-80 760 C 160 560, 360 820, 560 560 S 820 260, 900 120" />
+              <path className="r1" d="M-60 120 C 180 260, 300 40, 520 220 S 760 520, 880 420" />
+              <path className="r2" d="M-40 640 C 220 420, 420 700, 620 420 S 820 160, 900 60" />
+              <path className="r3" d="M-20 300 C 200 420, 380 180, 560 360 S 780 700, 900 640" />
+              <path className="r3" style={{ animationDelay: '.9s, 2.6s', opacity: 0.6 }} d="M-20 820 C 240 700, 380 900, 600 720 S 800 520, 900 560" />
+            </svg>
+            <div className="orb" aria-hidden="true" />
 
-      {/* 2. Glassmorphic Card Container */}
-      <div 
-        className="w-full max-w-[380px] sm:max-w-[420px] rounded-2xl sm:rounded-3xl p-6 sm:p-8 relative z-10 transition-all duration-300 my-auto"
-        style={{
-          backgroundColor: 'rgba(255, 255, 255, 0.75)',
-          backdropFilter: 'blur(24px) saturate(150%)',
-          WebkitBackdropFilter: 'blur(24px) saturate(150%)',
-          border: '1px solid rgba(255, 255, 255, 0.8)',
-          boxShadow: '0 20px 40px -15px rgba(15, 23, 42, 0.08), inset 0 0 1px 1px rgba(255, 255, 255, 0.9)',
-        }}
-      >
-        
-        {/* Brand Header */}
-        <div className="text-center mb-7">
-          
-          {/* Strictly Unboxed Brand Logo (Device-Matched Scaling) + Radial Warm Aura */}
-          <div className="relative flex justify-center items-center mb-5">
-            <div 
-              className="absolute w-36 sm:w-44 h-36 sm:h-44 rounded-full pointer-events-none"
-              style={{
-                backgroundColor: 'rgba(239, 68, 68, 0.08)',
-                filter: 'blur(35px)',
-              }}
-            />
-            <img
-              src="/assets/logo.png"
-              alt="monipack"
-              className="w-28 sm:w-36 h-auto object-contain drop-shadow-[0_10px_20px_rgba(204,26,34,0.22)] select-none transition-transform duration-300 hover:scale-105 cursor-pointer"
-              loading="eager"
-              onError={(e) => {
-                e.target.src = '/brands/monipack-cropped.png';
-              }}
-            />
-          </div>
-
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 leading-tight flex items-center justify-center gap-2">
-            <span className="font-monipack lowercase text-2xl sm:text-3xl text-slate-900">monipack</span>
-            <span className="text-[11px] font-black px-2 py-0.5 rounded-md bg-red-50 text-[#CC1A22] border border-red-200/60 uppercase tracking-wider font-sans">CRM</span>
-          </h1>
-          <p className="text-xs text-slate-500 mt-1">
-            Morooj Nizwa International LLC
-          </p>
-
-          {/* Frosted Glass Trust Badge */}
-          <div 
-            className="inline-flex items-center gap-1.5 mt-3 px-3 py-1 rounded-full text-xs font-semibold text-emerald-700"
-            style={{
-              backgroundColor: 'rgba(16, 185, 129, 0.08)',
-              border: '1px solid rgba(16, 185, 129, 0.2)',
-            }}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-            <span>Confidential Sales Portal</span>
-          </div>
-        </div>
-
-        {/* Error Alert */}
-        {error && (
-          <div className="mb-5 p-3 rounded-xl bg-red-50/90 border border-red-200 text-red-700 text-xs flex items-center gap-2 animate-in fade-in">
-            <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* Login Form */}
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Authorized Email
-            </label>
-            <div className="relative">
-              <Mail className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@monipack.com"
-                className="w-full h-12 pl-11 pr-4 bg-white/60 focus:bg-white border border-slate-200/80 rounded-xl text-base sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all shadow-xs"
-              />
+            <div className="company">
+              <span className="mark"><img src="/brands/login/mn-shield.png" alt="Morooj Nizwa International shield" /></span>
+              <span>
+                <b>Morooj Nizwa International Co. LLC</b>
+                <small lang="ar">مروج نزوى الدولية ش.م.م</small>
+              </span>
             </div>
-          </div>
 
-          <div>
-            <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-              Secure Password
-            </label>
-            <div className="relative">
-              <Lock className="w-5 h-5 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="••••••••••••"
-                className="w-full h-12 pl-11 pr-4 bg-white/60 focus:bg-white border border-slate-200/80 rounded-xl text-base sm:text-sm text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-red-500 focus:ring-2 focus:ring-red-500/20 transition-all shadow-xs"
-              />
+            <div className="hero">
+              <div className="logo-wrap">
+                <span className="halo" />
+                <img className="logo" src="/brands/login/monipack.png" alt="monipack" />
+              </div>
+              <div>
+                <h1>
+                  {HEADLINE.map((w, i) => (
+                    <React.Fragment key={w.t}>
+                      <span className={`w${w.hl ? ' hl' : ''}`} style={{ animationDelay: `${0.9 + i * 0.08}s` }}>{w.t}</span>
+                      {i < HEADLINE.length - 1 ? ' ' : ''}
+                    </React.Fragment>
+                  ))}
+                </h1>
+                <p className="lede">Every enquiry, customer and quotation in one place: built for the Monipack sales team across Oman.</p>
+              </div>
+              <div className="family">
+                <p>The Morooj Nizwa family</p>
+                <div className="marquee">
+                  <div className="track">
+                    {marquee.map((b, i) => (
+                      <span className="chip" key={`${b.alt}-${i}`} aria-hidden={i >= FAMILY.length}>
+                        <img src={b.src} alt={i < FAMILY.length ? b.alt : ''} />
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
-          </div>
 
-          {/* Primary CTA Button */}
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full h-12 mt-2 bg-gradient-to-r from-red-600 to-red-700 hover:from-red-500 hover:to-red-600 text-white text-sm font-bold rounded-xl transition-all duration-200 flex items-center justify-center gap-2 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
-            style={{
-              boxShadow: '0 4px 12px rgba(239, 68, 68, 0.25), inset 0 1px 0 0 rgba(255, 255, 255, 0.25)',
-            }}
-          >
-            <span>
-              {loading ? 'Authenticating...' : (
-                <>Sign In to <span className="font-monipack lowercase text-base">monipack</span> CRM</>
-              )}
-            </span>
-            <ArrowRight className="w-4 h-4" />
-          </button>
-        </form>
+            <p className="copy">© {year} Morooj Nizwa International Co. LLC. All rights reserved.</p>
+          </section>
 
-        {/* Enterprise Security Assurance */}
-        <div className="mt-6 pt-4 border-t border-slate-200/60 flex items-center justify-center gap-1.5 text-[10px] sm:text-[11px] text-slate-400 text-center select-none">
-          <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-          <span>Authorized Personnel Only &bull; 256-Bit SSL Encrypted</span>
-        </div>
+          {/* ======== Sign in ======== */}
+          <section className="panel" aria-label="Sign in">
+            <div className="card">
+              <span className="badge"><i /> Confidential Sales Portal</span>
+              <h2>Sign in</h2>
+              <p className="sub">Welcome back! Please sign in to continue.</p>
+              <form onSubmit={handleSubmit} autoComplete="on" noValidate={false}>
+                {error && (
+                  <div className="err" role="alert">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{error}</span>
+                  </div>
+                )}
+                <div>
+                  <label htmlFor="login-email">Email address</label>
+                  <div className="field">
+                    <Mail aria-hidden="true" />
+                    <input
+                      id="login-email"
+                      type="email"
+                      required
+                      autoComplete="username"
+                      inputMode="email"
+                      placeholder="you@monipack.com"
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label htmlFor="login-password">Password</label>
+                  <div className="field">
+                    <Lock aria-hidden="true" />
+                    <input
+                      id="login-password"
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      autoComplete="current-password"
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="eye"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
+                      aria-pressed={showPassword}
+                    >
+                      {showPassword ? <EyeOff /> : <Eye />}
+                    </button>
+                  </div>
+                </div>
+                <button className={`btn${loading ? ' busy' : ''}`} type="submit" disabled={loading} aria-busy={loading}>
+                  <span className="lbl">Sign in to <span className="font-monipack" style={{ fontSize: 16 }}>monipack</span> CRM</span>
+                  <ArrowRight className="arr w-4 h-4" aria-hidden="true" />
+                  <span className="spin" aria-hidden="true" />
+                </button>
+              </form>
+              <p className="secure"><Lock className="w-3 h-3" aria-hidden="true" /> Authorised personnel only · Encrypted connection</p>
+            </div>
 
+            <div className="sig">
+              <a href="https://imshamnas.com" target="_blank" rel="noopener noreferrer" data-sound="off">
+                <span className="bolt"><Zap aria-hidden="true" /></span>
+                Developed by <span className="name"><span className="typed">imshamnas<span className="dot">.</span>com</span></span>
+                <span className="caret" aria-hidden="true" />
+              </a>
+            </div>
+          </section>
+        </main>
       </div>
-
-      {/* Developer Attribution - Option 3 Minimalist Luminous Signature */}
-      <div className="mt-6 relative z-10 flex justify-center">
-        <a 
-          href="mailto:connect@imshamnas.com"
-          title="Contact Developer: connect@imshamnas.com"
-          className="group inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-slate-800 transition-colors"
-        >
-          <span className="text-amber-500 group-hover:scale-110 transition-transform">⚡</span>
-          <span>Developed by</span>
-          <span className="font-bold text-slate-800 group-hover:text-red-600 underline underline-offset-4 decoration-slate-300 group-hover:decoration-red-500 transition-all font-mono">
-            connect@imshamnas.com
-          </span>
-        </a>
-      </div>
-
     </div>
   );
 }
