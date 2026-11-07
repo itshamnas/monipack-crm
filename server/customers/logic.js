@@ -6,6 +6,9 @@
 // Fields stored in their own columns; every other field lives in customers.data (JSONB)
 export const COLUMN_FIELDS = { mobile: 'mobile', cr_number: 'crNumber', vat_number: 'vatNumber' };
 
+import fs from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
 import { OMAN_LOCATIONS } from '../../shared/omanLocations.js';
 
 export const SALESMAN_TYPES = ['branch', 'route_b2b'];
@@ -494,7 +497,19 @@ export function pdfText(str) {
  * pages: [{ jpeg: Buffer, header?: { title, lines: [{ text, bold? }] } }]
  * options: { title, company, footerNote }
  */
-export function documentPdf(pages, { title = 'Customer documents', company = '', footerNote = '' } = {}) {
+let WATERMARK_JPEG; // pale Monipack logo, drawn with Multiply so it never hides the page underneath
+function watermarkJpeg() {
+  if (WATERMARK_JPEG === undefined) {
+    try {
+      WATERMARK_JPEG = fs.readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'assets', 'watermark.jpg'));
+    } catch {
+      WATERMARK_JPEG = null;
+    }
+  }
+  return WATERMARK_JPEG;
+}
+
+export function documentPdf(pages, { title = 'Customer documents', company = '', footerNote = '', watermark = true } = {}) {
   const PAGE_W = 595.28;
   const PAGE_H = 841.89;
   const MARGIN = 36;
@@ -507,6 +522,18 @@ export function documentPdf(pages, { title = 'Customer documents', company = '',
   const fontBoldNo = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
   const pageNos = [];
   const total = pages.length;
+  const wmBytes = watermark ? watermarkJpeg() : null;
+  let wmNo = null;
+  let wmGsNo = null;
+  let wmInfo = null;
+  if (wmBytes) {
+    wmInfo = jpegInfo(wmBytes);
+    wmNo = add({
+      dict: `<< /Type /XObject /Subtype /Image /Width ${wmInfo.width} /Height ${wmInfo.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${wmBytes.length} >>`,
+      stream: wmBytes,
+    });
+    wmGsNo = add('<< /Type /ExtGState /BM /Multiply >>');
+  }
 
   pages.forEach((pg, idx) => {
     const ops = [];
@@ -564,10 +591,20 @@ export function documentPdf(pages, { title = 'Customer documents', company = '',
       text(MARGIN, imageTop - 20, 11, pg.note, false, 0.3);
     }
 
+    // Monipack watermark: centred, multiplied over the page (white = invisible, so nothing is covered)
+    let wmRes = '';
+    if (wmNo) {
+      const ww = 300;
+      const wh = (wmInfo.height / wmInfo.width) * ww;
+      ops.push(`q /GSwm gs ${ww.toFixed(2)} 0 0 ${wh.toFixed(2)} ${((PAGE_W - ww) / 2).toFixed(2)} ${((PAGE_H - wh) / 2).toFixed(2)} cm /Wm Do Q`);
+      wmRes = ` /ExtGState << /GSwm ${wmGsNo} 0 R >>`;
+      xobj = xobj ? xobj.replace('/XObject <<', `/XObject << /Wm ${wmNo} 0 R`) : `/XObject << /Wm ${wmNo} 0 R >>`;
+    }
+
     const content = Buffer.from(ops.join('\n'), 'latin1');
     const contentNo = add({ dict: `<< /Length ${content.length} >>`, stream: content });
     const pageNo = add(
-      `<< /Type /Page /Parent ${pagesNo} 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 ${fontNo} 0 R /F2 ${fontBoldNo} 0 R >> ${xobj} >> /Contents ${contentNo} 0 R >>`
+      `<< /Type /Page /Parent ${pagesNo} 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 ${fontNo} 0 R /F2 ${fontBoldNo} 0 R >> ${xobj}${wmRes} >> /Contents ${contentNo} 0 R >>`
     );
     pageNos.push(pageNo);
   });

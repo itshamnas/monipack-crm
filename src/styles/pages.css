@@ -69,3 +69,7 @@
   html.dark #monipack-content-canvas .bg-white.border:is(.rounded-3xl, .rounded-2xl, .rounded-xl):not(button):not(.quotation-sheet) { border-color: #1F2A3C; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.3); }
   html.dark #monipack-content-canvas .overflow-x-auto:has(> table) { background: none; }
 }
+
+/* ---------- Monipack watermark on printable sheets (quotation, lead slip) ---------- */
+.mp-sheet-wm { position: absolute; left: 50%; top: 50%; width: 55%; max-width: 420px; transform: translate(-50%, -50%); opacity: 0.07; pointer-events: none; user-select: none; z-index: 0; }
+@media print { .mp-sheet-wm { position: fixed; } }
