@@ -741,15 +741,11 @@ export default function Quotations({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
-            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Official Quotations</h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-amber-100 text-amber-800 border border-amber-200">
-              MNI Executive Spec
-            </span>
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
-              5% VAT Ready
-            </span>
+            <h1 className="text-[24px] leading-tight font-extrabold text-slate-900">Quotations</h1>
+            <span className="px-2.5 py-0.5 rounded-full text-[11.5px] font-bold bg-white border border-slate-200 text-slate-600">MNI executive spec</span>
+            <span className="px-2.5 py-0.5 rounded-full text-[11.5px] font-bold bg-emerald-50 text-emerald-700">5% VAT</span>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="hidden sm:block text-xs text-slate-500 mt-1">
             Generate and print verified OMR quotations with multi-brand catalog search and Oman 5% VAT calculation.
           </p>
         </div>
@@ -758,17 +754,17 @@ export default function Quotations({
           {activeView === 'list' ? (
             <button
               onClick={() => setActiveView('create')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#9E0A22] to-[#C8102E] hover:brightness-110 text-white text-xs font-bold rounded-full shadow-sm shadow-red-900/30 transition active:scale-95 cursor-pointer"
+              className="mp-btn mp-btn-red min-h-[40px] w-full sm:w-auto"
             >
               <Plus className="w-4 h-4" />
-              <span>Create New Quotation</span>
+              <span>New quotation</span>
             </button>
           ) : (
             <button
               onClick={() => setActiveView('list')}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg transition cursor-pointer"
+              className="mp-btn mp-btn-line min-h-[40px]"
             >
-              Back to Quotations List
+              ← Back to quotations
             </button>
           )}
         </div>
