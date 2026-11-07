@@ -563,6 +563,7 @@ export default function App() {
             onOpenDrawer={() => setIsMobileDrawerOpen(true)}
             stats={stats}
             currentUser={currentUser}
+            onNewLead={handleOpenNewLead}
           />
         }
         sidebar={
@@ -603,6 +604,7 @@ export default function App() {
               authFetch={authFetch}
               leads={leads}
               quotations={quotations}
+              pipelineStages={pipelineStages}
               currentUser={currentUser}
               onNavigate={setActiveTab}
               onNewLead={handleOpenNewLead}
