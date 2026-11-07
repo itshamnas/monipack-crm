@@ -24,6 +24,7 @@ export const NAV_SECTIONS = [
     { id: 'settings-fields', label: 'Customer form', perm: 'customers.manage' },
     { id: 'products', label: 'Products' },
     { id: 'branches', label: 'Branches' },
+    { id: 'settings-targets', label: 'Sales targets', perm: 'settings.manage' },
     { id: 'settings', label: 'Staff & system', perm: 'settings.manage' },
     { id: 'settings-cleanup', label: 'Data cleanup', role: 'super_admin' },
   ] },

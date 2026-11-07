@@ -670,6 +670,25 @@ app.post('/api/leads/bulk-import', authMiddleware, requirePermission('leads.impo
   });
 }));
 
+// One lead's history (notes, calls, stage changes)
+app.get('/api/leads/:id/timeline', authMiddleware, requirePermission('leads.view_all', 'leads.view_own'), asyncHandler(async (req, res) => {
+  const lead = await loadLeadForUser(req, req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead not found' });
+  res.json(await db.getLeadTimeline(lead.id));
+}));
+
+// Monthly sales targets per salesman (view: managers and super admin; edit: settings)
+app.get('/api/sales-targets', authMiddleware, requirePermission('customers.view'), asyncHandler(async (req, res) => {
+  res.json(await db.getTargets(req.query.month));
+}));
+app.put('/api/sales-targets', authMiddleware, requirePermission('settings.manage'), asyncHandler(async (req, res) => {
+  const { month, targets } = req.body || {};
+  if (!Array.isArray(targets)) return res.status(400).json({ error: 'Send a list of targets.' });
+  const result = await db.setTargets(month, targets);
+  await db.addAuditEntry({ type: 'settings', userId: req.user.id, userName: req.user.name, description: `Sales targets for ${result.month} updated by ${req.user.email}` });
+  res.json(result);
+}));
+
 app.post('/api/leads/:id/activity', authMiddleware, requirePermission('leads.update'), asyncHandler(async (req, res) => {
   const lead = await loadLeadForUser(req, req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead not found' });

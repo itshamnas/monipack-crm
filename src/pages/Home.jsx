@@ -3,7 +3,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { openPrintable, chipsHtml, tableHtml } from '../utils/pdfReport.js';
 import {
   AlertTriangle, CheckCircle2, ChevronRight, ContactRound, FileText, Link2, Plus, Upload, Phone, Clock, ShieldCheck, FileWarning,
-  Users, Filter, TrendingUp, Trophy, PieChart,
+  Users, Filter, TrendingUp, Trophy, PieChart, CalendarClock, Target,
 } from 'lucide-react';
 import { avatarStyle } from '../components/ui/BranchPicker.jsx';
 
@@ -48,6 +48,17 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
     return () => { alive = false; };
   }, [authFetch]);
 
+  // Monthly sales targets (managers and super admin)
+  const [targets, setTargets] = useState(null);
+  useEffect(() => {
+    if (!canManageCustomers) return undefined;
+    let alive = true;
+    authFetch('/api/sales-targets').then((r) => (r.ok ? r.json() : null)).then((d) => { if (alive) setTargets(d); }).catch(() => {});
+    return () => { alive = false; };
+  }, [authFetch, canManageCustomers]);
+  const targetBy = useMemo(() => Object.fromEntries((targets?.rows || []).map((t) => [String(t.salesmanId), t])), [targets]);
+  const hasTargets = (targets?.rows || []).some((t) => t.targetOmr > 0);
+
   const now = Date.now();
   const open = (l) => !['won', 'lost'].includes(l.status);
 
@@ -59,6 +70,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
       stale: openLeads.filter((l) => l.status !== 'new' && now - new Date(l.updatedAt || l.date).getTime() > 7 * DAY).length,
       quotesWaiting: quotations.filter((q) => q.status === 'sent' && q.date && now - new Date(q.date).getTime() > 7 * DAY).length,
       openCount: openLeads.length,
+      followUps: openLeads.filter((l) => { if (!l.nextFollowUpAt) return false; const end = new Date(); end.setHours(23, 59, 59, 999); return new Date(l.nextFollowUpAt) <= end; }).length,
       pipeline: openLeads.reduce((s, l) => s + Number(l.dealValue || 0), 0),
       wonMonth: leads.filter((l) => l.status === 'won' && new Date(l.updatedAt || l.date) >= monthStart).reduce((s, l) => s + Number(l.dealValue || 0), 0),
     };
@@ -70,6 +82,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
 
   const todo = [
     { n: pending, icon: ShieldCheck, text: 'customers waiting for your approval', sub: 'New customers or possible duplicates sent by salesmen', go: () => onOpenCustomers({ status: 'pending_approval' }), show: canManageCustomers },
+    { n: stats.followUps, icon: CalendarClock, text: 'follow-ups due today or overdue', sub: 'Open the pipeline showing only these', go: () => { try { sessionStorage.setItem('mp_followups', '1'); } catch { /* ignore */ } onNavigate('leads'); }, show: true },
     { n: stats.newEnquiries, icon: Phone, text: 'new enquiries not called yet', sub: 'Call them and assign to a salesman', go: () => onNavigate('customercare'), show: true },
     { n: stats.stale, icon: Clock, text: 'open leads with no update for 7+ days', sub: 'Follow up with the salesman', go: () => onNavigate('leads'), show: true },
     { n: stats.quotesWaiting, icon: FileText, text: 'quotations sent 7+ days ago, no answer yet', sub: 'Call the customer', go: () => onNavigate('quotations'), show: true },
@@ -225,7 +238,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
                     <button type="button" onClick={go} className="group w-full px-5 py-3.5 flex items-center gap-4 text-left hover:bg-slate-50/80 transition">
                       <span className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${['bg-violet-50 text-violet-600', 'bg-amber-50 text-amber-600', 'bg-blue-50 text-blue-600', 'bg-red-50 text-[#CC1A22]', 'bg-emerald-50 text-emerald-600'][i % 5]}`}><Icon className="w-5 h-5" /></span>
                       <span className="flex-1 min-w-0">
-                        <span className="block text-sm font-semibold"><strong className="text-[16px] font-extrabold tabular-nums mr-1 mp-display">{n}</strong>{n === 1 ? text.replace(/^(customers|enquiries|leads|quotations|salesmen)/, (w) => ({ customers: 'customer', enquiries: 'enquiry', leads: 'lead', quotations: 'quotation', salesmen: 'salesman' }[w])).replace('enquiries', 'enquiry').replace('open leads', 'open lead').replace('quotations sent', 'quotation sent').replace('customers without', 'customer without').replace('salesmen with', 'salesman with').replace('their link is off', 'his link is off') : text}</span>
+                        <span className="block text-sm font-semibold"><strong className="text-[16px] font-extrabold tabular-nums mr-1 mp-display">{n}</strong>{n === 1 ? text.replace(/^(customers|enquiries|leads|quotations|salesmen)/, (w) => ({ customers: 'customer', enquiries: 'enquiry', leads: 'lead', quotations: 'quotation', salesmen: 'salesman' }[w])).replace('enquiries', 'enquiry').replace('open leads', 'open lead').replace('quotations sent', 'quotation sent').replace('customers without', 'customer without').replace('salesmen with', 'salesman with').replace('their link is off', 'his link is off').replace('follow-ups due', 'follow-up due') : text}</span>
                         <span className="block text-xs text-slate-500 mt-0.5">{sub}</span>
                       </span>
                       <span className="hidden sm:inline-flex items-center min-h-[32px] px-3.5 rounded-full text-xs font-bold bg-white border border-slate-200 shadow-xs group-hover:bg-slate-900 group-hover:text-white group-hover:border-slate-900 transition">Open</span>
@@ -316,6 +329,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
                 <span className="flex items-baseline justify-between gap-2"><b className="text-sm truncate">{r.name}</b><span className="text-[11px] text-slate-500 shrink-0">{ago(r.last)}</span></span>
                 <span className="block text-[11.5px] text-slate-500">{r.customers} customers · {r.openLeads} open leads · {r.quotes} quotes</span>
                 {r.customers > 0 && <span className="block mt-1.5"><Bar value={r.percent} /></span>}
+                {targetBy[r.id]?.targetOmr > 0 && <span className="block mt-1 text-[11px] text-slate-500"><Target className="inline w-3 h-3 mr-1 -mt-0.5" />Target: {targetBy[r.id].wonOmr.toFixed(0)} / {targetBy[r.id].targetOmr.toFixed(0)} OMR ({Math.round((targetBy[r.id].wonOmr / targetBy[r.id].targetOmr) * 100)}%)</span>}
               </span>
               {canManageCustomers && <button type="button" onClick={() => onOpenCustomers({ salesmanId: r.id })} className="w-9 h-9 grid place-items-center rounded-xl border border-slate-200 text-slate-500" aria-label={`${r.name}'s customers`}><ChevronRight className="w-4 h-4" /></button>}
             </li>
@@ -325,7 +339,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
           <table className="w-full text-sm">
             <thead className="bg-slate-50/80 text-[10.5px] uppercase tracking-[0.08em] text-slate-400">
               <tr>
-                {['Salesman', 'Customers', 'Customer data', 'Open leads', 'Quotes', 'Won (OMR)', 'Last activity', ''].map((h) => (
+                {['Salesman', 'Customers', 'Customer data', 'Open leads', 'Quotes', ...(hasTargets ? ['Target this month'] : []), 'Won (OMR)', 'Last activity', ''].map((h) => (
                   <th key={h} className="text-left font-bold px-4 py-2.5 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
@@ -344,6 +358,16 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
                   <td className="px-4 py-3 whitespace-nowrap">{r.customers ? <Bar value={r.percent} /> : <span className="text-xs text-slate-400">—</span>}</td>
                   <td className="px-4 py-3 tabular-nums">{r.openLeads ? <span className="text-[11.5px] font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700">{r.openLeads}</span> : <span className="text-slate-400">0</span>}</td>
                   <td className="px-4 py-3 tabular-nums">{r.quotes}</td>
+                  {hasTargets && (
+                    <td className="px-4 py-3 whitespace-nowrap">
+                      {targetBy[r.id]?.targetOmr > 0 ? (
+                        <span className="block min-w-[150px]" title={`Won OMR ${targetBy[r.id].wonOmr.toFixed(3)} of OMR ${targetBy[r.id].targetOmr.toFixed(3)} this month`}>
+                          <Bar value={Math.round((targetBy[r.id].wonOmr / targetBy[r.id].targetOmr) * 100)} />
+                          <span className="block text-[11px] text-slate-500 tabular-nums mt-0.5">{targetBy[r.id].wonOmr.toFixed(0)} / {targetBy[r.id].targetOmr.toFixed(0)} OMR</span>
+                        </span>
+                      ) : <span className="text-xs text-slate-400">No target</span>}
+                    </td>
+                  )}
                   <td className="px-4 py-3 tabular-nums whitespace-nowrap">{r.won ? r.won.toFixed(3) : '—'}</td>
                   <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{ago(r.last)}</td>
                   <td className="px-4 py-3 text-right">

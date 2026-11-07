@@ -8,6 +8,7 @@ import * as stages from './stages.js';
 import * as products from './products.js';
 import * as leads from './leads.js';
 import * as quotations from './quotations.js';
+import * as targets from './targets.js';
 import * as activities from './activities.js';
 import * as analytics from './analytics.js';
 import * as settings from './settings.js';
@@ -87,6 +88,9 @@ const db = {
   // Activities
   addActivity: activities.addActivity,
   getActivities: activities.getActivities,
+  getLeadTimeline: activities.getLeadTimeline,
+  getTargets: targets.getTargets,
+  setTargets: targets.setTargets,
 
   // Analytics
   getAnalytics: analytics.getAnalytics,

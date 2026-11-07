@@ -71,6 +71,13 @@ export async function getLeadById(id) {
   return rows[0] ? leadToApi(rows[0]) : null;
 }
 
+/** A valid date for the next follow-up, or null to clear it */
+function followUpOrNull(v) {
+  if (v === null || v === undefined || v === '') return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d.toISOString();
+}
+
 export async function createLead(lead) {
   const { countryCode, mobile, phone } = normalizeOmanPhone(lead.countryCode, lead.mobile, lead.phone);
   const salesmanId = toId(lead.salesmanId) ?? await resolveSalesmanId({ query }, lead.salesman);
@@ -79,8 +86,9 @@ export async function createLead(lead) {
     `INSERT INTO leads (
        name, contact_person, category, product_details, country_code, mobile, phone,
        email, branch_id, branch_name, salesman_id, salesman_name, customer_location,
-       status, deal_value, quantity, notes, intake_completed, source, date
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+       status, deal_value, quantity, notes, intake_completed, source, date,
+       next_follow_up_at, follow_up_note
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
      RETURNING *`,
     [
       lead.name || 'Untitled Lead',
@@ -103,6 +111,8 @@ export async function createLead(lead) {
       Boolean(lead.intakeCompleted),
       lead.source || null,
       lead.date || new Date().toISOString(),
+      followUpOrNull(lead.nextFollowUpAt),
+      String(lead.followUpNote || '').slice(0, 300),
     ]
   );
   // Every enquiry belongs to a customer: the one chosen in the form, the matching one, or a new one
@@ -143,7 +153,7 @@ export async function updateLead(id, updates, options = {}) {
          branch_id = $9, branch_name = $10, salesman_id = $11, salesman_name = $12,
          customer_location = $13, status = $14, deal_value = $15, quantity = $16,
          notes = $17, intake_completed = $18, lost_reason = $19,
-         last_contacted_at = $20, updated_at = now()
+         last_contacted_at = $20, next_follow_up_at = $22, follow_up_note = $23, updated_at = now()
        WHERE id = $21 AND archived_at IS NULL
        RETURNING *`,
       [
@@ -168,6 +178,8 @@ export async function updateLead(id, updates, options = {}) {
         updates.lostReason !== undefined ? updates.lostReason : e.lost_reason,
         updates.lastContactedAt !== undefined ? updates.lastContactedAt : e.last_contacted_at,
         numId,
+        updates.nextFollowUpAt !== undefined ? followUpOrNull(updates.nextFollowUpAt) : e.next_follow_up_at,
+        updates.followUpNote !== undefined ? String(updates.followUpNote || '').slice(0, 300) : (e.follow_up_note || ''),
       ]
     );
 

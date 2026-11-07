@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { X, Save, Building, Phone, Mail, MapPin, Tag, DollarSign, FileText, Trash2, UserCheck } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, Save, Building, Phone, Mail, MapPin, Tag, DollarSign, FileText, Trash2, UserCheck, CalendarClock, MessageSquare, PhoneCall, StickyNote, ArrowRightLeft, Send } from 'lucide-react';
 import CustomerPicker from './customers/CustomerPicker.jsx';
 import BranchPicker from './ui/BranchPicker.jsx';
 
@@ -20,6 +20,23 @@ const STAGES = [
   { id: 'won', label: 'STEP 5: Converted (Won)' },
   { id: 'lost', label: 'STEP 6: Lost / Closed' },
 ];
+
+// datetime-local <-> ISO (local time)
+const toLocalInput = (iso) => {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const p = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+};
+const fromLocalInput = (v) => (v ? new Date(v).toISOString() : null);
+const quickDate = (days, hour = 10) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(hour, 0, 0, 0); return d.toISOString(); };
+const whenText = (iso) => {
+  const d = new Date(iso); const diff = Math.round((Date.now() - d.getTime()) / 60000);
+  if (diff < 1) return 'just now'; if (diff < 60) return `${diff} min ago`; if (diff < 1440) return `${Math.round(diff / 60)} h ago`;
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: d.getFullYear() === new Date().getFullYear() ? undefined : 'numeric' });
+};
+const TL_ICON = { note: StickyNote, call: PhoneCall, whatsapp: MessageSquare, status_change: ArrowRightLeft, stage: ArrowRightLeft };
 
 // Form section card (defined at module level so inputs keep focus while typing)
 function Section({ n, title, children }) {
@@ -62,6 +79,8 @@ export default function LeadModal({
     dealValue: '',
     quantity: '',
     notes: '',
+    nextFollowUpAt: null,
+    followUpNote: '',
   });
 
   const [formError, setFormError] = useState('');
@@ -110,6 +129,8 @@ export default function LeadModal({
         dealValue: lead.dealValue ? String(lead.dealValue) : '',
         quantity: (lead.quantity && !lead.quantity.includes('Needs Intake')) ? lead.quantity : '',
         notes: (lead.notes && !lead.notes.includes('Needs Intake')) ? lead.notes : '',
+        nextFollowUpAt: lead.nextFollowUpAt || null,
+        followUpNote: lead.followUpNote || '',
       });
     } else {
       const defaultB = branches && branches.length > 0 ? branches[0] : null;
@@ -127,9 +148,36 @@ export default function LeadModal({
         dealValue: '',
         quantity: '',
         notes: '',
+        nextFollowUpAt: null,
+        followUpNote: '',
       });
     }
   }, [lead, isOpen, branches]);
+
+  // ---- Timeline (edit mode): notes, calls, stage changes ----
+  const [timeline, setTimeline] = useState([]);
+  const [tlLoading, setTlLoading] = useState(false);
+  const [noteText, setNoteText] = useState('');
+  const [noteBusy, setNoteBusy] = useState(false);
+  const loadTimeline = useCallback(async () => {
+    if (!lead?.id || !authFetch) return;
+    setTlLoading(true);
+    try {
+      const r = await authFetch(`/api/leads/${lead.id}/timeline`);
+      if (r.ok) setTimeline(await r.json());
+    } catch { /* timeline is optional */ }
+    setTlLoading(false);
+  }, [lead?.id, authFetch]);
+  useEffect(() => { if (isOpen && lead?.id) { setNoteText(''); loadTimeline(); } else setTimeline([]); }, [isOpen, lead?.id, loadTimeline]);
+  const addActivity = async (type, description) => {
+    if (!lead?.id || !description.trim()) return;
+    setNoteBusy(true);
+    try {
+      const r = await authFetch(`/api/leads/${lead.id}/activity`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type, description: description.trim() }) });
+      if (r.ok) { setNoteText(''); await loadTimeline(); }
+    } catch { /* ignore */ }
+    setNoteBusy(false);
+  };
 
   const handleBranchSelect = (selectedVal) => {
     const b = branches.find((item) => String(item.id) === String(selectedVal)) ||
@@ -353,6 +401,68 @@ export default function LeadModal({
               </div>
             </div>
           </Section>
+
+          <Section n="5" title="Next follow-up">
+            <div className="flex flex-wrap gap-1.5">
+              {[['Today', 0, 16], ['Tomorrow', 1, 10], ['In 3 days', 3, 10], ['Next week', 7, 10]].map(([label, d, h]) => (
+                <button key={label} type="button" onClick={() => setFormData({ ...formData, nextFollowUpAt: quickDate(d, h) })}
+                  className="min-h-[34px] px-3 rounded-lg text-[12px] font-semibold border border-slate-200 bg-white text-slate-600 hover:border-slate-300 transition cursor-pointer">
+                  {label}
+                </button>
+              ))}
+              {formData.nextFollowUpAt && (
+                <button type="button" onClick={() => setFormData({ ...formData, nextFollowUpAt: null })} className="min-h-[34px] px-3 rounded-lg text-[12px] font-semibold text-rose-600 hover:bg-rose-50 cursor-pointer">
+                  No follow-up
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+              <div>
+                <label className={lbl}>Date & time</label>
+                <div className="relative">
+                  <CalendarClock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input type="datetime-local" value={toLocalInput(formData.nextFollowUpAt)} onChange={(e) => setFormData({ ...formData, nextFollowUpAt: fromLocalInput(e.target.value) })} className={`${inp} pl-9`} />
+                </div>
+              </div>
+              <div>
+                <label className={lbl}>What to do</label>
+                <input type="text" maxLength={300} placeholder="e.g. Send price list, call back" value={formData.followUpNote} onChange={(e) => setFormData({ ...formData, followUpNote: e.target.value })} className={inp} />
+              </div>
+            </div>
+            <p className="text-[11.5px] text-slate-500 mt-1.5">Shows as “Due today” or “Overdue” on Home and on the pipeline card.</p>
+          </Section>
+
+          {lead?.id && (
+            <Section n="6" title="Activity & notes">
+              <div className="flex gap-2">
+                <input type="text" value={noteText} onChange={(e) => setNoteText(e.target.value)} placeholder="Add a note…"
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !(e.ctrlKey || e.metaKey)) { e.preventDefault(); addActivity('note', noteText); } }}
+                  className={inp} maxLength={1000} />
+                <button type="button" disabled={noteBusy || !noteText.trim()} onClick={() => addActivity('note', noteText)} className="shrink-0 w-11 h-11 grid place-items-center rounded-xl bg-slate-900 text-white disabled:opacity-40 cursor-pointer" aria-label="Add note">
+                  <Send className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                <button type="button" disabled={noteBusy} onClick={() => addActivity('call', 'Called the customer')} className="min-h-[32px] px-3 rounded-lg text-[12px] font-semibold border border-slate-200 text-slate-600 hover:border-slate-300 inline-flex items-center gap-1.5 cursor-pointer"><PhoneCall className="w-3.5 h-3.5 text-blue-600" /> Log a call</button>
+                <button type="button" disabled={noteBusy} onClick={() => addActivity('whatsapp', 'Sent a WhatsApp message')} className="min-h-[32px] px-3 rounded-lg text-[12px] font-semibold border border-slate-200 text-slate-600 hover:border-slate-300 inline-flex items-center gap-1.5 cursor-pointer"><MessageSquare className="w-3.5 h-3.5 text-emerald-600" /> Log a WhatsApp</button>
+              </div>
+              <ol className="mt-4 space-y-0">
+                {tlLoading && !timeline.length && <li className="text-[12.5px] text-slate-500">Loading…</li>}
+                {!tlLoading && !timeline.length && <li className="text-[12.5px] text-slate-500">No activity yet.</li>}
+                {timeline.map((it, i) => {
+                  const Icon = TL_ICON[it.type] || StickyNote;
+                  const text = it.kind === 'stage' ? `Stage: ${it.fromStatus || 'start'} → ${it.toStatus}${it.by ? ` (${it.by})` : ''}` : it.description;
+                  return (
+                    <li key={it.id || i} className="relative grid grid-cols-[28px_1fr] gap-2.5 pb-3">
+                      {i < timeline.length - 1 && <span className="absolute left-[13.5px] top-8 bottom-0 w-px bg-slate-200" aria-hidden="true" />}
+                      <span className={`w-7 h-7 rounded-lg grid place-items-center ${it.type === 'call' ? 'bg-blue-50 text-blue-600' : it.type === 'whatsapp' ? 'bg-emerald-50 text-emerald-600' : it.type === 'note' ? 'bg-amber-50 text-amber-600' : 'bg-violet-50 text-violet-600'}`}><Icon className="w-3.5 h-3.5" /></span>
+                      <span className="min-w-0"><span className="block text-[12.5px] text-slate-800 break-words">{text}</span><span className="text-[11px] text-slate-400">{whenText(it.timestamp)}</span></span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </Section>
+          )}
         </div>
 
         {/* Footer */}

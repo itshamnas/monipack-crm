@@ -29,7 +29,8 @@ import {
   ChevronDown,
   FileSpreadsheet,
   Share2,
-  Printer
+  Printer,
+  CalendarClock
 } from 'lucide-react';
 import { openPrintable, chipsHtml, tableHtml } from '../utils/pdfReport.js';
 import CustomerCareModal from '../components/CustomerCareModal';
@@ -45,6 +46,20 @@ const stageColor = (stage, i) => (stage?.id === 'won' ? '#0E9F6E' : stage?.id ==
 const stageName = (label = '') => String(label).replace(/^STEP\s*\d+\s*:\s*/i, '');
 const initialsOf = (n = '') => n.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 const DAY_MS = 86400000;
+// Follow-up state: 'overdue' | 'today' | 'later' | null
+const followUpState = (l) => {
+  if (!l.nextFollowUpAt || ['won', 'lost'].includes(l.status)) return null;
+  const t = new Date(l.nextFollowUpAt); const end = new Date(); end.setHours(23, 59, 59, 999);
+  const start = new Date(); start.setHours(0, 0, 0, 0);
+  return t < start ? 'overdue' : t <= end ? 'today' : 'later';
+};
+const followUpLabel = (l) => {
+  const st = followUpState(l); if (!st) return '';
+  const t = new Date(l.nextFollowUpAt);
+  if (st === 'overdue') { const d = Math.max(1, Math.floor((Date.now() - t.getTime()) / DAY_MS)); return `Overdue ${d}d`; }
+  if (st === 'today') return `Today ${t.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}`;
+  return t.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' });
+};
 const ageOf = (d) => { const t = new Date(d).getTime(); if (!t) return null; return Math.max(0, Math.floor((Date.now() - t) / DAY_MS)); };
 const omr3 = (v) => { const n = Number(v); return (!isNaN(n) && n > 0 ? n : 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 }); };
 const CAT_TONE = (c = '') => (/packag/i.test(c) ? 'bg-red-50 text-red-700' : /dispos/i.test(c) ? 'bg-orange-50 text-orange-700' : /kohe/i.test(c) ? 'bg-emerald-50 text-emerald-700' : /clean/i.test(c) ? 'bg-sky-50 text-sky-700' : /food/i.test(c) ? 'bg-amber-50 text-amber-700' : 'bg-blue-50 text-blue-700');
@@ -98,6 +113,8 @@ export default function Leads({
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [stageLimits, setStageLimits] = useState({});
+  // "Follow-ups due" filter (Home can switch it on before opening the pipeline)
+  const [followUpOnly, setFollowUpOnly] = useState(() => { try { const v = sessionStorage.getItem('mp_followups') === '1'; sessionStorage.removeItem('mp_followups'); return v; } catch { return false; } });
   const [tableLimit, setTableLimit] = useState(100);
   const [shareModalLead, setShareModalLead] = useState(null);
   const [printSlipLead, setPrintSlipLead] = useState(null);
@@ -156,7 +173,7 @@ export default function Leads({
   };
 
   // Filter leads
-  const filteredLeads = useMemo(() => {
+  const baseFilteredLeads = useMemo(() => {
     return leads.filter((l) => {
       // Search
       if (searchQuery) {
@@ -199,6 +216,13 @@ export default function Leads({
       return true;
     });
   }, [leads, branches, searchQuery, selectedCategory, selectedBranch, selectedStage]);
+  const dueCount = useMemo(() => baseFilteredLeads.filter((l) => ['overdue', 'today'].includes(followUpState(l))).length, [baseFilteredLeads]);
+  const filteredLeads = useMemo(
+    () => (followUpOnly
+      ? baseFilteredLeads.filter((l) => ['overdue', 'today'].includes(followUpState(l))).sort((a, b) => new Date(a.nextFollowUpAt) - new Date(b.nextFollowUpAt))
+      : baseFilteredLeads),
+    [baseFilteredLeads, followUpOnly]
+  );
 
   // Group once per change (fast with very large pipelines): { stageId: { leads, total } }
   const byStage = useMemo(() => {
@@ -325,6 +349,11 @@ export default function Leads({
             {lead.phone}
           </a>
         )}
+        {followUpState(lead) && (
+          <div className={`mt-2 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${followUpState(lead) === 'overdue' ? 'bg-red-50 text-red-700' : followUpState(lead) === 'today' ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-600'}`} title={lead.followUpNote ? `Follow-up: ${lead.followUpNote}` : 'Next follow-up'}>
+            <CalendarClock className="w-3 h-3" />{followUpLabel(lead)}{lead.followUpNote ? <span className="font-normal truncate max-w-[120px]">· {lead.followUpNote}</span> : null}
+          </div>
+        )}
         {detail && <p className="mt-1.5 text-[12px] text-slate-600 line-clamp-2" title={detail}>{detail}</p>}
 
         {lead.status === 'lost' && lead.lostReason && (
@@ -396,7 +425,7 @@ export default function Leads({
         <div className="min-w-0 mr-auto">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-[24px] leading-tight font-extrabold text-slate-900">Sales pipeline</h1>
-            <span className="px-2.5 py-0.5 rounded-full text-[11.5px] font-bold bg-red-50 text-[#A3141C] tabular-nums">{filteredLeads.length.toLocaleString()} leads</span>
+            <span className="px-2.5 py-0.5 rounded-full text-[11.5px] font-bold bg-red-50 text-[#A3141C] tabular-nums">{filteredLeads.length.toLocaleString()} lead{filteredLeads.length === 1 ? "" : "s"}</span>
             <span className="px-2.5 py-0.5 rounded-full text-[11.5px] font-bold bg-white border border-slate-200 text-slate-600 tabular-nums">OMR {omr3(openTotalOMR)} open</span>
           </div>
           <p className="hidden sm:block text-xs text-slate-500 mt-1">From first enquiry to confirmed order: drag cards between stages.</p>
@@ -527,6 +556,11 @@ export default function Leads({
 
       {/* Toolbar: filters */}
       <div className="flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => setFollowUpOnly((v) => !v)} className={`mp-fchip ${followUpOnly ? 'on' : ''}`} aria-pressed={followUpOnly}>
+          <CalendarClock className="w-3.5 h-3.5" />
+          <span>Follow-ups due</span>
+          <span className={`text-[11px] px-1.5 rounded-full tabular-nums ${dueCount ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>{dueCount}</span>
+        </button>
         <label className={`mp-fchip ${selectedCategory && selectedCategory !== 'All Categories' ? 'on' : ''}`}>
           <Filter className="w-3.5 h-3.5" />
           <span className="sr-only">Category</span>
@@ -562,13 +596,14 @@ export default function Leads({
           </span>
         )}
 
-        {(searchQuery || (selectedCategory && selectedCategory !== 'All Categories') || (selectedBranch && selectedBranch !== 'all' && selectedBranch !== 'All Oman Branches') || selectedStage !== 'all') && (
+        {(followUpOnly || searchQuery || (selectedCategory && selectedCategory !== 'All Categories') || (selectedBranch && selectedBranch !== 'all' && selectedBranch !== 'All Oman Branches') || selectedStage !== 'all') && (
           <button
             onClick={() => {
               setSearchQuery('');
               setSelectedCategory('All Categories');
               setSelectedBranch('all');
               setSelectedStage('all');
+              setFollowUpOnly(false);
             }}
             className="text-xs text-[#CC1A22] hover:text-red-700 font-bold ml-auto cursor-pointer px-2 min-h-[32px]"
           >
