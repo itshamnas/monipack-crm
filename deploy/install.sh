@@ -120,12 +120,12 @@ server {
 }
 NGX
 ln -sf /etc/nginx/sites-available/monipack-crm /etc/nginx/sites-enabled/monipack-crm
-rm -f /etc/nginx/sites-enabled/default
+[ -n "$(ls /var/www 2>/dev/null | grep -v html)" ] || true  # keep any existing site untouched
 nginx -t 2>/dev/null || sed -i 's/^    http2 on;$//' /etc/nginx/sites-available/monipack-crm   # older nginx
 nginx -t
 systemctl enable nginx
 systemctl reload nginx || systemctl restart nginx
-ufw allow OpenSSH >/dev/null; ufw allow 'Nginx Full' >/dev/null; ufw --force enable >/dev/null
+ufw status | grep -q "Status: active" && ufw allow "Nginx Full" >/dev/null || true
 
 say "8/8 Daily database backup (keeps 14 days)"
 cat > /etc/cron.daily/monipack-backup <<'CRON'
