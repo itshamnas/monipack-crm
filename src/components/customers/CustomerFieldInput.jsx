@@ -1,5 +1,13 @@
 import React, { useState } from 'react';
-import { MapPin, Loader2 } from 'lucide-react';
+import { MapPin, Loader2, Lock, Check } from 'lucide-react';
+import { GOVERNORATES, OMAN_LOCATIONS } from '../../../shared/omanLocations.js';
+
+/** Multiselect values may arrive as an array or (from an import) as "A, B". */
+export const asList = (v) => (Array.isArray(v) ? v : v ? String(v).split(/[,;]/).map((x) => x.trim()).filter(Boolean) : []);
+const displayValue = (v) => (Array.isArray(v) ? v.join(', ') : v);
+
+/** Is this field shown for these values? (e.g. VAT number only when "VAT registered" is Yes) */
+export const fieldApplies = (field, values) => !field.showIf || values?.[field.showIf.key] === field.showIf.equals;
 
 const inputClass = (hasError) =>
   `w-full h-12 px-4 rounded-2xl border bg-white text-base text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 transition ${
@@ -8,9 +16,10 @@ const inputClass = (hasError) =>
 
 /**
  * One customer field, rendered by its type. Used on the salesman link page and in the admin editor.
- * props: field, value, onChange(value), error, required
+ * props: field, value, onChange(value), error, required, values (all form values, for City -> Governorate),
+ *        readOnly (saved value the salesman cannot change)
  */
-export default function CustomerFieldInput({ field, value, onChange, error, required }) {
+export default function CustomerFieldInput({ field, value, onChange, error, required, values = {}, readOnly = false }) {
   const [locating, setLocating] = useState(false);
   const [locError, setLocError] = useState('');
   const id = `cf-${field.key}`;
@@ -37,8 +46,72 @@ export default function CustomerFieldInput({ field, value, onChange, error, requ
     );
   };
 
+  if (readOnly) {
+    return (
+      <div className="space-y-1.5">
+        <p className="block text-sm font-semibold text-slate-800">{field.label}</p>
+        <div className="min-h-[48px] px-4 py-3 rounded-2xl border border-slate-200 bg-slate-100 text-base text-slate-700 flex items-center gap-2">
+          <span className="flex-1 break-words">
+            {field.type === 'location' && v ? <a href={v} target="_blank" rel="noopener noreferrer" className="text-[#CC1A22] underline">Open on map</a> : displayValue(v) || '—'}
+          </span>
+          <Lock className="w-4 h-4 text-slate-400 shrink-0" aria-label="Saved" />
+        </div>
+      </div>
+    );
+  }
+
   let control;
   switch (field.type) {
+    case 'multiselect': {
+      const selected = asList(v);
+      const toggle = (o) => onChange(selected.includes(o) ? selected.filter((x) => x !== o) : [...selected, o]);
+      control = (
+        <div id={id} role="group" aria-label={field.label} className="flex flex-wrap gap-2">
+          {(field.options || []).map((o) => {
+            const on = selected.includes(o);
+            return (
+              <button key={o} type="button" aria-pressed={on} onClick={() => toggle(o)}
+                className={`min-h-[44px] px-4 rounded-full text-sm font-semibold border flex items-center gap-1.5 transition ${on ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}`}>
+                {on && <Check className="w-4 h-4" />} {o}
+              </button>
+            );
+          })}
+        </div>
+      );
+      break;
+    }
+    case 'yesno':
+      control = (
+        <div id={id} role="radiogroup" aria-label={field.label} className="grid grid-cols-2 gap-2">
+          {['Yes', 'No'].map((o) => (
+            <button key={o} type="button" role="radio" aria-checked={v === o} onClick={() => onChange(v === o ? '' : o)}
+              className={`h-12 rounded-2xl text-base font-bold border transition ${v === o ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'} ${error ? 'border-rose-500' : ''}`}>
+              {o}
+            </button>
+          ))}
+        </div>
+      );
+      break;
+    case 'governorate':
+      control = (
+        <select id={id} value={v} onChange={(e) => onChange(e.target.value)} className={inputClass(error)}>
+          <option value="">Choose governorate…</option>
+          {GOVERNORATES.map((g) => <option key={g} value={g}>{g}</option>)}
+        </select>
+      );
+      break;
+    case 'city': {
+      const gov = values.governorate;
+      const cities = gov ? OMAN_LOCATIONS[gov] || [] : [];
+      control = (
+        <select id={id} value={cities.includes(v) ? v : ''} disabled={!gov} onChange={(e) => onChange(e.target.value)}
+          className={`${inputClass(error)} disabled:bg-slate-100 disabled:text-slate-400`}>
+          <option value="">{gov ? 'Choose wilayat…' : 'Choose the governorate first'}</option>
+          {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      );
+      break;
+    }
     case 'dropdown':
       control = field.options?.length ? (
         <select id={id} value={v} onChange={(e) => onChange(e.target.value)} className={inputClass(error)}>

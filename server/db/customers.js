@@ -22,6 +22,9 @@ export function fieldToApi(r) {
     requiredRouteB2b: Boolean(r.required_route_b2b),
     isCore: Boolean(r.is_core),
     isHidden: Boolean(r.is_hidden),
+    adminOnly: Boolean(r.admin_only),
+    showIf: r.show_if || null,
+    docLabel: r.doc_label || null,
     sortOrder: r.sort_order,
   };
 }
@@ -43,6 +46,8 @@ export function customerToApi(r) {
     source: r.source,
     reviewNote: r.review_note || '',
     photoCount: Number(r.photo_count || 0),
+    fileLabels: Array.isArray(r.file_labels) ? r.file_labels : [],
+    locked: Boolean(r.locked),
     submittedAt: iso(r.submitted_at),
     approvedAt: iso(r.approved_at),
     createdAt: iso(r.created_at),
@@ -52,7 +57,8 @@ export function customerToApi(r) {
 
 const CUSTOMER_SELECT = `
   SELECT c.*, s.name AS salesman_name, s.type AS salesman_type,
-    (SELECT COUNT(*) FROM customer_files f WHERE f.customer_id = c.id AND f.archived_at IS NULL) AS photo_count
+    (SELECT COUNT(*) FROM customer_files f WHERE f.customer_id = c.id AND f.archived_at IS NULL) AS photo_count,
+    ARRAY(SELECT DISTINCT f.label FROM customer_files f WHERE f.customer_id = c.id AND f.archived_at IS NULL) AS file_labels
   FROM customers c
   LEFT JOIN salesmen s ON s.id = c.salesman_id`;
 
@@ -69,7 +75,7 @@ function slugKey(label) {
   return String(label).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 50) || 'field';
 }
 
-export async function createCustomerField({ label, type, options, requiredBranch, requiredRouteB2b }) {
+export async function createCustomerField({ label, type, options, requiredBranch, requiredRouteB2b, adminOnly }) {
   let key = slugKey(label);
   const { rows: existing } = await query('SELECT key FROM customer_fields WHERE key LIKE $1', [`${key}%`]);
   const taken = new Set(existing.map((r) => r.key));
@@ -80,9 +86,9 @@ export async function createCustomerField({ label, type, options, requiredBranch
   }
   const { rows: maxRows } = await query('SELECT COALESCE(MAX(sort_order), 0) + 10 AS next FROM customer_fields');
   const { rows } = await query(
-    `INSERT INTO customer_fields (key, label, type, options, required_branch, required_route_b2b, sort_order)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7) RETURNING *`,
-    [key, String(label).trim().slice(0, 120), type, JSON.stringify(options || []), Boolean(requiredBranch), Boolean(requiredRouteB2b), maxRows[0].next]
+    `INSERT INTO customer_fields (key, label, type, options, required_branch, required_route_b2b, sort_order, admin_only)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7, $8) RETURNING *`,
+    [key, String(label).trim().slice(0, 120), type, JSON.stringify(options || []), Boolean(requiredBranch), Boolean(requiredRouteB2b), maxRows[0].next, Boolean(adminOnly)]
   );
   return fieldToApi(rows[0]);
 }
@@ -102,7 +108,7 @@ export async function updateCustomerField(id, updates = {}) {
     : f.options;
   const { rows } = await query(
     `UPDATE customer_fields SET label = $1, options = $2::jsonb, required_branch = $3, required_route_b2b = $4,
-       is_hidden = $5, sort_order = $6, updated_at = now() WHERE id = $7 RETURNING *`,
+       is_hidden = $5, sort_order = $6, admin_only = $8, updated_at = now() WHERE id = $7 RETURNING *`,
     [
       label,
       JSON.stringify(options),
@@ -111,6 +117,7 @@ export async function updateCustomerField(id, updates = {}) {
       locked ? false : (updates.isHidden !== undefined ? Boolean(updates.isHidden) : f.is_hidden),
       updates.sortOrder !== undefined ? (toId(updates.sortOrder) ?? f.sort_order) : f.sort_order,
       numId,
+      locked ? false : (updates.adminOnly !== undefined ? Boolean(updates.adminOnly) : f.admin_only),
     ]
   );
   return fieldToApi(rows[0]);
@@ -463,17 +470,21 @@ export async function getSummary() {
 
   const totals = { total: 0, not_started: 0, submitted: 0, complete: 0, pending_approval: 0 };
   const per = new Map(links.map((l) => [l.salesmanId, {
-    ...l, assigned: 0, remaining: 0, submitted: 0, complete: 0, pending: 0, lastActivity: null,
+    ...l, assigned: 0, remaining: 0, submitted: 0, complete: 0, pending: 0, lastActivity: null, percentSum: 0,
   }]));
+  let percentSum = 0;
   const missingCounts = Object.fromEntries(fields.map((f) => [f.key, 0]));
 
   for (const row of customers) {
     const c = customerToApi(row);
+    const pct = completeness(c, fields, c.salesmanType || 'branch', { audience: 'salesman' }).percent;
+    percentSum += pct;
     totals.total++;
     totals[c.status] = (totals[c.status] || 0) + 1;
     const p = c.salesmanId ? per.get(c.salesmanId) : null;
     if (p) {
       p.assigned++;
+      p.percentSum += pct;
       if (c.status === 'not_started') p.remaining++;
       if (c.status === 'submitted') p.submitted++;
       if (c.status === 'complete') p.complete++;
@@ -488,8 +499,20 @@ export async function getSummary() {
 
   const done = totals.submitted + totals.complete;
   return {
-    totals: { ...totals, percentDone: totals.total ? Math.round((done / totals.total) * 100) : 0 },
-    salesmen: [...per.values()].filter((p) => p.assigned > 0 || p.linkEnabled),
+    totals: {
+      ...totals,
+      percentDone: totals.total ? Math.round((done / totals.total) * 100) : 0,
+      percentComplete: totals.total ? Math.round(percentSum / totals.total) : 0,
+    },
+    salesmen: [...per.values()].filter((p) => p.assigned > 0 || p.linkEnabled).map(({ percentSum: ps, ...p }) => ({
+      ...p, percent: p.assigned ? Math.round(ps / p.assigned) : 0,
+    })),
     missing: fields.map((f) => ({ key: f.key, label: f.label, count: missingCounts[f.key] || 0 })),
   };
+}
+
+/** Super admin locks a customer: the salesman can no longer add details or documents. */
+export async function setCustomerLocked(id, locked) {
+  await query('UPDATE customers SET locked = $1, updated_at = now() WHERE id = $2 AND archived_at IS NULL', [Boolean(locked), toId(id)]);
+  return getCustomerRow(id);
 }
