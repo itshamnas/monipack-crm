@@ -480,42 +480,101 @@ export function jpegInfo(buf) {
  * Build a PDF with one A4 page per JPEG, each image scaled to fit with a margin.
  * The JPEG bytes are embedded unchanged (no re-compression).
  */
-export function jpegsToPdf(jpegBuffers, { title = 'Customer documents' } = {}) {
+/** PDF text: keep characters a standard PDF font can show (Latin-1), escape the rest. */
+export function pdfText(str) {
+  return String(str ?? '')
+    .replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, '-').replace(/·|•/g, '|')
+    .replace(/[^\x20-\x7e\xa0-\xff]/g, '')
+    .replace(/\s+/g, ' ').trim()
+    .replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)');
+}
+
+/**
+ * Build a PDF from JPEG pages, each with an optional document header and a footer (standard Helvetica fonts).
+ * pages: [{ jpeg: Buffer, header?: { title, lines: [{ text, bold? }] } }]
+ * options: { title, company, footerNote }
+ */
+export function documentPdf(pages, { title = 'Customer documents', company = '', footerNote = '' } = {}) {
   const PAGE_W = 595.28;
   const PAGE_H = 841.89;
-  const MARGIN = 28;
+  const MARGIN = 36;
   const objects = []; // index = object number - 1
   const add = (content) => { objects.push(content); return objects.length; };
 
   const catalogNo = add(null);
   const pagesNo = add(null);
+  const fontNo = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>');
+  const fontBoldNo = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
   const pageNos = [];
+  const total = pages.length;
 
-  jpegBuffers.forEach((buf, idx) => {
-    const info = jpegInfo(buf);
-    const colorSpace = info.components === 1 ? '/DeviceGray' : info.components === 4 ? '/DeviceCMYK' : '/DeviceRGB';
-    const decode = info.components === 4 && info.adobe ? ' /Decode [1 0 1 0 1 0 1 0]' : '';
-    const imgNo = add({
-      dict: `<< /Type /XObject /Subtype /Image /Width ${info.width} /Height ${info.height} /ColorSpace ${colorSpace} /BitsPerComponent 8 /Filter /DCTDecode${decode} /Length ${buf.length} >>`,
-      stream: buf,
-    });
-    const scale = Math.min((PAGE_W - 2 * MARGIN) / info.width, (PAGE_H - 2 * MARGIN) / info.height);
-    const w = (info.width * scale).toFixed(2);
-    const h = (info.height * scale).toFixed(2);
-    const x = ((PAGE_W - info.width * scale) / 2).toFixed(2);
-    const y = ((PAGE_H - info.height * scale) / 2).toFixed(2);
-    const content = Buffer.from(`q ${w} 0 0 ${h} ${x} ${y} cm /Im${idx} Do Q`, 'latin1');
+  pages.forEach((pg, idx) => {
+    const ops = [];
+    const text = (x, y, size, str, bold = false, gray = 0) => {
+      const t = pdfText(str);
+      if (t) ops.push(`BT /${bold ? 'F2' : 'F1'} ${size} Tf ${gray} g ${x.toFixed(2)} ${y.toFixed(2)} Td (${t}) Tj ET`);
+    };
+    const approxWidth = (str, size) => pdfText(str).length * size * 0.52;
+    let imageTop = PAGE_H - MARGIN;
+    let imageBottom = MARGIN;
+
+    if (pg.header) {
+      // Letterhead line
+      text(MARGIN, PAGE_H - 34, 11, company, true);
+      const label = 'CUSTOMER DOCUMENT';
+      text(PAGE_W - MARGIN - approxWidth(label, 10), PAGE_H - 34, 10, label, true, 0.3);
+      ops.push(`q 0.8 0.102 0.133 RG 1.6 w ${MARGIN} ${PAGE_H - 44} m ${PAGE_W - MARGIN} ${PAGE_H - 44} l S Q`);
+      // Document block
+      let y = PAGE_H - 66;
+      text(MARGIN, y, 14, pg.header.title, true);
+      y -= 16;
+      for (const line of pg.header.lines || []) {
+        text(MARGIN, y, line.bold ? 10.5 : 9, line.text, Boolean(line.bold), line.bold ? 0 : 0.35);
+        y -= 13;
+      }
+      imageTop = y - 6;
+      // Footer
+      ops.push(`q 0.85 G 0.6 w ${MARGIN} 34 m ${PAGE_W - MARGIN} 34 l S Q`);
+      text(MARGIN, 22, 7.5, footerNote, false, 0.45);
+      const pageLabel = `Page ${idx + 1} of ${total}`;
+      text(PAGE_W - MARGIN - approxWidth(pageLabel, 7.5), 22, 7.5, pageLabel, false, 0.45);
+      imageBottom = 44;
+    }
+
+    let xobj = '';
+    if (pg.jpeg) {
+      const info = jpegInfo(pg.jpeg);
+      const colorSpace = info.components === 1 ? '/DeviceGray' : info.components === 4 ? '/DeviceCMYK' : '/DeviceRGB';
+      const decode = info.components === 4 && info.adobe ? ' /Decode [1 0 1 0 1 0 1 0]' : '';
+      const imgNo = add({
+        dict: `<< /Type /XObject /Subtype /Image /Width ${info.width} /Height ${info.height} /ColorSpace ${colorSpace} /BitsPerComponent 8 /Filter /DCTDecode${decode} /Length ${pg.jpeg.length} >>`,
+        stream: pg.jpeg,
+      });
+      const boxW = PAGE_W - 2 * MARGIN;
+      const boxH = imageTop - imageBottom;
+      const scale = Math.min(boxW / info.width, boxH / info.height);
+      const w = info.width * scale;
+      const h = info.height * scale;
+      const x = (PAGE_W - w) / 2;
+      const yImg = pg.header ? imageTop - h : (PAGE_H - h) / 2;
+      ops.push(`q ${w.toFixed(2)} 0 0 ${h.toFixed(2)} ${x.toFixed(2)} ${yImg.toFixed(2)} cm /Im${idx} Do Q`);
+      if (pg.header) ops.push(`q 0.85 G 0.6 w ${x.toFixed(2)} ${yImg.toFixed(2)} ${w.toFixed(2)} ${h.toFixed(2)} re S Q`);
+      xobj = `/XObject << /Im${idx} ${imgNo} 0 R >>`;
+    } else if (pg.note) {
+      text(MARGIN, imageTop - 20, 11, pg.note, false, 0.3);
+    }
+
+    const content = Buffer.from(ops.join('\n'), 'latin1');
     const contentNo = add({ dict: `<< /Length ${content.length} >>`, stream: content });
     const pageNo = add(
-      `<< /Type /Page /Parent ${pagesNo} 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /XObject << /Im${idx} ${imgNo} 0 R >> >> /Contents ${contentNo} 0 R >>`
+      `<< /Type /Page /Parent ${pagesNo} 0 R /MediaBox [0 0 ${PAGE_W} ${PAGE_H}] /Resources << /Font << /F1 ${fontNo} 0 R /F2 ${fontBoldNo} 0 R >> ${xobj} >> /Contents ${contentNo} 0 R >>`
     );
     pageNos.push(pageNo);
   });
 
   objects[catalogNo - 1] = `<< /Type /Catalog /Pages ${pagesNo} 0 R >>`;
   objects[pagesNo - 1] = `<< /Type /Pages /Kids [${pageNos.map((n) => `${n} 0 R`).join(' ')}] /Count ${pageNos.length} >>`;
-  const safeTitle = String(title).replace(/[^\x20-\x7e]/g, '').replace(/[()\\]/g, '');
-  const infoNo = add(`<< /Title (${safeTitle}) /Producer (Monipack CRM) >>`);
+  const infoNo = add(`<< /Title (${pdfText(title)}) /Producer (Monipack CRM) >>`);
 
   const chunks = [Buffer.from('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n', 'latin1')];
   let offset = chunks[0].length;
@@ -538,4 +597,9 @@ export function jpegsToPdf(jpegBuffers, { title = 'Customer documents' } = {}) {
   const xref = [`xref\n0 ${objects.length + 1}\n`, '0000000000 65535 f \n', ...offsets.map((o) => `${String(o).padStart(10, '0')} 00000 n \n`)].join('');
   chunks.push(Buffer.from(`${xref}trailer\n<< /Size ${objects.length + 1} /Root ${catalogNo} 0 R /Info ${infoNo} 0 R >>\nstartxref\n${offset}\n%%EOF\n`, 'latin1'));
   return Buffer.concat(chunks);
+}
+
+/** Plain photo PDF (no header), kept for older callers. */
+export function jpegsToPdf(jpegBuffers, { title = 'Customer documents' } = {}) {
+  return documentPdf(jpegBuffers.map((jpeg) => ({ jpeg })), { title });
 }

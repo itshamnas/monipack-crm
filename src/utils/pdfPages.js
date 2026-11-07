@@ -21,7 +21,7 @@ function loadPdfJs() {
 }
 
 /** blob (application/pdf) -> ['data:image/jpeg;base64,…', …] one per page (max 10 pages) */
-export async function pdfToImages(blob, { maxPages = 10, scale = 1.6 } = {}) {
+export async function pdfToImages(blob, { maxPages = 10, scale = 1.6, quality = 0.88 } = {}) {
   const pdfjs = await loadPdfJs();
   const data = new Uint8Array(await blob.arrayBuffer());
   const doc = await pdfjs.getDocument({ data }).promise;
@@ -36,7 +36,7 @@ export async function pdfToImages(blob, { maxPages = 10, scale = 1.6 } = {}) {
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     await page.render({ canvasContext: ctx, viewport }).promise;
-    out.push(canvas.toDataURL('image/jpeg', 0.88));
+    out.push(canvas.toDataURL('image/jpeg', quality));
   }
   return { images: out, totalPages: doc.numPages };
 }
