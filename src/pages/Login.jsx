@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowRight, Zap } from 'lucide-react';
+import { Lock, Mail, Eye, EyeOff, AlertCircle, ArrowRight } from 'lucide-react';
 import { getApiUrl } from '../api/config.js';
 
 /**
@@ -192,14 +192,6 @@ export default function Login({ onLoginSuccess }) {
                 </button>
               </form>
               <p className="secure"><Lock className="w-3 h-3" aria-hidden="true" /> Authorised personnel only · Encrypted connection</p>
-            </div>
-
-            <div className="sig">
-              <a href="https://imshamnas.com" target="_blank" rel="noopener noreferrer" data-sound="off">
-                <span className="bolt"><Zap aria-hidden="true" /></span>
-                Developed by <span className="name"><span className="typed">imshamnas<span className="dot">.</span>com</span></span>
-                <span className="caret" aria-hidden="true" />
-              </a>
             </div>
           </section>
         </main>
