@@ -68,8 +68,9 @@ export default function MobileBottomNav({
               )}
 
               <Icon
+                key={isActive ? 'on' : 'off'}
                 className={`w-5 h-5 transition-transform ${
-                  isActive ? 'scale-110 stroke-[2.5]' : 'stroke-2'
+                  isActive ? 'scale-110 stroke-[2.5] mp-hop' : 'stroke-2'
                 }`}
                 style={isActive ? { color: 'var(--color-primary, #CC1A22)' } : undefined}
               />
@@ -80,7 +81,7 @@ export default function MobileBottomNav({
               {/* Active bottom pip indicator */}
               {isActive && (
                 <span
-                  className="absolute bottom-1 w-6 h-0.5 rounded-full bg-[#CC1A22]"
+                  className="absolute bottom-1 w-6 h-0.5 rounded-full bg-[#CC1A22] mp-pip"
                   style={{ backgroundColor: 'var(--color-primary, #CC1A22)' }}
                 />
               )}

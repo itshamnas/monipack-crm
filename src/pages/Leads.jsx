@@ -757,7 +757,7 @@ export default function Leads({
 
             {/* Mobile Focus Stage Vertical Feed */}
             {mobileViewStyle === 'focus' && (
-              <div className="lg:hidden space-y-3">
+              <div className="lg:hidden space-y-3 mp-stagger">
                 {visibleFocusedLeads.length > 0 ? (
                   visibleFocusedLeads.map((lead) => renderLeadCard(lead, true))
                 ) : (
@@ -841,7 +841,7 @@ export default function Leads({
                     </div>
 
                     {/* Cards Container */}
-                    <div className="space-y-3 overflow-y-auto pr-1 flex-1">
+                    <div className="space-y-3 overflow-y-auto pr-1 flex-1 mp-stagger">
                       {visibleStageLeads.length > 0 ? (
                         visibleStageLeads.map((lead) => renderLeadCard(lead, false))
                       ) : (
@@ -874,7 +874,7 @@ export default function Leads({
       {viewMode === 'table' && (
         <div className="bg-white rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] overflow-hidden">
           {/* Mobile Card Feed for Table Mode (< md only) */}
-          <div className="lg:hidden divide-y divide-slate-100">
+          <div className="mp-stagger lg:hidden divide-y divide-slate-100">
             {filteredLeads.slice(0, tableLimit).map((lead) => (
               <div key={lead.id} className="p-3.5 space-y-2 hover:bg-slate-50 transition-colors">
                 <div className="flex items-center justify-between gap-2">
@@ -965,7 +965,7 @@ export default function Leads({
                   <th className="py-3 px-4 font-bold text-center">Actions</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100">
+              <tbody className="mp-stagger divide-y divide-slate-100">
                 {filteredLeads.slice(0, tableLimit).map((lead) => (
                   <tr key={lead.id} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-3 px-4 font-bold text-slate-900 max-w-[200px] truncate capitalize">

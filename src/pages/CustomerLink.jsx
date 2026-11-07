@@ -186,7 +186,7 @@ export default function CustomerLink() {
             {pct}% <span className="text-base font-semibold text-slate-300">complete · {list.total} customers</span>
           </p>
           <div className="mt-3 h-2 rounded-full bg-white/15 overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Overall progress">
-            <div className="h-2 rounded-full bg-[#CC1A22] transition-all" style={{ width: `${pct}%` }} />
+            <div className="h-2 rounded-full bg-[#CC1A22] mp-bar" style={{ width: `${pct}%` }} />
           </div>
           <div className="mt-3 grid grid-cols-3 gap-2 text-center">
             {[['Not started', list.notStarted], ['To complete', list.incomplete], ['Done', list.completed]].map(([label, n]) => (
@@ -240,7 +240,7 @@ export default function CustomerLink() {
               <p className="font-bold">All your customers are 100% complete. Thank you!</p>
             </div>
           )}
-          <ul className="space-y-2.5">
+          <ul className="mp-stagger space-y-2.5">
             {filtered.map((c) => {
               const started = c.status !== 'not_started';
               const full = started && c.percent === 100;
@@ -255,7 +255,7 @@ export default function CustomerLink() {
                       ) : (
                         <span className="flex items-center gap-2 mt-1">
                           <span className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden="true">
-                            <span className={`block h-1.5 rounded-full ${full ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${c.percent}%` }} />
+                            <span className={`block h-1.5 rounded-full mp-bar ${full ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${c.percent}%` }} />
                           </span>
                           <span className={`text-xs font-bold tabular-nums ${full ? 'text-emerald-700' : 'text-amber-700'}`}>{c.percent}%</span>
                         </span>
@@ -425,7 +425,7 @@ function CustomerForm({ customer, fields, salesmanType, api, onClose, onSaved })
   const filledCount = visible.filter((f) => (f.type === 'document' ? uploaded.has(f.docLabel) : isSaved(f.key))).length;
 
   return (
-    <div className="fixed inset-0 z-40 bg-slate-900/50 flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="cf-title">
+    <div className="fixed inset-0 z-40 mp-overlay bg-slate-900/50 flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="cf-title">
       <form onSubmit={submit} className="w-full sm:max-w-lg max-h-[94vh] overflow-y-auto bg-[#F5F6F8] rounded-t-3xl sm:rounded-3xl">
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between">
           <div className="min-w-0 pr-3">
@@ -566,7 +566,7 @@ function LeadsList({ data, search, onOpen }) {
           {!q && <p className="text-sm text-slate-500">New enquiries for your customers will appear here.</p>}
         </div>
       ) : (
-        <ul className="space-y-2.5">
+        <ul className="mp-stagger space-y-2.5">
           {leads.map((l) => (
             <li key={l.id}>
               <button type="button" onClick={() => onOpen(l)}
@@ -611,7 +611,7 @@ function LeadSheet({ lead, stages, api, onClose, onSaved }) {
   };
 
   return (
-    <div className="fixed inset-0 z-40 bg-slate-900/50 flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="lead-title">
+    <div className="fixed inset-0 z-40 mp-overlay bg-slate-900/50 flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="lead-title">
       <form onSubmit={save} className="w-full sm:max-w-lg max-h-[94vh] overflow-y-auto bg-[#F5F6F8] rounded-t-3xl sm:rounded-3xl">
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between">
           <div className="min-w-0 pr-3">

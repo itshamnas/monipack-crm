@@ -51,7 +51,7 @@ body { font-variant-numeric: tabular-nums; }
 
 /* Gentle page entrance */
 @keyframes mp-rise { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
-main > div:first-child, .mp-enter { animation: mp-rise 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.mp-enter { animation: mp-rise 0.36s cubic-bezier(0.22, 1, 0.36, 1) backwards; }
 
 /* Respect reduced motion everywhere */
 @media (prefers-reduced-motion: reduce) {
@@ -119,3 +119,82 @@ html, body { overscroll-behavior-y: none; }
 .mp-toast { left: 1rem; right: 1rem; bottom: calc(5rem + env(safe-area-inset-bottom)); }
 @media (min-width: 640px) { .mp-toast { left: auto; right: 1.25rem; max-width: 26rem; } }
 @media (min-width: 1024px) { .mp-toast { bottom: 1.25rem; } }
+
+/* ==========================================================================
+   Motion system
+   Reference: Apple HIG (spring sheets, 0.3–0.45s), Linear / Stripe dashboards
+   (quick fades, 40ms list stagger, numbers that count up). Only opacity and
+   transform are animated so it stays smooth on phones. Reduced-motion and
+   print switch all of it off (rules above).
+   ========================================================================== */
+:root {
+  --mp-spring: cubic-bezier(0.34, 1.56, 0.64, 1);   /* playful overshoot: tabs, icons */
+  --mp-out: cubic-bezier(0.22, 1, 0.36, 1);          /* calm settle: pages, cards */
+  --mp-sheet: cubic-bezier(0.32, 0.72, 0, 1);        /* iOS sheet curve */
+}
+
+@keyframes mp-fade { from { opacity: 0; } }
+@keyframes mp-pop { from { opacity: 0; transform: translateY(10px) scale(0.96); } }
+@keyframes mp-sheet-up { from { transform: translateY(100%); } }
+@keyframes mp-grow { from { transform: scaleX(0); } }
+@keyframes mp-pip { from { transform: scaleX(0); opacity: 0; } }
+@keyframes mp-icon-in { from { transform: rotate(-90deg) scale(0.4); opacity: 0; } }
+@keyframes mp-toast-in { from { opacity: 0; transform: translateY(16px) scale(0.94); } }
+@keyframes mp-bump { 40% { transform: translateY(-3px) scale(1.12); } }
+
+/* Pages: each screen rises in when you open it */
+main > * { animation: mp-rise 0.36s var(--mp-out) backwards; }
+
+/* Pop-ups: backdrop fades, panel springs in; on phones bottom sheets slide up like iOS */
+.mp-overlay { animation: mp-fade 0.2s ease-out backwards; }
+.mp-overlay > :not(.absolute):not(.fixed) { animation: mp-pop 0.34s var(--mp-out) backwards; }
+@media (max-width: 639px) {
+  .mp-overlay.items-end > :not(.absolute):not(.fixed) { animation: mp-sheet-up 0.42s var(--mp-sheet) backwards; }
+}
+
+/* Lists and card grids: items arrive one after another (40ms apart, max ~0.5s) */
+.mp-stagger > * { animation: mp-rise 0.42s var(--mp-out) backwards; }
+.mp-stagger > :nth-child(2) { animation-delay: 40ms; }
+.mp-stagger > :nth-child(3) { animation-delay: 80ms; }
+.mp-stagger > :nth-child(4) { animation-delay: 120ms; }
+.mp-stagger > :nth-child(5) { animation-delay: 160ms; }
+.mp-stagger > :nth-child(6) { animation-delay: 200ms; }
+.mp-stagger > :nth-child(7) { animation-delay: 240ms; }
+.mp-stagger > :nth-child(8) { animation-delay: 280ms; }
+.mp-stagger > :nth-child(9) { animation-delay: 320ms; }
+.mp-stagger > :nth-child(10) { animation-delay: 360ms; }
+.mp-stagger > :nth-child(n+11) { animation-delay: 400ms; }
+
+/* Progress bars fill from the left */
+.mp-bar { transform-origin: left center; animation: mp-grow 0.9s var(--mp-out) 0.15s backwards; }
+
+/* Bottom menu: active marker grows, icon gives a small hop */
+.mp-pip { animation: mp-pip 0.35s var(--mp-spring) backwards; }
+.mp-hop { animation: mp-bump 0.4s var(--mp-spring); }
+
+/* Header switches: icon spins in when sound / theme changes */
+.mp-icon-in { animation: mp-icon-in 0.4s var(--mp-spring) backwards; }
+
+/* Notices spring up */
+.mp-toast { animation: mp-toast-in 0.42s var(--mp-spring) backwards !important; }
+
+/* Cards lift under the mouse (PCs only, not on touch) */
+@media (hover: hover) and (pointer: fine) {
+  .mp-lift { transition: transform 0.25s var(--mp-out), box-shadow 0.25s var(--mp-out), border-color 0.2s; }
+  .mp-lift:hover { transform: translateY(-3px); box-shadow: 0 14px 32px -12px rgba(15, 23, 42, 0.18); }
+  main tbody tr { transition: background-color 0.15s; }
+}
+
+/* Existing Tailwind entrance classes (animate-in / fade-in / zoom-in-95 / slide-in-from-*) */
+.animate-in { animation: mp-enter 0.22s var(--mp-out) backwards; }
+.fade-in { --mp-enter-opacity: 0; }
+.zoom-in-95 { --mp-enter-scale: 0.95; }
+.slide-in-from-bottom-4 { --mp-enter-y: 1rem; }
+.slide-in-from-top, .slide-in-from-top-2 { --mp-enter-y: -0.5rem; }
+@keyframes mp-enter {
+  from { opacity: var(--mp-enter-opacity, 1); transform: translate3d(0, var(--mp-enter-y, 0), 0) scale(var(--mp-enter-scale, 1)); }
+}
+
+/* Loading placeholders shimmer instead of blinking */
+.animate-pulse { animation: mp-shimmer 1.4s ease-in-out infinite; }
+@keyframes mp-shimmer { 50% { opacity: 0.55; } }

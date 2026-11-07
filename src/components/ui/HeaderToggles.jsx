@@ -28,7 +28,7 @@ export default function HeaderToggles({ compact = false, labels = false }) {
         onClick={() => { const on = toggleSound(); if (on) playClick(1000, 0.03); }}
         className={`${btn} ${compact ? 'w-10 sm:w-9' : 'px-3'} ${labels ? 'flex-1' : ''}`}
       >
-        {sound ? <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400" />}
+        {sound ? <Volume2 key="on" className="w-3.5 h-3.5 sm:w-4 sm:h-4 mp-icon-in" /> : <VolumeX key="off" className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-400 mp-icon-in" />}
         {!compact && <span className={`${labels ? 'inline' : 'hidden 2xl:inline'} mp-label text-[9.5px]`}>{sound ? 'Sound on' : 'Muted'}</span>}
       </button>
       <button
@@ -39,7 +39,7 @@ export default function HeaderToggles({ compact = false, labels = false }) {
         onClick={(e) => setTheme(toggleTheme(e))}
         className={`${btn} ${labels ? 'flex-1 px-3' : 'w-10 sm:w-9'}`}
       >
-        {theme === 'dark' ? <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300" /> : <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+        {theme === 'dark' ? <Sun key="sun" className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300 mp-icon-in" /> : <Moon key="moon" className="w-3.5 h-3.5 sm:w-4 sm:h-4 mp-icon-in" />}
         {labels && <span className="mp-label text-[9.5px]">{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span>}
       </button>
     </>
