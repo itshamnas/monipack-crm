@@ -704,3 +704,25 @@ export async function getDataCentreRows() {
   ]);
   return { customers, fields, leads, quotes, files };
 }
+
+/** Everything else for the full Data Centre download (no passwords or secrets) */
+export async function getDataCentreExtras({ includeSecurity = false } = {}) {
+  const safe = (sql) => query(sql).then((r) => r.rows).catch(() => []);
+  const [items, products, branches, activities, history, transfers, categories, users, auditLog] = await Promise.all([
+    safe(`SELECT i.*, q.code, q.customer_name, q.date AS quote_date FROM quotation_items i JOIN quotations q ON q.id = i.quotation_id
+          WHERE q.archived_at IS NULL ORDER BY q.created_at DESC, i.seq`),
+    safe(`SELECT * FROM products WHERE archived_at IS NULL ORDER BY category, name`),
+    safe(`SELECT b.*, s.name AS salesman_name FROM branches b LEFT JOIN salesmen s ON s.id = b.default_salesman_id
+          WHERE b.archived_at IS NULL ORDER BY b.city, b.name`),
+    safe(`SELECT * FROM lead_activities ORDER BY COALESCE(timestamp, created_at) DESC LIMIT 100000`),
+    safe(`SELECT h.*, l.name AS lead_name FROM lead_stage_history h LEFT JOIN leads l ON l.id = h.lead_id ORDER BY h.changed_at DESC LIMIT 100000`),
+    safe(`SELECT t.*, c.name AS customer_name, fs.name AS from_name, ts.name AS to_name, u.name AS by_name
+          FROM customer_transfers t LEFT JOIN customers c ON c.id = t.customer_id
+          LEFT JOIN salesmen fs ON fs.id = t.from_salesman_id LEFT JOIN salesmen ts ON ts.id = t.to_salesman_id
+          LEFT JOIN users u ON u.id = t.by_user_id ORDER BY t.transferred_at DESC`),
+    safe(`SELECT * FROM categories ORDER BY name`),
+    includeSecurity ? safe(`SELECT id, name, email, role, can_export, is_active, last_login_at, created_at FROM users WHERE archived_at IS NULL ORDER BY role, name`) : [],
+    includeSecurity ? safe(`SELECT event_type, user_name, target_email, ip_address, description, created_at FROM audit_log ORDER BY created_at DESC LIMIT 50000`) : [],
+  ]);
+  return { items, products, branches, activities, history, transfers, categories, users, auditLog };
+}

@@ -190,6 +190,7 @@ export default function PrintLeadSlip({ lead, branches = [], onClose }) {
         className="lead-slip-sheet shrink-0 bg-white w-full max-w-[850px] min-h-fit h-auto p-4 sm:p-8 md:p-10 pb-8 sm:pb-10 rounded-xl shadow-2xl border border-slate-200 text-slate-900 relative my-2 sm:my-8 print:my-0 print:p-0 print:border-none print:shadow-none print:max-w-none print:min-h-0 print:w-full print:rounded-none"
         onClick={(e) => e.stopPropagation()}
       >
+        <img className="mp-sheet-wm" src="/brands/watermark.png" alt="" aria-hidden="true" />
         {/* ==========================================================================
             Header: 3D Ribbon Logo + Ghala Address (Left) & SLIP TITLE + Ref (Right)
             ========================================================================== */}

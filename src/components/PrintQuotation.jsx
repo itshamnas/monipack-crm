@@ -513,6 +513,7 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
         onClick={(e) => e.stopPropagation()}
         style={{ fontFamily: "Inter, Arial, 'Cairo', sans-serif" }}
       >
+        <img className="mp-sheet-wm" src="/brands/watermark.png" alt="" aria-hidden="true" />
         {/* Letterhead */}
         <div className="flex items-start justify-between gap-6 pb-4 border-b-[3px] border-[#CC1A22]">
           <div className="flex items-start gap-4 min-w-0">

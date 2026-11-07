@@ -455,8 +455,9 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
   const LEAD_STAGES = { new: 'New', contacted: 'Assigned', quotation_sent: 'Quote sent', sample_sent: 'Sample / negotiation', won: 'Won', lost: 'Lost' };
   const FILE_NAMES = { cr_certificate: 'CR paper', vat_certificate: 'VAT certificate', shop_front: 'Shop front', other: 'Other' };
 
-  async function dataCentreSheets() {
-    const { customers, fields, leads, quotes, files } = await cdb.getDataCentreRows();
+  async function dataCentreSheets(req) {
+    const isSuper = req?.user?.role === 'super_admin';
+    const [{ customers, fields, leads, quotes, files }, extra] = await Promise.all([cdb.getDataCentreRows(), cdb.getDataCentreExtras({ includeSecurity: isSuper })]);
     const label = Object.fromEntries(fields.map((f) => [f.key, f.label]));
     const dataFields = fields.filter((f) => !['mobile', 'cr_number', 'vat_number'].includes(f.key) && f.type !== 'photo' && f.type !== 'document');
     const docFields = fields.filter((f) => f.type === 'document');
@@ -537,22 +538,96 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
             mine.reduce((t, c) => t + c.openLeads, 0), mine.reduce((t, c) => t + c.wonValue, 0), sm.linkEnabled ? 'Yes' : 'No'];
         }),
       },
+      {
+        id: 'quotation_items', name: 'Quotation items',
+        columns: [{ label: 'Quotation', width: 14 }, { label: 'Date', type: 'date', width: 17 }, { label: 'Customer', width: 28 }, { label: 'Line', type: 'number', width: 6 },
+          { label: 'Item', width: 30 }, { label: 'Description', width: 36 }, { label: 'Quantity', type: 'number', width: 10 }, { label: 'Unit', width: 10 },
+          { label: 'Unit price (OMR)', type: 'number', width: 14 }, { label: 'Line total (OMR)', type: 'number', width: 14 }],
+        rows: extra.items.map((i) => [i.code, i.quote_date, i.customer_name, i.seq, i.item, i.description, Number(i.quantity || 0), i.unit, Number(i.unit_price_omr || 0), Number(i.total_omr || 0)]),
+      },
+      {
+        id: 'activity', name: 'Activity & notes',
+        columns: [{ label: 'When', type: 'date', width: 17 }, { label: 'Lead ID', type: 'number', width: 8 }, { label: 'Lead / customer', width: 28 }, { label: 'Type', width: 14 }, { label: 'What happened', width: 70 }],
+        rows: extra.activities.map((a) => [a.timestamp || a.created_at, a.lead_id, a.lead_name, a.type, a.description]),
+      },
+      {
+        id: 'stage_history', name: 'Stage history',
+        columns: [{ label: 'When', type: 'date', width: 17 }, { label: 'Lead ID', type: 'number', width: 8 }, { label: 'Lead', width: 28 }, { label: 'From', width: 16 }, { label: 'To', width: 16 }, { label: 'Changed by', width: 24 }],
+        rows: extra.history.map((h) => [h.changed_at, h.lead_id, h.lead_name, LEAD_STAGES[h.from_status] || h.from_status, LEAD_STAGES[h.to_status] || h.to_status, h.changed_by]),
+      },
+      {
+        id: 'transfers', name: 'Customer transfers',
+        columns: [{ label: 'When', type: 'date', width: 17 }, { label: 'Customer ID', type: 'number', width: 10 }, { label: 'Customer', width: 28 }, { label: 'From salesman', width: 20 }, { label: 'To salesman', width: 20 }, { label: 'By', width: 20 }],
+        rows: extra.transfers.map((t) => [t.transferred_at, t.customer_id, t.customer_name, t.from_name, t.to_name, t.by_name]),
+      },
+      {
+        id: 'products', name: 'Products',
+        columns: [{ label: 'SKU', width: 14 }, { label: 'Product', width: 34 }, { label: 'Arabic name', width: 26 }, { label: 'Category', width: 18 }, { label: 'Brand', width: 14 },
+          { label: 'Unit', width: 10 }, { label: 'Price (OMR)', type: 'number', width: 12 }, { label: 'Stock', type: 'number', width: 9 }, { label: 'Description', width: 40 }],
+        rows: extra.products.map((p) => [p.sku, p.name, p.name_ar, p.category, p.brand, p.unit, Number(p.price_omr || 0), p.stock == null ? null : Number(p.stock), p.description]),
+      },
+      {
+        id: 'branches', name: 'Branches',
+        columns: [{ label: 'Branch', width: 22 }, { label: 'Governorate / city', width: 20 }, { label: 'Phone', width: 16 }, { label: 'Head office', width: 11 }, { label: 'Sales rep', width: 22 }],
+        rows: extra.branches.map((b) => [b.name, b.city, b.phone, b.is_headquarters ? 'Yes' : 'No', b.salesman_name]),
+      },
+      {
+        id: 'categories', name: 'Categories',
+        columns: [{ label: 'Category', width: 30 }, { label: 'Added on', type: 'date', width: 17 }],
+        rows: extra.categories.map((c) => [c.name, c.created_at]),
+      },
+      ...(isSuper ? [
+        {
+          id: 'staff', name: 'Staff logins',
+          columns: [{ label: 'Name', width: 24 }, { label: 'Email', width: 30 }, { label: 'Role', width: 16 }, { label: 'Can export', width: 10 }, { label: 'Active', width: 8 }, { label: 'Last login', type: 'date', width: 17 }, { label: 'Added on', type: 'date', width: 17 }],
+          rows: extra.users.map((u) => [u.name, u.email, u.role, u.can_export ? 'Yes' : 'No', u.is_active ? 'Yes' : 'No', u.last_login_at, u.created_at]),
+        },
+        {
+          id: 'security_log', name: 'Security log',
+          columns: [{ label: 'When', type: 'date', width: 17 }, { label: 'Type', width: 12 }, { label: 'User', width: 22 }, { label: 'Email', width: 26 }, { label: 'IP', width: 15 }, { label: 'What happened', width: 70 }],
+          rows: extra.auditLog.map((a) => [a.created_at, a.event_type, a.user_name, a.target_email, a.ip_address, a.description]),
+        },
+      ] : []),
     ];
   }
 
+  // Sheet ids for the first five (older) sheets, plus an optional ?only=a,b filter and a contents sheet
+  const BASE_IDS = ['customers', 'enquiries', 'quotations', 'documents', 'salesmen'];
+  async function chosenSheets(req) {
+    const all = (await dataCentreSheets(req)).map((sh, i) => ({ id: sh.id || BASE_IDS[i], ...sh }));
+    const only = String(req.query.only || '').split(',').map((x) => x.trim()).filter(Boolean);
+    const picked = only.length ? all.filter((sh) => only.includes(sh.id)) : all;
+    return { all, picked };
+  }
+  function contentsSheet(picked, req) {
+    return {
+      name: 'Contents',
+      columns: [{ label: 'monipack CRM · Morooj Nizwa International Co. LLC', width: 44 }, { label: 'Rows', type: 'number', width: 10 }],
+      rows: [
+        ['Customer Data Centre: full download', null],
+        [`Downloaded ${new Date().toISOString().slice(0, 16).replace('T', ' ')} by ${req.user?.name || ''}`, null],
+        ['', null],
+        ...picked.map((sh) => [sh.name, sh.rows.length]),
+      ],
+    };
+  }
+
   app.get('/api/data-centre.xlsx', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
-    const sheets = await dataCentreSheets();
+    const { picked } = await chosenSheets(req);
+    if (!picked.length) return res.status(400).json({ error: 'Choose at least one section to download.' });
+    const sheets = [contentsSheet(picked, req), ...picked];
     const buf = workbook(sheets);
-    await audit(req, `Downloaded Customer Data Centre (Excel): ${sheets[0].rows.length} customers, ${sheets[1].rows.length} enquiries`);
+    await audit(req, `Downloaded Customer Data Centre (Excel): ${picked.map((sh) => `${sh.name} ${sh.rows.length}`).join(', ')}`);
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename=monipack_data_centre_${new Date().toISOString().slice(0, 10)}.xlsx`);
     res.send(buf);
   }));
 
   app.get('/api/data-centre', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
-    const sheets = await dataCentreSheets();
-    await audit(req, 'Downloaded Customer Data Centre (PDF)');
-    res.json(sheets.map((s) => ({ name: s.name, columns: s.columns, rows: s.rows })));
+    const { all, picked } = await chosenSheets(req);
+    if (req.query.list === '1') return res.json(all.map((sh) => ({ id: sh.id, name: sh.name, count: sh.rows.length })));
+    await audit(req, `Downloaded Customer Data Centre (PDF): ${picked.map((sh) => sh.name).join(', ')}`);
+    res.json(picked.map((s) => ({ id: s.id, name: s.name, columns: s.columns, rows: s.rows })));
   }));
 
   app.get('/api/customers/export', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {

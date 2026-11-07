@@ -38,6 +38,14 @@ const niceNow = (d) => `${d.getDate()} ${MONTHS.at(d.getMonth())} ${d.getFullYea
 const refFor = (docType, d) => `${String(docType || 'DOC').replace(/[^A-Za-z]/g, '').slice(0, 3).toUpperCase() || 'DOC'}-${String(d.getFullYear()).slice(2)}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`;
 const currentUserName = () => { try { return JSON.parse(localStorage.getItem('monipack_auth_user') || '{}').name || ''; } catch { return ''; } };
 
+/** Monipack logo watermark: fixed, so the browser repeats it on every printed page */
+export const WATERMARK_CSS = `
+  .mp-wm { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; pointer-events: none; z-index: 9999; }
+  .mp-wm img { width: 58%; max-width: 420px; opacity: 0.07; }
+  @media print { .mp-wm { position: fixed; } }
+`;
+export const watermarkHtml = () => `<div class="mp-wm" aria-hidden="true"><img src="${window.location.origin}/brands/watermark.png" alt=""></div>`;
+
 const STYLE = `
   @page {
     size: A4; margin: 12mm 12mm 16mm;
@@ -140,7 +148,7 @@ export function openPrintable({ docType = 'Report', title, subtitle = '', meta =
   const fullMeta = [['Ref', refFor(docType, now)], ...meta, ['Date', when], ...(by ? [['Prepared by', by]] : [])];
   getCompany().then((c) => {
     w.document.open();
-    w.document.write(`<!doctype html><html dir="auto"><head><meta charset="utf-8"><title>${esc(title)} · ${esc(docType)}</title><style>${STYLE}</style></head><body><div class="sheet">
+    w.document.write(`<!doctype html><html dir="auto"><head><meta charset="utf-8"><title>${esc(title)} · ${esc(docType)}</title><style>${STYLE}${WATERMARK_CSS}</style></head><body>${watermarkHtml()}<div class="sheet">
       <table class="frame">
         <thead><tr><td>${letterhead(c, docType, fullMeta)}</td></tr></thead>
         <tbody><tr><td>

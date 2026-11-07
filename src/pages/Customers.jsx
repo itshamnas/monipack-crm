@@ -85,56 +85,75 @@ export default function Customers({ authFetch, showToast, canManage, initialFilt
   const changed = () => setReloadKey((k) => k + 1);
   const [busy, setBusy] = useState('');
 
+  // ---- Download centre: pick any sections, get Excel or PDF (watermarked) ----
+  const [dlOpen, setDlOpen] = useState(false);
+  const [sections, setSections] = useState([]); // [{ id, name, count }]
+  const [picked, setPicked] = useState(() => new Set());
+  const [pdfDetail, setPdfDetail] = useState(true);
+  const openDownloads = async () => {
+    setDlOpen((v) => !v);
+    if (sections.length) return;
+    try {
+      const res = await authFetch('/api/data-centre?list=1');
+      if (!res.ok) throw new Error('Could not list the sections');
+      const list = await res.json();
+      setSections(list);
+      setPicked(new Set(list.map((x) => x.id)));
+    } catch (e) { showToast(e.message, 'error'); }
+  };
+  const onlyQuery = () => (picked.size && picked.size !== sections.length ? `only=${[...picked].join(',')}` : '');
+  const today = new Date().toISOString().slice(0, 10);
+
   const downloadExcel = async () => {
     setBusy('excel');
     try {
-      await downloadBlob(authFetch, '/api/data-centre.xlsx', `monipack_data_centre_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      const q = onlyQuery();
+      const tag = picked.size === sections.length || !sections.length ? 'everything' : [...picked].join('_');
+      await downloadBlob(authFetch, `/api/data-centre.xlsx${q ? `?${q}` : ''}`, `monipack_data_centre_${tag}_${today}.xlsx`);
     } catch (e) { showToast(e.message, 'error'); }
     setBusy('');
   };
 
-  // Everything as one PDF: summary, customers, enquiries, quotations, documents, salesmen
+  // PDF: every chosen section. Narrow sections as tables; wide ones (e.g. customers) as one detail block per record.
   const downloadPdf = async () => {
     const win = openPendingWindow();
     if (!win) { showToast('Allow pop-ups to download the PDF', 'error'); return; }
     setBusy('pdf');
     try {
-      const res = await authFetch('/api/data-centre');
+      const q = onlyQuery();
+      const res = await authFetch(`/api/data-centre${q ? `?${q}` : ''}`);
       if (!res.ok) throw new Error('Could not prepare the report');
       const sheets = await res.json();
-      const by = Object.fromEntries(sheets.map((x) => [x.name, x]));
-      const pick = (sheet, labels) => {
-        const idx = labels.map((l) => sheet.columns.findIndex((c) => c.label === l));
-        return {
-          cols: labels.map((l, i) => ({ label: l, num: ['number', 'percent'].includes(sheet.columns[idx[i]]?.type) })),
-          rows: sheet.rows.map((r) => idx.map((j) => {
-            const col = sheet.columns[j];
-            const v = r[j];
-            if (v === null || v === undefined || v === '') return '';
-            if (col?.type === 'percent') return `${Math.round(v * 100)}%`;
-            if (col?.type === 'date') return new Date(v).toLocaleDateString();
-            if (col?.type === 'number' && /OMR/.test(col.label)) return Number(v).toFixed(3);
-            return v;
-          })),
-        };
+      const fmt = (col, v) => {
+        if (v === null || v === undefined || v === '') return '';
+        if (col?.type === 'percent') return `${Math.round(v * 100)}%`;
+        if (col?.type === 'date') { const d = new Date(v); return isNaN(d) ? String(v) : d.toLocaleDateString('en-GB'); }
+        if (col?.type === 'number' && /OMR/.test(col.label)) return Number(v).toFixed(3);
+        return v;
       };
-      const cu = pick(by.Customers, ['Customer', 'Mobile', 'CR number', 'Salesman', 'Status', '% complete', 'Enquiries', 'Won (OMR)', 'Still missing']);
-      const en = pick(by.Enquiries, ['Date', 'Customer', 'Product', 'Quantity', 'Stage', 'Salesman', 'Deal value (OMR)']);
-      const qu = pick(by.Quotations, ['Date', 'Quotation', 'Customer', 'Sales rep', 'Status', 'Total (OMR)']);
-      const sm = pick(by.Salesmen, ['Salesman', 'Type', 'Customers', 'Customer data done', 'Open enquiries', 'Won (OMR)']);
-      const won = by.Enquiries.rows.filter((r) => r[7] === 'Won').reduce((t, r) => t + Number(r[11] || 0), 0);
+      const MAX_TABLE_COLS = 9;
+      let body = chipsHtml(sheets.map((sh) => [sh.name, sh.rows.length]));
+      for (const sh of sheets) {
+        body += `<h2>${sh.name} <span style="font-weight:400;color:#64748b">(${sh.rows.length})</span></h2>`;
+        if (sh.columns.length <= MAX_TABLE_COLS || !pdfDetail) {
+          const cols = sh.columns.slice(0, pdfDetail ? sh.columns.length : MAX_TABLE_COLS);
+          body += tableHtml(cols.map((c) => ({ label: c.label, num: ['number', 'percent'].includes(c.type) })), sh.rows.map((r) => cols.map((c, ci) => fmt(c, r[ci]))));
+        } else {
+          // one detail block per record, showing every filled-in field
+          body += sh.rows.map((r) => {
+            const pairs = sh.columns.map((c, ci) => [c.label, fmt(c, r[ci])]).filter(([, v]) => v !== '' && v !== null && v !== undefined);
+            const title = r[1] || r[0];
+            return `<div style="page-break-inside:avoid;margin:10px 0 14px"><h3 style="margin:0 0 4px;font-size:12.5px">${String(title).replace(/[<&>]/g, '')}</h3>${kvHtml(pairs)}</div>`;
+          }).join('') || '<p>Nothing to show.</p>';
+        }
+      }
       openPrintable({
         win,
         docType: 'Data report',
         title: 'Customer Data Centre',
-        subtitle: 'All customers with their enquiries, quotations and documents',
-        meta: [['Customers', by.Customers.rows.length], ['Enquiries', by.Enquiries.rows.length]],
-        bodyHtml: chipsHtml([['Customers', by.Customers.rows.length], ['Enquiries', by.Enquiries.rows.length], ['Quotations', by.Quotations.rows.length],
-          ['Documents', by.Documents.rows.length], ['Won (OMR)', won.toFixed(3)]])
-          + '<h2>Salesmen</h2>' + tableHtml(sm.cols, sm.rows)
-          + '<h2>Customers</h2>' + tableHtml(cu.cols, cu.rows)
-          + '<h2>Enquiries</h2>' + tableHtml(en.cols, en.rows)
-          + '<h2>Quotations</h2>' + tableHtml(qu.cols, qu.rows),
+        subtitle: picked.size === sections.length || !sections.length ? 'Everything in the CRM' : sheets.map((sh) => sh.name).join(' · '),
+        meta: sheets.slice(0, 3).map((sh) => [sh.name, sh.rows.length]),
+        bodyHtml: body,
       });
     } catch (e) { win.close(); showToast(e.message, 'error'); }
     setBusy('');
@@ -152,16 +171,55 @@ export default function Customers({ authFetch, showToast, canManage, initialFilt
             {onOpenSettings && (
               <button type="button" className={`${btnLight} shrink-0`} onClick={() => onOpenSettings('settings-links')}><Link2 className="w-4 h-4" /> Salesman links</button>
             )}
-            <button type="button" className={`${btnLight} shrink-0`} disabled={busy === 'excel'} onClick={downloadExcel}>
-              {busy === 'excel' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4 text-emerald-600" />} Excel
-            </button>
-            <button type="button" className={`${btnLight} shrink-0`} disabled={busy === 'pdf'} onClick={downloadPdf}>
-              {busy === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4 text-[#CC1A22]" />} PDF
+            <button type="button" className={`${btnLight} shrink-0 ${dlOpen ? 'ring-2 ring-red-500/20 border-red-300' : ''}`} onClick={openDownloads} aria-expanded={dlOpen}>
+              <Download className="w-4 h-4 text-emerald-600" /> Download data
             </button>
             <button type="button" className={`${btnDark} shrink-0`} onClick={() => setImporting((v) => !v)}><Upload className="w-4 h-4" /> Import list</button>
           </div>
         )}
       </div>
+
+      {canManage && dlOpen && (
+        <section className="bg-white rounded-3xl border border-slate-200 p-4 sm:p-5 animate-in fade-in slide-in-from-top-2" aria-label="Download data">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex-1 min-w-0">
+              <h2 className="text-[15px] font-bold">Download data</h2>
+              <p className="text-xs text-slate-500">Tick what you need. Excel has one sheet per section; the PDF has every detail. Both carry the <span className="font-monipack lowercase">monipack</span> watermark.</p>
+            </div>
+            <button type="button" className={btnLight} onClick={() => setPicked(picked.size === sections.length ? new Set() : new Set(sections.map((x) => x.id)))}>
+              {picked.size === sections.length ? 'Clear all' : 'Select everything'}
+            </button>
+          </div>
+          {!sections.length ? (
+            <p className="mt-4 text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Counting…</p>
+          ) : (
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 mp-stagger">
+              {sections.map((sec) => {
+                const on = picked.has(sec.id);
+                return (
+                  <label key={sec.id} className={`flex items-center gap-3 px-3 py-2.5 rounded-2xl border cursor-pointer transition ${on ? 'border-red-300 bg-red-50/60' : 'border-slate-200 hover:border-slate-300'}`}>
+                    <input type="checkbox" className="w-4 h-4" checked={on} onChange={() => setPicked((p) => { const n = new Set(p); n.has(sec.id) ? n.delete(sec.id) : n.add(sec.id); return n; })} />
+                    <span className="flex-1 text-sm font-semibold">{sec.name}</span>
+                    <span className="text-[11.5px] font-bold tabular-nums px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">{sec.count.toLocaleString()}</span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <button type="button" className={btnDark} disabled={!picked.size || busy === 'excel'} onClick={downloadExcel}>
+              {busy === 'excel' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} Excel ({picked.size})
+            </button>
+            <button type="button" className={btnRed} disabled={!picked.size || busy === 'pdf'} onClick={downloadPdf}>
+              {busy === 'pdf' ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />} PDF ({picked.size})
+            </button>
+            <label className="flex items-center gap-2 text-xs text-slate-600 ml-1 cursor-pointer">
+              <input type="checkbox" className="w-4 h-4" checked={pdfDetail} onChange={(e) => setPdfDetail(e.target.checked)} />
+              PDF with every detail (longer)
+            </label>
+          </div>
+        </section>
+      )}
 
       {importing && canManage && (
         <ImportTab authFetch={authFetch} showToast={showToast} onDone={() => { setImporting(false); changed(); }} />
