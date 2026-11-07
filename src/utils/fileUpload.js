@@ -1,4 +1,9 @@
+import { pdfToImages } from './pdfPages.js';
+
 // Prepares a photo or PDF for upload to the CRM.
+// Every upload is turned into a standard PDF on the server (company header, document name, number on file):
+// - a photo becomes that PDF directly;
+// - a PDF is kept as the original, and its pages are also sent as images so the standard PDF can be made.
 // - PDF and JPEG up to 10 MB are sent unchanged (original quality).
 // - Other images (PNG, WebP, HEIC on iPhone, very large JPEGs) are converted to a high-quality JPEG in the browser.
 
@@ -42,7 +47,9 @@ export async function prepareUpload(file) {
   const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
   if (isPdf) {
     if (file.size > MAX_UPLOAD_BYTES) throw new Error('This PDF is larger than 10 MB.');
-    return { base64: await readAsDataUrl(file), name: file.name, previewUrl: null, isPdf: true };
+    let pages = [];
+    try { pages = (await pdfToImages(file, { maxPages: 10, scale: 1.4, quality: 0.82 })).images; } catch { pages = []; }
+    return { base64: await readAsDataUrl(file), name: file.name, previewUrl: pages[0] || null, isPdf: true, pages };
   }
   if (!file.type.startsWith('image/') && !/\.(jpe?g|png|heic|heif|webp)$/i.test(file.name)) {
     throw new Error('Please choose a photo or a PDF.');

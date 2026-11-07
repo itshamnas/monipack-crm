@@ -109,7 +109,7 @@ const LARGE_BODY_ROUTES = [
 ];
 const smallJsonParser = express.json({ limit: '1mb' });
 app.use((req, res, next) => (LARGE_BODY_ROUTES.some((re) => re.test(req.path)) ? next() : smallJsonParser(req, res, next)));
-const largeJsonParser = express.json({ limit: '15mb' });
+const largeJsonParser = express.json({ limit: '40mb' }); // a 10 MB PDF + its page images, as base64
 
 // Wrap async route handlers - uncaught errors go to the central error handler
 const asyncHandler = (fn) => (req, res, next) => {

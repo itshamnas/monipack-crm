@@ -526,7 +526,7 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
   const uploadAdminFile = async (file, label) => {
     try {
       const p = await prepareUpload(file);
-      if (await action(`/api/customers/${c.id}/files`, 'POST', { base64: p.base64, label, name: p.name }, 'Document added.')) load();
+      if (await action(`/api/customers/${c.id}/files`, 'POST', { base64: p.base64, label, name: p.name, pages: p.pages || [] }, 'Document added.')) load();
     } catch (err) { showToast(err.message, 'error'); }
   };
 
@@ -709,10 +709,10 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h3 className="font-bold">Documents & photos ({c.files.length})</h3>
             <div className="flex flex-wrap gap-2">
-              {c.files.some((f) => f.mime === 'image/jpeg') && (
+              {c.files.length > 0 && (
                 <button type="button" className={btnLight}
                   onClick={() => downloadBlob(authFetch, `/api/customers/${c.id}/documents.pdf`, `${slug(c.name)}_documents.pdf`).catch((e) => showToast(e.message, 'error'))}>
-                  <FileText className="w-4 h-4" /> All photos as one PDF
+                  <FileText className="w-4 h-4" /> All documents as one PDF
                 </button>
               )}
               {canManage && (

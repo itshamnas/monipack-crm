@@ -370,13 +370,19 @@ export async function addSubmission(customerId, salesmanId, snapshot) {
   );
 }
 
-export async function addFile({ customerId, label, storageKey, originalName, mime, sizeBytes, uploadedVia }) {
+export async function addFile({ customerId, label, storageKey, originalName, mime, sizeBytes, uploadedVia, pageKeys = [], pdfStorageKey = null }) {
   const { rows } = await query(
-    `INSERT INTO customer_files (customer_id, label, storage_key, original_name, mime, size_bytes, uploaded_via)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [toId(customerId), label, storageKey, originalName ? String(originalName).slice(0, 255) : null, mime, sizeBytes, uploadedVia]
+    `INSERT INTO customer_files (customer_id, label, storage_key, original_name, mime, size_bytes, uploaded_via, page_keys, pdf_storage_key)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8::jsonb,$9) RETURNING *`,
+    [toId(customerId), label, storageKey, originalName ? String(originalName).slice(0, 255) : null, mime, sizeBytes, uploadedVia,
+      JSON.stringify(pageKeys), pdfStorageKey]
   );
   return rows[0];
+}
+
+/** Remember the standard PDF made for a file (made at upload, or later for older files). */
+export async function setFilePdf(fileId, pdfStorageKey) {
+  await query('UPDATE customer_files SET pdf_storage_key = $1 WHERE id = $2', [pdfStorageKey, toId(fileId)]);
 }
 
 export async function getFiles(customerId) {

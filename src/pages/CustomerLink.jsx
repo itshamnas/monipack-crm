@@ -379,7 +379,7 @@ function CustomerForm({ customer, fields, salesmanType, api, onClose, onSaved })
     for (let i = 0; i < files.length; i++) {
       setProgress(`Uploading document ${i + 1} of ${files.length}…`);
       const p = files[i];
-      const up = await api(`/customers/${id}/files`, { method: 'POST', body: JSON.stringify({ base64: p.base64, label: p.label, name: p.name }) });
+      const up = await api(`/customers/${id}/files`, { method: 'POST', body: JSON.stringify({ base64: p.base64, label: p.label, name: p.name, pages: p.pages || [] }) });
       if (!up.ok) failed++;
     }
     files.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl));

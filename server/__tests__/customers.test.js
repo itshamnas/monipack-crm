@@ -298,6 +298,9 @@ describe('Customer data collection (salesman links)', () => {
         expect(one.status).toBe(200);
         expect(one.headers['content-type']).toContain('application/pdf');
         expect(one.body.subarray(0, 5).toString()).toBe('%PDF-');
+        // Uploaded photos are turned into a standard PDF automatically: company header + the number to check against
+        expect(one.body.toString('latin1')).toContain('CR No. on file: 1234567');
+        expect(one.body.toString('latin1')).toContain('CR PAPER');
         const all = await request(app).get(`/api/customers/${noor.id}/documents.pdf`).set(auth(t.super)).buffer(true).parse(binary);
         expect(all.status).toBe(200);
         // Files are never public
