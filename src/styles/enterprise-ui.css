@@ -84,3 +84,38 @@ main > div:first-child, .mp-enter { animation: mp-rise 0.28s cubic-bezier(0.2, 0
 @media print {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ==========================================================================
+   Phones, tablets and PCs
+   ========================================================================== */
+
+/* Phones: 16px text in fields stops iPhone/Android zooming in when you tap a field */
+@media (max-width: 639px) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]), select, textarea { font-size: 16px !important; }
+}
+
+/* Touch screens: fields and dropdowns at least 40px tall, easy to hit with a finger */
+@media (pointer: coarse) {
+  input:is([type="text"], [type="search"], [type="email"], [type="tel"], [type="number"], [type="password"], [type="date"], [type="url"], :not([type])), select { min-height: 40px; }
+  input[type="checkbox"], input[type="radio"] { width: 20px; height: 20px; }
+  /* no sticky hover colours after a tap */
+  * { -webkit-tap-highlight-color: transparent; }
+}
+
+/* Wide tables scroll smoothly sideways inside their card instead of squashing */
+main :is(.overflow-x-auto, .overflow-auto) { -webkit-overflow-scrolling: touch; overscroll-behavior-x: contain; scrollbar-width: thin; }
+
+/* Scrolling never bounces the whole app on phones */
+html, body { overscroll-behavior-y: none; }
+
+/* Keep a finger-sized gap between the iPhone home bar and floating buttons */
+.mp-safe-bottom { bottom: calc(1rem + env(safe-area-inset-bottom)) !important; }
+
+/* Content clears the bottom menu (phones and tablets in portrait) */
+.mp-main-pad { padding-bottom: calc(5.5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 1024px) { .mp-main-pad { padding-bottom: 0; } }
+
+/* Notices: just above the bottom menu on phones/tablets, bottom-right on PCs */
+.mp-toast { left: 1rem; right: 1rem; bottom: calc(5rem + env(safe-area-inset-bottom)); }
+@media (min-width: 640px) { .mp-toast { left: auto; right: 1.25rem; max-width: 26rem; } }
+@media (min-width: 1024px) { .mp-toast { bottom: 1.25rem; } }

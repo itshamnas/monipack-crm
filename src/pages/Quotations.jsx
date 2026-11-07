@@ -1318,7 +1318,7 @@ export default function Quotations({
                   value={quoteSearchQuery}
                   onChange={(e) => setQuoteSearchQuery(e.target.value)}
                   placeholder="Search customer, ref #, Wilayat..."
-                  className="w-full pl-8 pr-7 py-1.5 text-xs bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-red-500 font-medium"
+                  className="w-full pl-8 pr-7 py-2.5 sm:py-2 text-xs bg-white border border-slate-200 rounded-full focus:outline-none focus:ring-1 focus:ring-red-500 font-medium"
                 />
                 {quoteSearchQuery && (
                   <button
@@ -1356,7 +1356,7 @@ export default function Quotations({
           </div>
 
           {/* Mobile Quotation Cards Feed (< md only) */}
-          <div className="md:hidden divide-y divide-slate-100">
+          <div className="lg:hidden divide-y divide-slate-100">
             {filteredQuotations.length > 0 ? (
               filteredQuotations.map((q) => (
                 <div key={q.id} className="p-4 space-y-2.5 hover:bg-slate-50 transition-colors">
@@ -1388,7 +1388,7 @@ export default function Quotations({
                     <button
                       type="button"
                       onClick={() => setSelectedQuotationForPrint(q)}
-                      className="flex-1 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95 cursor-pointer"
+                      className="flex-1 min-h-[44px] bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-full flex items-center justify-center gap-1.5 shadow-xs transition active:scale-95 cursor-pointer"
                     >
                       <Printer className="w-3.5 h-3.5 text-red-400" />
                       <span>Print MNI Spec</span>
@@ -1396,7 +1396,7 @@ export default function Quotations({
                     <button
                       type="button"
                       onClick={() => setSelectedQuotationForPrint(q)}
-                      className="p-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-xl border border-emerald-200 transition active:scale-95 cursor-pointer"
+                      className="w-11 h-11 flex items-center justify-center bg-emerald-50 hover:bg-emerald-100 text-emerald-700 rounded-full border border-emerald-200 transition active:scale-95 cursor-pointer"
                       title="Share Quotation via WhatsApp"
                     >
                       <Share2 className="w-4 h-4" />
@@ -1405,7 +1405,7 @@ export default function Quotations({
                       <button
                         type="button"
                         onClick={() => handleDeleteQuotationClick(q)}
-                        className="p-2 bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-xl border border-rose-200 transition active:scale-95 cursor-pointer"
+                        className="w-11 h-11 flex items-center justify-center bg-rose-50 hover:bg-rose-100 text-rose-700 rounded-full border border-rose-200 transition active:scale-95 cursor-pointer"
                         title="Delete Quotation"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1422,7 +1422,7 @@ export default function Quotations({
           </div>
 
           {/* Desktop Table (hidden on mobile, visible md:) */}
-          <div className="hidden md:block overflow-x-auto">
+          <div className="hidden lg:block overflow-x-auto">
             <table className="w-full text-left text-xs">
               <thead className="bg-slate-50 text-slate-500 uppercase text-[10px] tracking-wider border-b border-slate-200">
                 <tr>

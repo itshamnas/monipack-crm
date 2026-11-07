@@ -33,14 +33,14 @@ export default function MobileBottomNav({
     <nav
       id="monipack-mobile-bottom-nav"
       aria-label="Mobile Navigation"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-surface-silver shadow-lg select-none"
+      className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-surface-silver shadow-lg select-none"
       style={{
-        backgroundColor: 'rgba(255, 255, 255, 0.95)',
+        backgroundColor: 'color-mix(in srgb, var(--color-component-bg, #FFFFFF) 95%, transparent)',
         borderColor: 'var(--color-surface-silver, #E5E7EB)',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)',
       }}
     >
-      <div className="flex items-center justify-around h-16 px-1">
+      <div className="flex items-center justify-around h-16 px-1 max-w-2xl mx-auto">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = activeSection === item.section;

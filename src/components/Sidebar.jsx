@@ -2,6 +2,7 @@ import React from 'react';
 import { roleLabel } from '../auth/roles.js';
 import BrandWordmark from './BrandWordmark';
 import InstallPromptButton from './pwa/InstallPromptButton.jsx';
+import HeaderToggles from './ui/HeaderToggles.jsx';
 import { navFor } from './layout/navigation.js';
 import { 
   LayoutDashboard, 
@@ -149,7 +150,7 @@ export default function Sidebar({
             <button
               type="button"
               onClick={onCloseMobileDrawer}
-              className="p-2 md:hidden text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition active:scale-95 cursor-pointer"
+              className="p-2.5 lg:hidden text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition active:scale-95 cursor-pointer"
               title="Close Navigation Drawer"
               aria-label="Close Navigation Drawer"
             >
@@ -262,6 +263,11 @@ export default function Sidebar({
         className="p-3 border-t border-surface-silver bg-slate-50/80 shrink-0"
         style={{ borderColor: 'var(--color-surface-silver, #E5E7EB)' }}
       >
+        {/* Sound + theme switches (phones and tablets; on PCs they sit in the header) */}
+        <div className="sm:hidden flex items-center gap-2 mb-2.5">
+          <HeaderToggles labels />
+        </div>
+
         {/* PWA Install Action */}
         <InstallPromptButton variant="sidebar" className="mb-2.5" />
 
@@ -290,7 +296,7 @@ export default function Sidebar({
                   if (onCloseMobileDrawer) onCloseMobileDrawer();
                   onLogout();
                 }}
-                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl border border-transparent hover:border-red-200 transition active:scale-95 cursor-pointer shrink-0"
+                className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl border border-transparent hover:border-red-200 transition active:scale-95 cursor-pointer shrink-0"
                 title="Sign Out of monipack CRM"
                 aria-label="Sign Out"
               >
