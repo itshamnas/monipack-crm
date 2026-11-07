@@ -132,11 +132,13 @@ Super Admin opens **Customer Data** in the menu.
 
 1. **Salesman links**: switch on a link for each salesman, then copy it or send it by WhatsApp. Each salesman is either **Branch** (may tick "No CR" with a reason) or **Route / B2B** (CR always required). **Reset** makes the old link stop working at once. An optional 4–6 digit **PIN** adds protection.
 2. **Import**: upload a CSV with the columns `Customer Name` and `Salesman` (plus optional Mobile, CR Number, VAT Number, Route, Segment, Address…). Google Sheets: File → Download → CSV. Excel: Save As → CSV UTF-8. Customers that are already in the CRM are skipped.
-3. The salesman opens his link (`/c/<name>-<token>`). He sees **only his customers** and a counter of how many remain. He fills in mobile + CR (required) and the optional details, takes photos of the CR, the VAT certificate and the shop front, and can add customers who are missing from his list. Those new customers wait for approval.
+3. The salesman opens his link (`/c/<name>-<token>`). He sees **only his customers**, each with a **% complete**. To save a customer he must fill in **mobile, CR and route**. The other fields are optional: building/shop name, segment, type, categories, governorate → city (Oman list), area/address, postal code, Google Maps location, VAT registered → VAT number, CR paper and VAT certificate. He can come back later to fill what is still empty. Saved values are locked for him, and only the super admin can change them. He can also add customers who are missing from his list. Those new customers wait for approval.
 4. **Progress** shows each salesman's numbers and which details are missing. **Customers** lets you filter, edit (Super Admin only), approve, transfer, archive, download each photo as a PDF or all photos as one PDF, and print the profile.
 
 Notes:
-- After a customer is submitted, the salesman cannot change it. Only the Super Admin can.
+- After a customer is saved, the salesman can only fill **empty** fields. Saved values can only be changed by the Super Admin. **Lock** (in the customer's details) stops the salesman adding anything more.
+- Fields marked **Only super admin** (e.g. Customer status) are hidden from salesmen.
+- VAT number and VAT certificate are only asked for (and only counted as missing) when "VAT registered" is Yes.
 - If a mobile, CR or VAT number already belongs to another customer, the customer goes to **Pending approval** and shows a note about the possible duplicate.
 - Uploaded files are saved in a private folder (`UPLOAD_DIR`, default `./uploads`). The web server never shares this folder directly. Back it up together with the database.
 - Fields: add new fields, choose which ones are required for each salesman type, hide fields, and edit the dropdown options. Mobile and CR are always required.

@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Users, Link2, Copy, RefreshCw, MessageCircle, Power, KeyRound, Upload, Download, Search, CheckCircle2,
-  AlertTriangle, FileText, Printer, ArrowRightLeft, Plus, X, Eye, EyeOff, Archive, Loader2,
+  AlertTriangle, FileText, Printer, ArrowRightLeft, Plus, X, Eye, EyeOff, Archive, Loader2, Lock, Unlock,
 } from 'lucide-react';
-import CustomerFieldInput from '../components/customers/CustomerFieldInput.jsx';
+import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
 import { FILE_LABEL_NAMES, prepareUpload } from '../utils/fileUpload.js';
 
 const STATUS = {
@@ -23,6 +23,24 @@ const btnLight = `${btn} bg-white text-slate-800 border border-slate-300 hover:b
 const slug = (s) => String(s || 'salesman').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 30) || 'salesman';
 const linkUrl = (l) => (l.linkToken ? `${window.location.origin}/c/${slug(l.name)}-${l.linkToken}` : '');
 const fmt = (d) => (d ? new Date(d).toLocaleString() : '—');
+const TYPE_NAMES = {
+  text: 'Text', number: 'Number', phone: 'Phone', email: 'Email', dropdown: 'Dropdown (one choice)', multiselect: 'Multiple choice',
+  yesno: 'Yes / No', date: 'Date', textarea: 'Long text', location: 'Map location', governorate: 'Governorate (Oman)',
+  city: 'City (wilayat)', document: 'Document upload', photo: 'Photos',
+};
+
+function PercentBar({ value, width = 'w-24' }) {
+  const v = Math.max(0, Math.min(100, value || 0));
+  const color = v === 100 ? 'bg-emerald-500' : v >= 50 ? 'bg-amber-500' : 'bg-[#CC1A22]';
+  return (
+    <span className="inline-flex items-center gap-2">
+      <span className={`${width} h-1.5 rounded-full bg-slate-100 overflow-hidden`} aria-hidden="true">
+        <span className={`block h-1.5 rounded-full ${color}`} style={{ width: `${v}%` }} />
+      </span>
+      <span className="text-xs font-bold tabular-nums">{v}%</span>
+    </span>
+  );
+}
 
 function StatusBadge({ status }) {
   const s = STATUS[status] || STATUS.not_started;
@@ -148,8 +166,8 @@ function Overview({ summary, onOpenList }) {
           </button>
         ))}
         <div className="rounded-3xl p-4 bg-slate-900 text-white">
-          <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">Done</span>
-          <span className="block mt-1 text-2xl font-extrabold tabular-nums">{t.percentDone ?? 0}%</span>
+          <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-300">Data complete</span>
+          <span className="block mt-1 text-2xl font-extrabold tabular-nums">{t.percentComplete ?? 0}%</span>
         </div>
       </div>
 
@@ -161,31 +179,26 @@ function Overview({ summary, onOpenList }) {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
               <tr>
-                {['Salesman', 'Type', 'Assigned', 'Remaining', 'Submitted', 'Complete', 'Pending', 'Last activity', ''].map((h) => (
+                {['Salesman', 'Type', 'Assigned', 'Not started', 'Submitted', 'Complete', 'Pending', 'Data complete', 'Last activity', ''].map((h) => (
                   <th key={h} className="text-left font-bold px-4 py-2.5 whitespace-nowrap">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {summary.salesmen.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-6 text-center text-slate-500">No customers yet. Import your list in the Import tab.</td></tr>
+                <tr><td colSpan={10} className="px-4 py-6 text-center text-slate-500">No customers yet. Import your list in the Import tab.</td></tr>
               )}
               {summary.salesmen.map((s) => {
-                const pct = s.assigned ? Math.round(((s.assigned - s.remaining) / s.assigned) * 100) : 0;
                 return (
                   <tr key={s.salesmanId}>
-                    <td className="px-4 py-3 font-semibold">
-                      {s.name}
-                      <div className="mt-1 h-1.5 w-28 rounded-full bg-slate-100" aria-hidden="true">
-                        <div className="h-1.5 rounded-full bg-[#CC1A22]" style={{ width: `${pct}%` }} />
-                      </div>
-                    </td>
+                    <td className="px-4 py-3 font-semibold">{s.name}</td>
                     <td className="px-4 py-3 text-slate-600">{TYPE_LABEL[s.type] || s.type}</td>
                     <td className="px-4 py-3 tabular-nums">{s.assigned}</td>
                     <td className="px-4 py-3 tabular-nums font-bold">{s.remaining}</td>
                     <td className="px-4 py-3 tabular-nums">{s.submitted}</td>
                     <td className="px-4 py-3 tabular-nums">{s.complete}</td>
                     <td className="px-4 py-3 tabular-nums">{s.pending}</td>
+                    <td className="px-4 py-3 whitespace-nowrap"><PercentBar value={s.percent} /></td>
                     <td className="px-4 py-3 text-xs text-slate-500 whitespace-nowrap">{fmt(s.lastActivity)}</td>
                     <td className="px-4 py-3">
                       <button type="button" className={btnLight} onClick={() => onOpenList({ salesmanId: s.salesmanId })}>View</button>
@@ -304,14 +317,14 @@ function CustomerList({ authFetch, showToast, canManage, filter, setFilter, sale
                     onChange={() => setSelected(allChecked ? [] : rows.map((r) => r.id))} />
                 </th>
               )}
-              {['Customer', 'Salesman', 'Status', 'Mobile', 'CR', 'Missing', 'Photos'].map((h) => (
+              {['Customer', 'Salesman', 'Status', 'Complete', 'Mobile', 'CR', 'Still missing', 'Files'].map((h) => (
                 <th key={h} className="text-left font-bold px-3 py-2.5 whitespace-nowrap">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {loading && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500"><Loader2 className="w-5 h-5 animate-spin inline" /> Loading…</td></tr>}
-            {!loading && rows.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-slate-500">No customers match these filters.</td></tr>}
+            {loading && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500"><Loader2 className="w-5 h-5 animate-spin inline" /> Loading…</td></tr>}
+            {!loading && rows.length === 0 && <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-500">No customers match these filters.</td></tr>}
             {!loading && rows.map((c) => (
               <tr key={c.id} className="hover:bg-slate-50">
                 {canManage && (
@@ -327,7 +340,8 @@ function CustomerList({ authFetch, showToast, canManage, filter, setFilter, sale
                   )}
                 </td>
                 <td className="px-3 py-2.5 text-slate-600 whitespace-nowrap">{c.salesmanName || 'Unassigned'}</td>
-                <td className="px-3 py-2.5"><StatusBadge status={c.status} /></td>
+                <td className="px-3 py-2.5 whitespace-nowrap"><StatusBadge status={c.status} />{c.locked && <Lock className="w-3.5 h-3.5 inline ml-1 text-slate-500" aria-label="Locked" />}</td>
+                <td className="px-3 py-2.5 whitespace-nowrap"><PercentBar value={c.percent} width="w-16" /></td>
                 <td className="px-3 py-2.5 tabular-nums whitespace-nowrap">{c.mobile || '—'}</td>
                 <td className="px-3 py-2.5 tabular-nums">{c.noCr ? <span className="text-amber-700 font-semibold">No CR</span> : c.crNumber || '—'}</td>
                 <td className="px-3 py-2.5">
@@ -412,8 +426,10 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
     setName(data.name);
     setNoCr(data.noCr);
     setNoCrReason(data.noCrReason);
-    setValues({ mobile: data.mobile, cr_number: data.crNumber, vat_number: data.vatNumber, ...data.data });
-  }, [authFetch, id]);
+    const v = { mobile: data.mobile, cr_number: data.crNumber, vat_number: data.vatNumber, ...data.data };
+    fields.filter((f) => f.type === 'multiselect').forEach((f) => { v[f.key] = asList(v[f.key]); });
+    setValues(v);
+  }, [authFetch, id, fields]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -435,13 +451,22 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
   if (!c) return <Modal title="Customer" onClose={onClose}><p className="text-sm text-slate-500"><Loader2 className="w-4 h-4 animate-spin inline" /> Loading…</p></Modal>;
 
   const type = c.salesmanType || 'branch';
-  const editFields = fields.filter((f) => f.type !== 'photo' && !f.isHidden);
+  const editFields = fields.filter((f) => f.type !== 'photo' && f.type !== 'document' && !f.isHidden && fieldApplies(f, values));
+  const docFields = fields.filter((f) => f.type === 'document' && !f.isHidden && fieldApplies(f, values));
+  const setValue = (key, v) => setValues((prev) => {
+    const next = { ...prev, [key]: v };
+    if (key === 'governorate' && prev.governorate !== v) next.city = '';
+    return next;
+  });
 
   const save = async () => {
     setBusy(true);
     setErrors({});
     const data = {};
-    editFields.forEach((f) => { if (!['mobile', 'cr_number', 'vat_number'].includes(f.key) && values[f.key]) data[f.key] = values[f.key]; });
+    editFields.forEach((f) => {
+      const v = values[f.key];
+      if (!['mobile', 'cr_number', 'vat_number'].includes(f.key) && v !== undefined && v !== '' && !(Array.isArray(v) && !v.length)) data[f.key] = v;
+    });
     const res = await authFetch(`/api/customers/${c.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, mobile: values.mobile, crNumber: noCr ? '' : values.cr_number, vatNumber: values.vat_number, noCr, noCrReason, data }),
@@ -475,6 +500,7 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
     const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
     const rowsHtml = editFields.map((f) => {
       let v = f.key === 'mobile' ? src.mobile : f.key === 'cr_number' ? (src.noCr ? `No CR – ${src.noCrReason}` : src.crNumber) : f.key === 'vat_number' ? src.vatNumber : src.data[f.key];
+      if (Array.isArray(v)) v = v.join(', ');
       return `<tr><th>${esc(f.label)}</th><td>${esc(v) || '—'}</td></tr>`;
     }).join('');
     const imgs = c.files.filter((f) => thumbs[f.id]).map((f) => `<figure><img src="${thumbs[f.id]}"><figcaption>${esc(FILE_LABEL_NAMES[f.label])}</figcaption></figure>`).join('');
@@ -494,8 +520,16 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={c.status} />
+          <PercentBar value={c.percent} />
           <span className="text-xs text-slate-500">Salesman: <strong>{c.salesmanName || 'Unassigned'}</strong> ({TYPE_LABEL[type]}) · Source: {c.source} · Submitted: {fmt(c.submittedAt)}</span>
+          {canManage && c.status !== 'not_started' && (
+            <button type="button" className={`${btnLight} ml-auto`}
+              onClick={async () => { if (await action(`/api/customers/${c.id}/lock`, 'POST', { locked: !c.locked }, c.locked ? 'Unlocked: the salesman can add details again.' : 'Locked: the salesman can no longer add details.')) load(); }}>
+              {c.locked ? <><Unlock className="w-4 h-4" /> Unlock for salesman</> : <><Lock className="w-4 h-4" /> Lock</>}
+            </button>
+          )}
         </div>
+        {c.locked && <p className="p-3 rounded-2xl bg-slate-100 text-slate-700 text-sm"><Lock className="w-4 h-4 inline mr-1" />Locked. The salesman can see this customer but can't add details or documents.</p>}
         {c.reviewNote && <p className="p-3 rounded-2xl bg-blue-50 text-blue-900 text-sm"><AlertTriangle className="w-4 h-4 inline mr-1" />{c.reviewNote}</p>}
 
         {canManage && c.status === 'pending_approval' && (
@@ -510,7 +544,7 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
             if (f.key === 'cr_number') {
               return (
                 <div key={f.key} className="space-y-2">
-                  {!noCr && <CustomerFieldInput field={f} value={values[f.key]} onChange={(v) => setValues({ ...values, [f.key]: v })} error={errors[f.key]} required />}
+                  {!noCr && <CustomerFieldInput field={f} value={values[f.key]} onChange={(v) => setValue(f.key, v)} error={errors[f.key]} required />}
                   {type === 'branch' && (
                     <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={noCr} onChange={(e) => setNoCr(e.target.checked)} disabled={!canManage} /> No CR</label>
                   )}
@@ -520,8 +554,11 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
               );
             }
             return (
-              <CustomerFieldInput key={f.key} field={f} value={values[f.key]} onChange={(v) => setValues({ ...values, [f.key]: v })}
-                error={errors[f.key]} required={type === 'branch' ? f.requiredBranch : f.requiredRouteB2b} />
+              <div key={f.key} className={f.adminOnly ? 'p-3 rounded-2xl bg-slate-50 border border-dashed border-slate-300' : ''}>
+                <CustomerFieldInput field={f} value={values[f.key]} values={values} onChange={(v) => setValue(f.key, v)}
+                  error={errors[f.key]} required={type === 'branch' ? f.requiredBranch : f.requiredRouteB2b} readOnly={!canManage} />
+                {f.adminOnly && <p className="mt-1 text-[11px] text-slate-500">Only you see this field. Salesmen don't.</p>}
+              </div>
             );
           })}
         </section>
@@ -545,6 +582,34 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
               )}
             </div>
           </div>
+          {docFields.length > 0 && (
+            <div className="grid sm:grid-cols-2 gap-2">
+              {docFields.map((f) => {
+                const have = c.files.filter((x) => x.label === f.docLabel);
+                return (
+                  <div key={f.key} className={`flex flex-wrap items-center gap-2 p-3 rounded-2xl border ${have.length ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`}>
+                    <span className="flex-1 text-sm font-semibold">
+                      {have.length ? <CheckCircle2 className="w-4 h-4 inline mr-1 text-emerald-600" /> : <AlertTriangle className="w-4 h-4 inline mr-1 text-rose-600" />}
+                      {f.label}: {have.length ? `${have.length} file${have.length > 1 ? 's' : ''}` : 'missing'}
+                    </span>
+                    {have.length > 0 && (
+                      <button type="button" className={btnDark}
+                        onClick={() => downloadBlob(authFetch, `/api/customers/${c.id}/files/${have[0].id}/pdf`, `${slug(c.name)}_${f.key}.pdf`).catch((e) => showToast(e.message, 'error'))}>
+                        <Download className="w-3.5 h-3.5" /> PDF
+                      </button>
+                    )}
+                    {canManage && (
+                      <label className={`${btnLight} cursor-pointer`}>
+                        <Upload className="w-3.5 h-3.5" /> Upload
+                        <input type="file" accept="image/*,application/pdf" className="sr-only"
+                          onChange={(e) => { if (e.target.files[0]) uploadAdminFile(e.target.files[0], f.docLabel); e.target.value = ''; }} />
+                      </label>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
           {c.files.length === 0 ? <p className="text-sm text-slate-500">No documents yet.</p> : (
             <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
               {c.files.map((f) => (
@@ -826,7 +891,7 @@ function FieldsTab({ authFetch, showToast, fields, onChanged }) {
 
   const add = async (e) => {
     e.preventDefault();
-    const options = newField.type === 'dropdown' ? newField.options.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    const options = ['dropdown', 'multiselect'].includes(newField.type) ? newField.options.split(',').map((s) => s.trim()).filter(Boolean) : [];
     const res = await authFetch('/api/customer-fields', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...newField, options }) });
     const data = await res.json().catch(() => ({}));
     if (res.ok) { showToast(`Field "${data.label}" added.`); setNewField({ label: '', type: 'text', options: '' }); onChanged(); }
@@ -838,7 +903,7 @@ function FieldsTab({ authFetch, showToast, fields, onChanged }) {
       <div className={`${card} overflow-x-auto`}>
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
-            <tr>{['Field', 'Type', 'Required: Branch', 'Required: Route/B2B', 'Shown', 'Dropdown options'].map((h) => <th key={h} className="text-left font-bold px-4 py-2.5 whitespace-nowrap">{h}</th>)}</tr>
+            <tr>{['Field', 'Type', 'Required: Branch', 'Required: Route/B2B', 'Shown', 'Only super admin', 'Choices'].map((h) => <th key={h} className="text-left font-bold px-4 py-2.5 whitespace-nowrap">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {fields.map((f) => {
@@ -846,7 +911,7 @@ function FieldsTab({ authFetch, showToast, fields, onChanged }) {
               return (
                 <tr key={f.id} className={f.isHidden ? 'opacity-60' : ''}>
                   <td className="px-4 py-3 font-semibold">{f.label}{locked && <span className="ml-1 text-[10px] text-slate-500">(always required)</span>}</td>
-                  <td className="px-4 py-3 text-slate-600">{f.type}</td>
+                  <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{TYPE_NAMES[f.type] || f.type}{f.showIf && <span className="block text-[10px] text-slate-500">only when {f.showIf.key.replace(/_/g, ' ')} = {f.showIf.equals}</span>}</td>
                   <td className="px-4 py-3"><input type="checkbox" aria-label={`${f.label} required for branch`} checked={f.requiredBranch} disabled={locked} onChange={() => patch(f, { requiredBranch: !f.requiredBranch }, 'Saved.')} /></td>
                   <td className="px-4 py-3"><input type="checkbox" aria-label={`${f.label} required for route/B2B`} checked={f.requiredRouteB2b} disabled={locked} onChange={() => patch(f, { requiredRouteB2b: !f.requiredRouteB2b }, 'Saved.')} /></td>
                   <td className="px-4 py-3">
@@ -855,7 +920,11 @@ function FieldsTab({ authFetch, showToast, fields, onChanged }) {
                     </button>
                   </td>
                   <td className="px-4 py-3">
-                    {f.type === 'dropdown' ? (
+                    <input type="checkbox" aria-label={`${f.label} only for super admin`} checked={Boolean(f.adminOnly)} disabled={locked}
+                      onChange={() => patch(f, { adminOnly: !f.adminOnly }, f.adminOnly ? `Salesmen now see ${f.label}.` : `${f.label} is now only for you.`)} />
+                  </td>
+                  <td className="px-4 py-3">
+                    {f.type === 'dropdown' || f.type === 'multiselect' ? (
                       <div className="flex gap-1.5 items-center min-w-[260px]">
                         <label htmlFor={`opt-${f.id}`} className="sr-only">Options for {f.label}</label>
                         <input id={`opt-${f.id}`} type="text" className="flex-1 h-9 px-3 rounded-full border border-slate-300 text-xs"
@@ -876,10 +945,10 @@ function FieldsTab({ authFetch, showToast, fields, onChanged }) {
         <div className="space-y-1">
           <label htmlFor="nf-type" className="block text-sm font-semibold">Type</label>
           <select id="nf-type" value={newField.type} onChange={(e) => setNewField({ ...newField, type: e.target.value })} className="h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm">
-            {['text', 'number', 'phone', 'email', 'dropdown', 'date', 'textarea'].map((t) => <option key={t} value={t}>{t}</option>)}
+            {['text', 'number', 'phone', 'email', 'dropdown', 'multiselect', 'yesno', 'date', 'textarea'].map((t) => <option key={t} value={t}>{TYPE_NAMES[t]}</option>)}
           </select>
         </div>
-        {newField.type === 'dropdown' && (
+        {(newField.type === 'dropdown' || newField.type === 'multiselect') && (
           <TextInput id="nf-options" label="Options (comma separated)" value={newField.options} onChange={(v) => setNewField({ ...newField, options: v })} />
         )}
         <button type="submit" className={`${btnRed} min-h-[44px]`}><Plus className="w-4 h-4" /> Add field</button>

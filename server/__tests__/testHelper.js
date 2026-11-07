@@ -84,10 +84,15 @@ export async function resetTestDb() {
 
   await query('ALTER SEQUENCE quotation_number_seq RESTART WITH 1000');
 
-  // Customer form fields: drop test-added fields and restore the default rules
-  await query('DELETE FROM customer_fields WHERE is_core = false AND key NOT IN (\'whatsapp\',\'contact_number\',\'email\',\'route\',\'segment\',\'address\',\'postal_code\',\'location\',\'photos\')');
-  await query(`UPDATE customer_fields SET is_hidden = false,
-    required_branch = key IN ('mobile','cr_number'), required_route_b2b = key IN ('mobile','cr_number')`);
+  // Customer form fields: drop test-added fields and restore the default rules (as set by migrations 014 + 015)
+  const seeded = `'mobile','cr_number','vat_number','whatsapp','contact_number','email','route','segment','address','postal_code','location','photos',
+    'shop_name','customer_type','categories','governorate','city','vat_registered','cr_paper','vat_certificate','customer_status'`;
+  await query(`DELETE FROM customer_fields WHERE key NOT IN (${seeded})`);
+  await query(`UPDATE customer_fields SET
+    is_hidden = key IN ('whatsapp','contact_number','email','photos'),
+    admin_only = key = 'customer_status',
+    required_branch = key IN ('mobile','cr_number','route'), required_route_b2b = key IN ('mobile','cr_number','route')`);
+  await query(`UPDATE customer_fields SET options = '[]'::jsonb WHERE key = 'route'`);
 
   // Insert default pipeline stages and categories needed by the app
   const defaultStages = [

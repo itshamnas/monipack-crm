@@ -171,6 +171,7 @@ describe('Customer data collection (salesman links)', () => {
       expect(res.status).toBe(400);
       expect(res.body.fields).toHaveProperty('mobile');
       expect(res.body.fields).toHaveProperty('cr_number');
+      expect(res.body.fields).toHaveProperty('route');
     });
 
     it('"No CR" is refused for Route / B2B salesmen', async () => {
@@ -182,31 +183,60 @@ describe('Customer data collection (salesman links)', () => {
 
     it('branch salesman submits; mobile is normalised; counter goes down', async () => {
       const res = await request(app).post(`/api/link/${branchLink}/customers/${noor.id}/submit`).set(linkHdr(branchSession))
-        .send({ mobile: '9123 4567', crNumber: '1234567', data: { segment: 'Catering' } });
+        .send({ mobile: '9123 4567', crNumber: '1234567', data: { segment: 'Catering', route: 'Nizwa - Bahla' } });
       expect(res.status).toBe(200);
       expect(res.body.customer.status).toBe('submitted');
       const list = await request(app).get(`/api/link/${branchLink}/customers`).set(linkHdr(branchSession));
       expect(list.body.remaining).toBe(1);
+      const mine = list.body.customers.find((c) => c.id === noor.id);
+      expect(mine.status).toBe('submitted');
+      expect(mine.percent).toBeGreaterThan(0);
+      expect(mine.percent).toBeLessThan(100);
       const full = await request(app).get(`/api/customers/${noor.id}`).set(auth(t.super));
       expect(full.body.mobile).toBe('+96891234567');
       expect(full.body.submissions).toHaveLength(1);
     });
 
-    it('a submitted customer cannot be changed through the link', async () => {
+    it('a submitted customer cannot be submitted again through the link', async () => {
       const res = await request(app).post(`/api/link/${branchLink}/customers/${noor.id}/submit`).set(linkHdr(branchSession))
-        .send({ mobile: '99999999', crNumber: '7654321' });
+        .send({ mobile: '99999999', crNumber: '7654321', data: { route: 'X' } });
       expect(res.status).toBe(409);
+    });
+
+    it('salesman can come back to fill empty fields, but saved ones stay as they are', async () => {
+      const res = await request(app).post(`/api/link/${branchLink}/customers/${noor.id}/complete`).set(linkHdr(branchSession))
+        .send({ mobile: '99999999', data: { route: 'Changed route', shop_name: 'Noor Building', governorate: 'Ad Dakhiliyah', city: 'Nizwa', vat_registered: 'No' } });
+      expect(res.status).toBe(200);
+      expect(res.body.customer.mobile).toBe('+96891234567');
+      expect(res.body.customer.data.route).toBe('Nizwa - Bahla');
+      expect(res.body.customer.data.shop_name).toBe('Noor Building');
+      // "VAT registered = No" means VAT number and VAT certificate are not counted as missing
+      expect(res.body.customer.missing).not.toContain('vat_number');
+      expect(res.body.customer.missing).not.toContain('vat_certificate');
+    });
+
+    it('city must belong to the governorate', async () => {
+      const res = await request(app).patch(`/api/customers/${noor.id}`).set(auth(t.super))
+        .send({ mobile: '91234567', crNumber: '1234567', data: { route: 'Nizwa - Bahla', governorate: 'Muscat', city: 'Nizwa' } });
+      expect(res.status).toBe(400);
+      expect(res.body.fields).toHaveProperty('city');
+    });
+
+    it('super-admin-only fields are not shown on the salesman link', async () => {
+      const fields = (await request(app).get(`/api/link/${branchLink}/fields`).set(linkHdr(branchSession))).body;
+      expect(fields.map((f) => f.key)).not.toContain('customer_status');
+      expect(fields.map((f) => f.key)).toContain('cr_paper');
     });
 
     it('branch salesman may tick No CR with a reason', async () => {
       const res = await request(app).post(`/api/link/${branchLink}/customers/${bakery.id}/submit`).set(linkHdr(branchSession))
-        .send({ mobile: '93334444', noCr: true, noCrReason: 'Small home bakery' });
+        .send({ mobile: '93334444', noCr: true, noCrReason: 'Small home bakery', data: { route: 'Nizwa - Bahla' } });
       expect(res.status).toBe(200);
     });
 
     it('a duplicate mobile goes to pending approval', async () => {
       const res = await request(app).post(`/api/link/${routeLink}/customers/${sohar.id}/submit`).set(linkHdr(routeSession))
-        .send({ mobile: '91234567', crNumber: '5550001' });
+        .send({ mobile: '91234567', crNumber: '5550001', data: { route: 'Sohar - Shinas' } });
       expect(res.status).toBe(200);
       expect(res.body.duplicate).toBe(true);
       expect(res.body.customer.status).toBe('pending_approval');
@@ -214,7 +244,7 @@ describe('Customer data collection (salesman links)', () => {
 
     it('salesman adds a new customer, waiting for approval', async () => {
       const res = await request(app).post(`/api/link/${branchLink}/customers`).set(linkHdr(branchSession))
-        .send({ name: 'Bahla Cafe', mobile: '95556666', crNumber: '8889990' });
+        .send({ name: 'Bahla Cafe', mobile: '95556666', crNumber: '8889990', data: { route: 'Nizwa - Bahla' } });
       expect(res.status).toBe(201);
       expect(res.body.customer.status).toBe('pending_approval');
     });
@@ -250,13 +280,15 @@ describe('Customer data collection (salesman links)', () => {
         expect(res.body.totals.pending_approval).toBe(2);
         const salim = res.body.salesmen.find((s) => s.name === 'Salim Al Hadhrami');
         expect(salim.remaining).toBe(0);
-        expect(res.body.missing.find((m) => m.key === 'email').count).toBeGreaterThan(0);
+        expect(res.body.missing.find((m) => m.key === 'customer_status').count).toBeGreaterThan(0);
+        expect(salim.percent).toBeGreaterThan(0);
       });
 
       it('list can filter by missing field', async () => {
-        const res = await request(app).get('/api/customers?missing=email').set(auth(t.super));
+        const res = await request(app).get('/api/customers?missing=location').set(auth(t.super));
         expect(res.body.length).toBeGreaterThan(0);
-        expect(res.body.every((c) => c.missing.includes('email'))).toBe(true);
+        expect(res.body.every((c) => c.missing.includes('location'))).toBe(true);
+        expect(typeof res.body[0].percent).toBe('number');
       });
 
       it('photo downloads as a PDF, single and merged', async () => {
@@ -277,12 +309,28 @@ describe('Customer data collection (salesman links)', () => {
         const bad = await request(app).patch(`/api/customers/${noor.id}`).set(auth(t.super)).send({ mobile: '123', crNumber: '1234567' });
         expect(bad.status).toBe(400);
         const ok = await request(app).patch(`/api/customers/${noor.id}`).set(auth(t.super))
-          .send({ name: 'Al Noor Catering LLC', mobile: '91234567', crNumber: '1234567', data: { email: 'info@alnoor.om' } });
+          .send({ name: 'Al Noor Catering LLC', mobile: '91234567', crNumber: '1234567', data: { route: 'Nizwa - Bahla', customer_status: 'Active' } });
         expect(ok.status).toBe(200);
         expect(ok.body.name).toBe('Al Noor Catering LLC');
         // The original submission snapshot is kept unchanged
         const full = await request(app).get(`/api/customers/${noor.id}`).set(auth(t.super));
-        expect(full.body.submissions[0].snapshot.data.email).toBeUndefined();
+        const first = full.body.submissions[full.body.submissions.length - 1];
+        expect(first.snapshot.data.customer_status).toBeUndefined();
+        expect(full.body.data.customer_status).toBe('Active');
+      });
+
+      it('lock stops the salesman adding details', async () => {
+        const lock = await request(app).post(`/api/customers/${noor.id}/lock`).set(auth(t.super)).send({ locked: true });
+        expect(lock.body.locked).toBe(true);
+        // The link was reset in an earlier test, so open a fresh session for the new link
+        branchSession = (await request(app).post(`/api/link/${branchLink}/session`).send({})).body.session;
+        const res = await request(app).post(`/api/link/${branchLink}/customers/${noor.id}/complete`).set(linkHdr(branchSession))
+          .send({ data: { location: '23.5, 58.4' } });
+        expect(res.status).toBe(409);
+        const up = await request(app).post(`/api/link/${branchLink}/customers/${noor.id}/files`).set(linkHdr(branchSession))
+          .send({ base64: JPEG_B64, label: 'vat_certificate' });
+        expect(up.status).toBe(409);
+        await request(app).post(`/api/customers/${noor.id}/lock`).set(auth(t.super)).send({ locked: false });
       });
 
       it('approve moves a pending customer on', async () => {
@@ -305,7 +353,7 @@ describe('Customer data collection (salesman links)', () => {
 
       it('CSV export guards against spreadsheet formulas', async () => {
         await request(app).patch(`/api/customers/${noor.id}`).set(auth(t.super))
-          .send({ mobile: '91234567', crNumber: '1234567', data: { address: '=HYPERLINK("x")' } });
+          .send({ mobile: '91234567', crNumber: '1234567', data: { route: 'Nizwa - Bahla', address: '=HYPERLINK("x")' } });
         const res = await request(app).get('/api/customers/export').set(auth(t.super));
         expect(res.status).toBe(200);
         expect(res.text).toContain("\"'=HYPERLINK");

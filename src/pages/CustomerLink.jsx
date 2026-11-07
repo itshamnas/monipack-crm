@@ -1,12 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, Plus, ChevronRight, X, Camera, FileText, CheckCircle2, AlertCircle, Loader2, Lock, Trash2, RefreshCw, Inbox } from 'lucide-react';
 import { getApiUrl } from '../api/config.js';
-import CustomerFieldInput from '../components/customers/CustomerFieldInput.jsx';
-import { prepareUpload, FILE_LABEL_NAMES } from '../utils/fileUpload.js';
+import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
+import { prepareUpload } from '../utils/fileUpload.js';
 
 /**
  * Public page a salesman opens from his personal link: /c/<name>-<token>
- * Shows only his customers that still need details; submitted ones disappear and the counter goes down.
+ * Shows only his customers with how complete each one is. Saved values are locked for him;
+ * he can come back to fill what is still empty and upload the CR paper / VAT certificate.
  */
 
 const tokenFromPath = () => {
@@ -28,7 +29,7 @@ export default function CustomerLink() {
   const [pin, setPin] = useState('');
   const [pinError, setPinError] = useState('');
   const [fields, setFields] = useState([]);
-  const [list, setList] = useState({ total: 0, remaining: 0, customers: [] });
+  const [list, setList] = useState({ total: 0, remaining: 0, notStarted: 0, incomplete: 0, completed: 0, percent: 0, customers: [] });
   const [listState, setListState] = useState('loading'); // loading | ok | error
   const [search, setSearch] = useState('');
   const [editing, setEditing] = useState(null); // customer object, or { isNew: true }
@@ -158,8 +159,8 @@ export default function CustomerLink() {
     );
   }
 
-  const done = list.total - list.remaining;
-  const pct = list.total ? Math.round((done / list.total) * 100) : 0;
+  const pct = list.percent || 0;
+  const allDone = list.total > 0 && list.notStarted === 0 && list.incomplete === 0;
 
   return (
     <div className="min-h-screen bg-[#F5F6F8] font-sans text-slate-900 pb-28">
@@ -177,10 +178,18 @@ export default function CustomerLink() {
             </button>
           </div>
           <p className="mt-1 text-3xl font-extrabold tabular-nums">
-            {list.remaining} <span className="text-base font-semibold text-slate-300">remaining of {list.total}</span>
+            {pct}% <span className="text-base font-semibold text-slate-300">complete · {list.total} customers</span>
           </p>
-          <div className="mt-3 h-2 rounded-full bg-white/15 overflow-hidden" aria-hidden="true">
+          <div className="mt-3 h-2 rounded-full bg-white/15 overflow-hidden" role="progressbar" aria-valuenow={pct} aria-valuemin={0} aria-valuemax={100} aria-label="Overall progress">
             <div className="h-2 rounded-full bg-[#CC1A22] transition-all" style={{ width: `${pct}%` }} />
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-2 text-center">
+            {[['Not started', list.notStarted], ['To complete', list.incomplete], ['Done', list.completed]].map(([label, n]) => (
+              <div key={label} className="rounded-2xl bg-white/10 py-2">
+                <span className="block text-lg font-extrabold tabular-nums">{n}</span>
+                <span className="block text-[11px] font-semibold text-slate-300">{label}</span>
+              </div>
+            ))}
           </div>
         </div>
         <div className="relative">
@@ -208,29 +217,51 @@ export default function CustomerLink() {
             <p className="font-bold">No customers in your list yet</p>
             <p className="text-sm text-slate-500">Your office will add them. Tap refresh above, or add a new customer with the button below.</p>
           </div>
-        ) : list.remaining === 0 ? (
-          <div className="bg-white rounded-3xl border border-slate-200 p-6 text-center space-y-2">
-            <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
-            <p className="font-bold">All your customers are done. Thank you!</p>
-            <p className="text-sm text-slate-500">You can still add a new customer with the button below.</p>
-          </div>
         ) : filtered.length === 0 ? (
           <p className="text-center text-sm text-slate-500 py-8">No customer matches “{search}”.</p>
         ) : (
+          <>
+          {allDone && !search && (
+            <div className="bg-white rounded-3xl border border-emerald-200 p-5 text-center space-y-1">
+              <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto" />
+              <p className="font-bold">All your customers are 100% complete. Thank you!</p>
+            </div>
+          )}
           <ul className="space-y-2.5">
-            {filtered.map((c) => (
-              <li key={c.id}>
-                <button type="button" onClick={() => setEditing(c)}
-                  className="w-full min-h-[64px] text-left bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center gap-3 active:scale-[0.99] transition shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                  <span className="flex-1 min-w-0">
-                    <span className="block font-bold truncate">{c.name}</span>
-                    <span className="block text-xs text-slate-500 truncate">{c.mobile || 'No details yet'}</span>
-                  </span>
-                  <ChevronRight className="w-5 h-5 text-slate-400 shrink-0" aria-hidden="true" />
-                </button>
-              </li>
-            ))}
+            {filtered.map((c) => {
+              const started = c.status !== 'not_started';
+              const full = started && c.percent === 100;
+              return (
+                <li key={c.id}>
+                  <button type="button" onClick={() => setEditing(c)}
+                    className="w-full min-h-[64px] text-left bg-white rounded-2xl border border-slate-200 px-4 py-3 flex items-center gap-3 active:scale-[0.99] transition shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                    <span className="flex-1 min-w-0">
+                      <span className="block font-bold truncate">{c.name}</span>
+                      {!started ? (
+                        <span className="block text-xs font-semibold text-slate-500">Not started · tap to fill in</span>
+                      ) : (
+                        <span className="flex items-center gap-2 mt-1">
+                          <span className="flex-1 h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden="true">
+                            <span className={`block h-1.5 rounded-full ${full ? 'bg-emerald-500' : 'bg-amber-500'}`} style={{ width: `${c.percent}%` }} />
+                          </span>
+                          <span className={`text-xs font-bold tabular-nums ${full ? 'text-emerald-700' : 'text-amber-700'}`}>{c.percent}%</span>
+                        </span>
+                      )}
+                      {started && !full && (
+                        <span className="block text-[11px] text-slate-500 mt-0.5">
+                          {c.locked ? 'Locked by office' : `${c.missing.length} detail${c.missing.length === 1 ? '' : 's'} missing`}
+                        </span>
+                      )}
+                    </span>
+                    {full ? <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" aria-label="Complete" />
+                      : c.locked ? <Lock className="w-5 h-5 text-slate-400 shrink-0" aria-label="Locked" />
+                      : <ChevronRight className="w-5 h-5 text-slate-400 shrink-0" aria-hidden="true" />}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
+          </>
         )}
       </main>
 
@@ -259,96 +290,140 @@ export default function CustomerLink() {
   );
 }
 
+const COLUMN = { mobile: 'mobile', cr_number: 'crNumber', vat_number: 'vatNumber' };
+const blank = (v) => v === undefined || v === null || (Array.isArray(v) ? v.length === 0 : String(v).trim() === '');
+
+/**
+ * Three modes:
+ *  - new:      salesman adds a customer who is not in his list
+ *  - first:    customer not started yet; all fields editable, required ones must be filled
+ *  - complete: customer already saved; saved values are locked, empty ones can be filled, documents uploaded
+ *  (locked by the office, or 100% complete: view only)
+ */
 function CustomerForm({ customer, fields, salesmanType, api, onClose, onSaved }) {
   const isNew = Boolean(customer.isNew);
+  const mode = isNew ? 'new' : customer.status === 'not_started' ? 'first' : 'complete';
+  const viewOnly = mode === 'complete' && (customer.locked || customer.percent === 100);
+
+  const saved = useMemo(() => {
+    const out = {};
+    if (mode !== 'complete') return out;
+    Object.entries(COLUMN).forEach(([k, prop]) => { out[k] = customer[prop] || ''; });
+    Object.assign(out, customer.data || {});
+    return out;
+  }, [customer, mode]);
+  const isSaved = (key) => mode === 'complete' && (!blank(saved[key]) || (key === 'cr_number' && customer.noCr));
+
   const [name, setName] = useState(isNew ? '' : customer.name);
-  const [values, setValues] = useState(() => ({
-    mobile: customer.mobile || '',
-    cr_number: customer.crNumber || '',
-    vat_number: customer.vatNumber || '',
-    ...(customer.data || {}),
-  }));
-  const [noCr, setNoCr] = useState(false);
-  const [noCrReason, setNoCrReason] = useState('');
-  const [photos, setPhotos] = useState([]); // { label, base64, name, previewUrl, isPdf }
-  const [photoLabel, setPhotoLabel] = useState('cr_certificate');
+  const [values, setValues] = useState(() => {
+    const v = { mobile: customer.mobile || '', cr_number: customer.crNumber || '', vat_number: customer.vatNumber || '', ...(customer.data || {}) };
+    fields.filter((f) => f.type === 'multiselect').forEach((f) => { v[f.key] = asList(v[f.key]); });
+    return v;
+  });
+  const [noCr, setNoCr] = useState(Boolean(customer.noCr));
+  const [noCrReason, setNoCrReason] = useState(customer.noCrReason || '');
+  const [files, setFiles] = useState([]); // { label, base64, name, previewUrl, isPdf }
   const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
   const [progress, setProgress] = useState('');
 
-  const formFields = fields.filter((f) => f.type !== 'photo' && !f.isHidden);
-  const photoField = fields.find((f) => f.type === 'photo' && !f.isHidden);
-  const set = (key, v) => setValues((prev) => ({ ...prev, [key]: v }));
+  const visible = fields.filter((f) => !f.isHidden && fieldApplies(f, values));
+  const formFields = visible.filter((f) => f.type !== 'photo' && f.type !== 'document');
+  const docFields = visible.filter((f) => f.type === 'document');
+  const photoField = visible.find((f) => f.type === 'photo');
+  const uploaded = new Set(customer.fileLabels || []);
 
-  const addFiles = async (fileList) => {
+  const set = (key, v) => setValues((prev) => {
+    const next = { ...prev, [key]: v };
+    if (key === 'governorate' && prev.governorate !== v) next.city = '';
+    return next;
+  });
+
+  const addFiles = async (fileList, label) => {
     for (const file of Array.from(fileList || [])) {
       try {
         const prepared = await prepareUpload(file);
-        setPhotos((prev) => [...prev, { ...prepared, label: photoLabel }]);
+        setFiles((prev) => [...prev, { ...prepared, label }]);
       } catch (err) {
-        setErrors((prev) => ({ ...prev, photos: err.message }));
+        setErrors((prev) => ({ ...prev, [`file_${label}`]: err.message }));
       }
     }
   };
 
+  const uploadAll = async (id) => {
+    let failed = 0;
+    for (let i = 0; i < files.length; i++) {
+      setProgress(`Uploading document ${i + 1} of ${files.length}…`);
+      const p = files[i];
+      const up = await api(`/customers/${id}/files`, { method: 'POST', body: JSON.stringify({ base64: p.base64, label: p.label, name: p.name }) });
+      if (!up.ok) failed++;
+    }
+    files.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl));
+    return failed;
+  };
+
   const submit = async (e) => {
     e.preventDefault();
+    if (viewOnly) { onClose(); return; }
     setErrors({});
-    if (photoField && isRequired(photoField, salesmanType) && photos.length === 0) {
-      setErrors({ photos: 'Please add at least one photo.' });
-      return;
-    }
-    setSaving(true);
-    setProgress('Saving details…');
     const data = {};
     formFields.forEach((f) => {
-      if (!['mobile', 'cr_number', 'vat_number'].includes(f.key) && values[f.key] !== undefined && values[f.key] !== '') data[f.key] = values[f.key];
+      if (COLUMN[f.key] || isSaved(f.key)) return;
+      if (!blank(values[f.key])) data[f.key] = values[f.key];
     });
+    const fresh = (key) => (isSaved(key) ? undefined : values[key]);
     const payload = {
-      name, mobile: values.mobile, crNumber: noCr ? '' : values.cr_number, vatNumber: values.vat_number,
+      name, mobile: fresh('mobile'), crNumber: noCr ? '' : fresh('cr_number'), vatNumber: fresh('vat_number'),
       noCr, noCrReason, data,
     };
-    const res = isNew
-      ? await api('/customers', { method: 'POST', body: JSON.stringify(payload) })
-      : await api(`/customers/${customer.id}/submit`, { method: 'POST', body: JSON.stringify(payload) });
+    if (mode === 'complete' && !Object.keys(data).length && !files.length
+      && blank(payload.mobile) && blank(payload.crNumber) && blank(payload.vatNumber)) {
+      setErrors({ form: 'Fill at least one missing detail or add a document, then save.' });
+      return;
+    }
 
+    setSaving(true);
+    setProgress('Saving details…');
+    const path = mode === 'new' ? '/customers' : mode === 'first' ? `/customers/${customer.id}/submit` : `/customers/${customer.id}/complete`;
+    const res = await api(path, { method: 'POST', body: JSON.stringify(payload) });
     if (!res.ok) {
       setSaving(false);
       setProgress('');
       setErrors(res.body.fields || { form: res.body.error || 'Could not save. Please try again.' });
       return;
     }
-
-    const id = res.body.customer.id;
-    let failed = 0;
-    for (let i = 0; i < photos.length; i++) {
-      setProgress(`Uploading photo ${i + 1} of ${photos.length}…`);
-      const p = photos[i];
-      const up = await api(`/customers/${id}/files`, {
-        method: 'POST',
-        body: JSON.stringify({ base64: p.base64, label: p.label, name: p.name }),
-      });
-      if (!up.ok) failed++;
-    }
+    const failed = await uploadAll(res.body.customer.id);
     setSaving(false);
-    photos.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl));
     onSaved(
-      failed ? `Details saved, but ${failed} photo(s) failed. Please send them to the administrator.` : res.body.message,
+      failed ? `Details saved, but ${failed} document(s) failed to upload. Please try again.` : res.body.message,
       failed ? 'error' : 'success'
     );
   };
+
+  const required = (f) => mode !== 'complete' && isRequired(f, salesmanType);
+  const filledCount = visible.filter((f) => (f.type === 'document' ? uploaded.has(f.docLabel) : isSaved(f.key))).length;
 
   return (
     <div className="fixed inset-0 z-40 bg-slate-900/50 flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-labelledby="cf-title">
       <form onSubmit={submit} className="w-full sm:max-w-lg max-h-[94vh] overflow-y-auto bg-[#F5F6F8] rounded-t-3xl sm:rounded-3xl">
         <div className="sticky top-0 z-10 bg-white border-b border-slate-200 px-5 py-4 flex items-center justify-between">
-          <h2 id="cf-title" className="text-lg font-bold truncate pr-3">{isNew ? 'New customer' : customer.name}</h2>
+          <div className="min-w-0 pr-3">
+            <h2 id="cf-title" className="text-lg font-bold truncate">{isNew ? 'New customer' : customer.name}</h2>
+            {mode === 'complete' && (
+              <p className="text-xs font-semibold text-slate-500">
+                {customer.locked ? 'Locked by the office · view only' : `${customer.percent}% complete · ${filledCount} of ${visible.length} details saved`}
+              </p>
+            )}
+          </div>
           <button type="button" onClick={onClose} aria-label="Close" className="w-11 h-11 rounded-full flex items-center justify-center hover:bg-slate-100">
             <X className="w-5 h-5" />
           </button>
         </div>
 
         <div className="p-5 space-y-4">
+          {mode === 'complete' && !viewOnly && (
+            <p className="p-3 rounded-2xl bg-amber-50 text-amber-900 text-sm">Grey fields are saved and can only be changed by the office. Fill the empty ones and save.</p>
+          )}
           {errors.form && <p role="alert" className="p-3 rounded-2xl bg-rose-50 text-rose-800 text-sm font-semibold">{errors.form}</p>}
           {Object.keys(errors).some((k) => k !== 'form') && !errors.form && (
             <p role="alert" className="p-3 rounded-2xl bg-rose-50 text-rose-800 text-sm font-semibold">Please check the fields marked in red.</p>
@@ -364,13 +439,14 @@ function CustomerForm({ customer, fields, salesmanType, api, onClose, onSaved })
           )}
 
           {formFields.map((f) => {
-            if (f.key === 'cr_number') {
+            const locked = viewOnly || isSaved(f.key);
+            if (f.key === 'cr_number' && !locked) {
               return (
                 <div key={f.key} className="space-y-2">
                   {!noCr && (
-                    <CustomerFieldInput field={f} value={values[f.key]} onChange={(v) => set(f.key, v)} error={errors[f.key]} required />
+                    <CustomerFieldInput field={f} value={values[f.key]} onChange={(v) => set(f.key, v)} error={errors[f.key]} required={required(f)} />
                   )}
-                  {salesmanType === 'branch' && (
+                  {salesmanType === 'branch' && mode !== 'complete' && (
                     <label className="flex items-center gap-3 min-h-[44px] text-sm font-semibold text-slate-700">
                       <input type="checkbox" checked={noCr} onChange={(e) => setNoCr(e.target.checked)} className="w-5 h-5 accent-[#CC1A22]" />
                       This customer has no CR
@@ -388,67 +464,63 @@ function CustomerForm({ customer, fields, salesmanType, api, onClose, onSaved })
                 </div>
               );
             }
+            const shown = f.key === 'cr_number' && customer.noCr ? `No CR – ${customer.noCrReason}` : values[f.key];
             return (
-              <CustomerFieldInput key={f.key} field={f} value={values[f.key]} onChange={(v) => set(f.key, v)}
-                error={errors[f.key]} required={isRequired(f, salesmanType)} />
+              <CustomerFieldInput key={f.key} field={f} value={shown} values={values} onChange={(v) => set(f.key, v)}
+                error={errors[f.key]} required={required(f)} readOnly={locked} />
             );
           })}
 
-          {photoField && (
-            <fieldset className="space-y-3 bg-white rounded-3xl border border-slate-200 p-4">
-              <legend className="text-sm font-semibold text-slate-800 px-1">
-                {photoField.label} {isRequired(photoField, salesmanType) && <span className="text-[#CC1A22]">*</span>}
-              </legend>
-              <div className="grid grid-cols-2 gap-2">
-                {Object.entries(FILE_LABEL_NAMES).map(([k, label]) => (
-                  <button key={k} type="button" onClick={() => setPhotoLabel(k)} aria-pressed={photoLabel === k}
-                    className={`min-h-[44px] rounded-full text-xs font-bold border transition ${photoLabel === k ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-300'}`}>
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <label className="min-h-[48px] rounded-2xl bg-[#CC1A22] text-white font-bold text-sm flex items-center justify-center gap-2 cursor-pointer">
-                  <Camera className="w-4 h-4" /> Take photo
-                  <input type="file" accept="image/*" capture="environment" className="sr-only"
-                    onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
-                </label>
-                <label className="min-h-[48px] rounded-2xl bg-white border border-slate-300 font-bold text-sm flex items-center justify-center gap-2 cursor-pointer">
-                  <FileText className="w-4 h-4" /> Gallery / PDF
-                  <input type="file" accept="image/*,application/pdf" multiple className="sr-only"
-                    onChange={(e) => { addFiles(e.target.files); e.target.value = ''; }} />
-                </label>
-              </div>
-              {errors.photos && <p className="text-xs font-semibold text-rose-700">{errors.photos}</p>}
-              {photos.length > 0 && (
-                <ul className="grid grid-cols-3 gap-2">
-                  {photos.map((p, i) => (
-                    <li key={i} className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 aspect-square">
-                      {p.previewUrl ? (
-                        <img src={p.previewUrl} alt={FILE_LABEL_NAMES[p.label]} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="w-full h-full flex items-center justify-center text-xs font-bold text-slate-600">PDF</span>
-                      )}
-                      <span className="absolute left-1 bottom-1 right-1 text-[10px] font-bold bg-white/90 rounded px-1 truncate">{FILE_LABEL_NAMES[p.label]}</span>
-                      <button type="button" aria-label="Remove" onClick={() => setPhotos((prev) => prev.filter((_, j) => j !== i))}
-                        className="absolute top-1 right-1 w-8 h-8 rounded-full bg-white/95 flex items-center justify-center">
-                        <Trash2 className="w-4 h-4 text-rose-700" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </fieldset>
-          )}
+          {[...docFields, ...(photoField ? [{ ...photoField, docLabel: 'shop_front' }] : [])].map((f) => {
+            const done = uploaded.has(f.docLabel);
+            const queued = files.filter((p) => p.label === f.docLabel);
+            return (
+              <fieldset key={f.key} className="space-y-3 bg-white rounded-3xl border border-slate-200 p-4">
+                <legend className="text-sm font-semibold text-slate-800 px-1">{f.label}</legend>
+                {done && (
+                  <p className="flex items-center gap-2 text-sm font-semibold text-emerald-700"><CheckCircle2 className="w-4 h-4" /> Uploaded</p>
+                )}
+                {!viewOnly && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="min-h-[48px] rounded-2xl bg-[#CC1A22] text-white font-bold text-sm flex items-center justify-center gap-2 cursor-pointer">
+                      <Camera className="w-4 h-4" /> {done ? 'Add another' : 'Take photo'}
+                      <input type="file" accept="image/*" capture="environment" className="sr-only"
+                        onChange={(e) => { addFiles(e.target.files, f.docLabel); e.target.value = ''; }} />
+                    </label>
+                    <label className="min-h-[48px] rounded-2xl bg-white border border-slate-300 font-bold text-sm flex items-center justify-center gap-2 cursor-pointer">
+                      <FileText className="w-4 h-4" /> Gallery / PDF
+                      <input type="file" accept="image/*,application/pdf" multiple className="sr-only"
+                        onChange={(e) => { addFiles(e.target.files, f.docLabel); e.target.value = ''; }} />
+                    </label>
+                  </div>
+                )}
+                {errors[`file_${f.docLabel}`] && <p className="text-xs font-semibold text-rose-700">{errors[`file_${f.docLabel}`]}</p>}
+                {queued.length > 0 && (
+                  <ul className="grid grid-cols-3 gap-2">
+                    {queued.map((p) => (
+                      <li key={p.previewUrl || p.name} className="relative rounded-xl overflow-hidden border border-slate-200 bg-slate-50 aspect-square">
+                        {p.previewUrl ? <img src={p.previewUrl} alt={f.label} className="w-full h-full object-cover" />
+                          : <span className="w-full h-full flex items-center justify-center text-xs font-bold text-slate-600">PDF</span>}
+                        <button type="button" aria-label="Remove" onClick={() => setFiles((prev) => prev.filter((x) => x !== p))}
+                          className="absolute top-1 right-1 w-8 h-8 rounded-full bg-white/95 flex items-center justify-center">
+                          <Trash2 className="w-4 h-4 text-rose-700" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </fieldset>
+            );
+          })}
         </div>
 
         <div className="sticky bottom-0 bg-white border-t border-slate-200 p-4">
           <button type="submit" disabled={saving}
             className="w-full h-14 rounded-full bg-[#CC1A22] hover:bg-[#A3141B] text-white font-bold text-base flex items-center justify-center gap-2 disabled:opacity-60">
             {saving && <Loader2 className="w-5 h-5 animate-spin" />}
-            {saving ? progress : isNew ? 'Send new customer' : 'Save customer'}
+            {saving ? progress : viewOnly ? 'Close' : mode === 'new' ? 'Send new customer' : mode === 'first' ? 'Save customer' : 'Save missing details'}
           </button>
-          {!isNew && <p className="mt-2 text-center text-xs text-slate-500">After saving you cannot edit this customer again.</p>}
+          {mode === 'first' && <p className="mt-2 text-center text-xs text-slate-500">Saved details can only be changed by the office. You can add missing details later.</p>}
         </div>
       </form>
     </div>

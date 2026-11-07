@@ -8,13 +8,12 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import * as cdb from '../db/customers.js';
 import {
-  validateSubmission, statusAfterSubmit, parseCustomerImport, detectFileType, jpegsToPdf, completeness,
+  validateSubmission, statusAfterSubmit, parseCustomerImport, detectFileType, jpegsToPdf, completeness, mergeData,
   FILE_LABELS, MAX_FILE_BYTES, SALESMAN_TYPES,
 } from './logic.js';
 import { saveFile, readFile } from './storage.js';
 
 const LINK_SESSION_HOURS = 12;
-const UPLOAD_WINDOW_MINUTES = 60; // salesman may add photos this long after submitting
 
 const tokenHash = (token) => crypto.createHash('sha256').update(String(token)).digest('hex').slice(0, 24);
 
@@ -61,6 +60,24 @@ async function storeUpload(customerId, decoded, uploadedVia) {
 }
 
 /** After photos change, a submitted customer may become complete (pending stays pending). */
+// Fields the salesman works with on his link (super-admin-only fields such as "Customer status" are left out)
+const salesmanFields = (fields) => fields.filter((f) => !f.adminOnly);
+// Fields whose value comes from the form itself (photos and documents are uploaded separately)
+const formFields = (fields) => fields.filter((f) => f.type !== 'photo' && f.type !== 'document');
+
+/** What the salesman sees for one customer: his values plus how complete it is. */
+function linkCustomer(c, fields, salesmanType) {
+  const comp = completeness(c, fields, salesmanType, { audience: 'salesman' });
+  return {
+    id: c.id, name: c.name, status: c.status, locked: c.locked,
+    mobile: c.mobile, crNumber: c.crNumber, noCr: c.noCr, noCrReason: c.noCrReason, vatNumber: c.vatNumber,
+    data: Object.fromEntries(fields.filter((f) => !COLUMN_KEYS.has(f.key)).map((f) => [f.key, c.data[f.key]]).filter(([, v]) => v !== undefined)),
+    fileLabels: c.fileLabels,
+    percent: comp.percent, missing: comp.missing,
+  };
+}
+const COLUMN_KEYS = new Set(['mobile', 'cr_number', 'vat_number']);
+
 async function refreshStatus(customerId) {
   const row = await cdb.getCustomerRow(customerId);
   if (!row || !['submitted', 'complete'].includes(row.status)) return row;
@@ -135,22 +152,29 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
   }));
 
   app.get('/api/link/:token/fields', linkGuard, loadLinkSalesman, linkAuth, asyncHandler(async (req, res) => {
-    res.json(await cdb.getCustomerFields({ includeHidden: false }));
+    res.json(salesmanFields(await cdb.getCustomerFields({ includeHidden: false })));
   }));
 
   app.get('/api/link/:token/customers', linkGuard, loadLinkSalesman, linkAuth, asyncHandler(async (req, res) => {
-    const all = await cdb.listCustomers({ salesmanId: req.linkSalesman.id });
-    const remaining = all.filter((c) => c.status === 'not_started');
-    const search = String(req.query.search || '').trim().toLowerCase();
-    const shown = search
-      ? remaining.filter((c) => c.name.toLowerCase().includes(search) || c.mobile.includes(search))
-      : remaining;
+    const sm = req.linkSalesman;
+    const [all, fields] = await Promise.all([
+      cdb.listCustomers({ salesmanId: sm.id }),
+      cdb.getCustomerFields({ includeHidden: false }),
+    ]);
+    const list = all.map((c) => linkCustomer(c, salesmanFields(fields), sm.type));
+    // Not started first, then the least complete, finished ones last
+    const rank = (c) => (c.status === 'not_started' ? 0 : c.percent < 100 ? 1 : 2);
+    list.sort((a, b) => rank(a) - rank(b) || a.percent - b.percent || a.name.localeCompare(b.name));
+    const notStarted = list.filter((c) => c.status === 'not_started').length;
+    const completed = list.filter((c) => c.status !== 'not_started' && c.percent === 100).length;
     res.json({
-      total: all.length,
-      remaining: remaining.length,
-      customers: shown.map((c) => ({
-        id: c.id, name: c.name, mobile: c.mobile, crNumber: c.crNumber, vatNumber: c.vatNumber, data: c.data,
-      })),
+      total: list.length,
+      remaining: notStarted,
+      notStarted,
+      incomplete: list.length - notStarted - completed,
+      completed,
+      percent: list.length ? Math.round(list.reduce((sum, c) => sum + c.percent, 0) / list.length) : 0,
+      customers: list,
     });
   }));
 
@@ -162,13 +186,14 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     if (row.status !== 'not_started') return res.status(409).json({ error: 'This customer was already submitted. Ask the administrator to make changes.' });
 
     const fields = await cdb.getCustomerFields({ includeHidden: false });
-    // Photos are uploaded right after this call, so the photo field is not required here
-    const { errors, clean } = validateSubmission(req.body, fields.filter((f) => f.type !== 'photo'), { salesmanType: sm.type });
+    // Photos and documents are uploaded right after this call, so they are not checked here
+    const { errors, clean } = validateSubmission(req.body, formFields(salesmanFields(fields)), { salesmanType: sm.type, audience: 'salesman' });
     if (Object.keys(errors).length) return res.status(400).json({ error: 'Please check the highlighted fields.', fields: errors });
     if (!clean.name) clean.name = row.name;
+    clean.data = mergeData(row.data, clean.data, fields, { audience: 'salesman' });
 
     const dups = await cdb.findDuplicates({ ...clean, excludeId: row.id });
-    const candidate = { ...cdb.customerToApi(row), ...clean, photoCount: Number(row.photo_count || 0) };
+    const candidate = { ...cdb.customerToApi(row), ...clean };
     const status = dups.length ? 'pending_approval' : statusAfterSubmit(candidate, fields, sm.type);
     const saved = await cdb.saveCustomerValues(row.id, clean, {
       status, markSubmitted: true, reviewNote: dups.length ? cdb.duplicateNote(dups) : '',
@@ -184,11 +209,45 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     });
   }));
 
+  // After the first submit the salesman may come back and fill fields that are still empty (until 100% or locked)
+  app.post('/api/link/:token/customers/:id/complete', linkGuard, loadLinkSalesman, linkAuth, asyncHandler(async (req, res) => {
+    const sm = req.linkSalesman;
+    const row = await cdb.getCustomerRow(req.params.id);
+    if (!row || row.salesman_id !== sm.id) return res.status(404).json({ error: 'Customer not found.' });
+    if (row.status === 'not_started') return res.status(409).json({ error: 'Please fill in the customer first.' });
+    if (row.locked) return res.status(409).json({ error: 'The administrator has locked this customer. Ask them to make changes.' });
+
+    const current = cdb.customerToApi(row);
+    const fields = await cdb.getCustomerFields({ includeHidden: false });
+    const body = req.body || {};
+    // Saved values stay as they are: only empty fields take the new values
+    const input = {
+      mobile: current.mobile || body.mobile,
+      crNumber: current.crNumber || body.crNumber,
+      noCr: current.noCr,
+      noCrReason: current.noCrReason,
+      vatNumber: current.vatNumber || body.vatNumber,
+      data: { ...(body.data || {}), ...Object.fromEntries(Object.entries(current.data).filter(([, v]) => v !== '' && v != null && !(Array.isArray(v) && !v.length))) },
+    };
+    const { errors, clean } = validateSubmission(input, formFields(salesmanFields(fields)), { salesmanType: sm.type, audience: 'salesman' });
+    if (Object.keys(errors).length) return res.status(400).json({ error: 'Please check the highlighted fields.', fields: errors });
+    clean.name = row.name;
+    clean.data = mergeData(row.data, clean.data, fields, { audience: 'salesman', onlyFillEmpty: true });
+
+    const candidate = { ...current, ...clean };
+    const status = row.status === 'pending_approval' ? undefined : statusAfterSubmit(candidate, fields, sm.type);
+    const saved = await cdb.saveCustomerValues(row.id, clean, { status });
+    await cdb.addSubmission(row.id, sm.id, { ...clean, submittedBy: sm.name, salesmanType: sm.type, update: true });
+    await log(req, 'complete');
+    const fresh = cdb.customerToApi(await cdb.getCustomerRow(saved.id));
+    res.json({ customer: linkCustomer(fresh, salesmanFields(fields), sm.type), message: 'Details added. Thank you!' });
+  }));
+
   // Salesman adds a customer who was not in his list -> waits for approval
   app.post('/api/link/:token/customers', linkGuard, loadLinkSalesman, linkAuth, asyncHandler(async (req, res) => {
     const sm = req.linkSalesman;
     const fields = await cdb.getCustomerFields({ includeHidden: false });
-    const { errors, clean } = validateSubmission(req.body, fields.filter((f) => f.type !== 'photo'), { salesmanType: sm.type, requireName: true });
+    const { errors, clean } = validateSubmission(req.body, formFields(salesmanFields(fields)), { salesmanType: sm.type, requireName: true, audience: 'salesman' });
     if (Object.keys(errors).length) return res.status(400).json({ error: 'Please check the highlighted fields.', fields: errors });
 
     const dups = await cdb.findDuplicates({ ...clean });
@@ -209,15 +268,13 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     });
   }));
 
-  // Photos / PDFs for a customer this salesman just submitted
+  // CR paper, VAT certificate and photos: any time after the customer is saved, until the admin locks it
   app.post('/api/link/:token/customers/:id/files', linkGuard, largeJsonParser, loadLinkSalesman, linkAuth, asyncHandler(async (req, res) => {
     const sm = req.linkSalesman;
     const row = await cdb.getCustomerRow(req.params.id);
     if (!row || row.salesman_id !== sm.id) return res.status(404).json({ error: 'Customer not found.' });
-    const recent = row.submitted_at && (Date.now() - new Date(row.submitted_at).getTime()) < UPLOAD_WINDOW_MINUTES * 60 * 1000;
-    if (row.status === 'not_started' || !recent) {
-      return res.status(409).json({ error: 'Photos can only be added right after saving the customer.' });
-    }
+    if (row.status === 'not_started') return res.status(409).json({ error: 'Save the customer first, then add documents.' });
+    if (row.locked) return res.status(409).json({ error: 'The administrator has locked this customer.' });
     const decoded = decodeUpload(req.body);
     if (decoded.error) return res.status(400).json({ error: decoded.error });
     const file = await storeUpload(row.id, decoded, 'link');
@@ -241,7 +298,10 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     const { salesmanId, status, search, missing } = req.query;
     let list = await cdb.listCustomers({ salesmanId, status, search });
     const fields = await cdb.getCustomerFields({ includeHidden: false });
-    list = list.map((c) => ({ ...c, missing: completeness(c, fields, c.salesmanType || 'branch').missing }));
+    list = list.map((c) => {
+      const comp = completeness(c, fields, c.salesmanType || 'branch');
+      return { ...c, missing: comp.missing, percent: comp.percent };
+    });
     if (missing) list = list.filter((c) => c.status !== 'not_started' && c.missing.includes(String(missing)));
     res.json(list);
   }));
@@ -253,12 +313,15 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
       if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`; // spreadsheet formula injection guard
       return `"${s.replace(/"/g, '""')}"`;
     };
-    const dataFields = fields.filter((f) => !['mobile', 'cr_number', 'vat_number', 'photos'].includes(f.key) && f.type !== 'photo');
+    const dataFields = fields.filter((f) => !['mobile', 'cr_number', 'vat_number', 'photos'].includes(f.key) && f.type !== 'photo' && f.type !== 'document');
+    const docFields = fields.filter((f) => f.type === 'document');
     const header = ['ID', 'Customer name', 'Salesman', 'Status', 'Mobile', 'CR number', 'No CR reason', 'VAT number',
-      ...dataFields.map((f) => f.label), 'Photos', 'Submitted at'];
+      ...dataFields.map((f) => f.label), ...docFields.map((f) => f.label), '% complete', 'Photos', 'Submitted at'];
     const lines = list.map((c) => [
       c.id, c.name, c.salesmanName, c.status, c.mobile, c.noCr ? 'NO CR' : c.crNumber, c.noCrReason, c.vatNumber,
-      ...dataFields.map((f) => c.data[f.key]), c.photoCount, c.submittedAt,
+      ...dataFields.map((f) => (Array.isArray(c.data[f.key]) ? c.data[f.key].join(', ') : c.data[f.key])),
+      ...docFields.map((f) => (c.fileLabels.includes(f.docLabel) ? 'Yes' : 'No')),
+      completeness(c, fields, c.salesmanType || 'branch').percent, c.photoCount, c.submittedAt,
     ].map(cell).join(','));
     await audit(req, `Exported ${list.length} customers to CSV`);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
@@ -269,7 +332,8 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
   app.get('/api/customers/:id', authMiddleware, requirePermission('customers.view'), asyncHandler(async (req, res) => {
     const c = await cdb.getCustomer(req.params.id);
     if (!c) return res.status(404).json({ error: 'Customer not found.' });
-    res.json(c);
+    const comp = completeness(c, await cdb.getCustomerFields({ includeHidden: false }), c.salesmanType || 'branch');
+    res.json({ ...c, percent: comp.percent, missing: comp.missing });
   }));
 
   app.post('/api/customers', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
@@ -290,16 +354,18 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     if (!row) return res.status(404).json({ error: 'Customer not found.' });
     const fields = await cdb.getCustomerFields({ includeHidden: false });
     const type = row.salesman_type || 'branch';
+    const current = cdb.customerToApi(row);
     const { errors, clean } = validateSubmission({ name: row.name, ...req.body }, fields, {
-      salesmanType: type, requireName: true, photoCount: Number(row.photo_count || 0),
+      salesmanType: type, requireName: true, photoCount: current.photoCount, fileLabels: current.fileLabels,
     });
     const requiredProblems = Object.keys(errors).filter((k) => /required|at least one photo/i.test(errors[k]));
     if (row.status === 'not_started') requiredProblems.forEach((k) => delete errors[k]);
     if (Object.keys(errors).length) return res.status(400).json({ error: 'Please check the highlighted fields.', fields: errors });
 
+    clean.data = mergeData(row.data, clean.data, fields);
     let status;
     if (row.status === 'submitted' || row.status === 'complete') {
-      status = statusAfterSubmit({ ...clean, photoCount: Number(row.photo_count || 0) }, fields, type);
+      status = statusAfterSubmit({ ...current, ...clean }, fields, type);
     }
     const saved = await cdb.saveCustomerValues(row.id, clean, { status });
     await audit(req, `Customer edited: ${saved.name} (#${saved.id})`);
@@ -315,6 +381,16 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     const status = statusAfterSubmit(c, fields, c.salesmanType || 'branch');
     const saved = await cdb.setCustomerStatus(row.id, status, { approvedByUserId: req.user.id });
     await audit(req, `Customer approved: ${saved.name} (#${saved.id})`);
+    res.json(cdb.customerToApi(saved));
+  }));
+
+  // Lock: the salesman can no longer add details or documents to this customer
+  app.post('/api/customers/:id/lock', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
+    const row = await cdb.getCustomerRow(req.params.id);
+    if (!row) return res.status(404).json({ error: 'Customer not found.' });
+    const locked = req.body?.locked !== false;
+    const saved = await cdb.setCustomerLocked(row.id, locked);
+    await audit(req, `Customer ${locked ? 'locked' : 'unlocked'}: ${saved.name} (#${saved.id})`);
     res.json(cdb.customerToApi(saved));
   }));
 
@@ -407,7 +483,7 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
 
   app.post('/api/customer-fields', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
     const { label, type } = req.body || {};
-    const allowed = ['text', 'number', 'phone', 'email', 'dropdown', 'date', 'textarea'];
+    const allowed = ['text', 'number', 'phone', 'email', 'dropdown', 'multiselect', 'yesno', 'date', 'textarea'];
     if (!label || String(label).trim().length < 2) return res.status(400).json({ error: 'Give the field a name.' });
     if (!allowed.includes(type)) return res.status(400).json({ error: `Field type must be one of: ${allowed.join(', ')}.` });
     const field = await cdb.createCustomerField(req.body);

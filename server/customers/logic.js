@@ -6,11 +6,13 @@
 // Fields stored in their own columns; every other field lives in customers.data (JSONB)
 export const COLUMN_FIELDS = { mobile: 'mobile', cr_number: 'crNumber', vat_number: 'vatNumber' };
 
+import { OMAN_LOCATIONS } from '../../shared/omanLocations.js';
+
 export const SALESMAN_TYPES = ['branch', 'route_b2b'];
 export const FILE_LABELS = ['cr_certificate', 'vat_certificate', 'shop_front', 'other'];
 export const MAX_FILE_BYTES = 10 * 1024 * 1024;
 
-const isBlank = (v) => v === undefined || v === null || String(v).trim() === '';
+const isBlank = (v) => v === undefined || v === null || (Array.isArray(v) ? v.length === 0 : String(v).trim() === '');
 
 // ---------------- Normalising & validating single values ----------------
 
@@ -109,10 +111,37 @@ function normalizeByType(field, raw) {
     }
     case 'dropdown': {
       if (isBlank(raw)) return { value: '', error: null };
-      const s = String(raw).trim();
+      const s = String(raw).trim().slice(0, 200);
       const options = Array.isArray(field.options) ? field.options : [];
       if (options.length && !options.includes(s)) return { value: '', error: 'Choose one of the listed options.' };
       return { value: s, error: null };
+    }
+    case 'multiselect': {
+      const list = (Array.isArray(raw) ? raw : isBlank(raw) ? [] : String(raw).split(','))
+        .map((x) => String(x).trim()).filter(Boolean);
+      const unique = [...new Set(list)];
+      if (!unique.length) return { value: '', error: null };
+      const options = Array.isArray(field.options) ? field.options : [];
+      if (options.length && unique.some((x) => !options.includes(x))) return { value: '', error: 'Choose from the listed options.' };
+      return { value: unique.slice(0, 50), error: null };
+    }
+    case 'yesno': {
+      if (isBlank(raw)) return { value: '', error: null };
+      const s = String(raw).trim().toLowerCase();
+      if (['yes', 'y', 'true', '1'].includes(s)) return { value: 'Yes', error: null };
+      if (['no', 'n', 'false', '0'].includes(s)) return { value: 'No', error: null };
+      return { value: '', error: 'Choose Yes or No.' };
+    }
+    case 'governorate': {
+      if (isBlank(raw)) return { value: '', error: null };
+      const s = String(raw).trim();
+      const match = Object.keys(OMAN_LOCATIONS).find((g) => g.toLowerCase() === s.toLowerCase());
+      return match ? { value: match, error: null } : { value: '', error: 'Choose a governorate from the list.' };
+    }
+    case 'city': {
+      // Checked against the governorate in validateSubmission
+      if (isBlank(raw)) return { value: '', error: null };
+      return { value: String(raw).trim().slice(0, 100), error: null };
     }
     default: {
       if (isBlank(raw)) return { value: '', error: null };
@@ -130,38 +159,58 @@ export function isRequired(field, salesmanType) {
     : Boolean(field.required_route_b2b ?? field.requiredRouteB2b);
 }
 
-/** Value of a field on a customer object { mobile, crNumber, noCr, vatNumber, data, photoCount }. */
+const isAdminOnly = (f) => Boolean(f.admin_only ?? f.adminOnly);
+const showIf = (f) => f.show_if ?? f.showIf ?? null;
+const docLabel = (f) => f.doc_label ?? f.docLabel ?? null;
+
+/** Value of a field on a customer object { mobile, crNumber, noCr, vatNumber, data, photoCount, fileLabels }. */
 export function fieldValue(customer, key) {
   if (COLUMN_FIELDS[key]) return customer[COLUMN_FIELDS[key]];
   return customer.data ? customer.data[key] : undefined;
 }
 
+/** A field counts for this customer when it is shown and its condition (e.g. "VAT registered = Yes") is met. */
+export function isApplicable(customer, field) {
+  if (field.is_hidden || field.isHidden) return false;
+  const cond = showIf(field);
+  if (cond && cond.key) return fieldValue(customer, cond.key) === cond.equals;
+  return true;
+}
+
 function isFilled(customer, field) {
   if (field.type === 'photo') return Number(customer.photoCount || 0) > 0;
+  if (field.type === 'document') return (customer.fileLabels || []).includes(docLabel(field));
   if (field.key === 'cr_number' && customer.noCr) return true;
   return !isBlank(fieldValue(customer, field.key));
 }
 
 /**
- * Which visible fields are still empty.
- * @returns {{ missingRequired: string[], missing: string[] }}  (field keys)
+ * Which fields are still empty and how complete the customer is.
+ * audience 'salesman' leaves out fields only the super admin fills (e.g. customer status).
+ * @returns {{ missingRequired: string[], missing: string[], percent: number, filled: number, total: number }}
  */
-export function completeness(customer, fields, salesmanType) {
+export function completeness(customer, fields, salesmanType, { audience = 'admin' } = {}) {
   const missingRequired = [];
   const missing = [];
+  let total = 0;
+  let filled = 0;
   for (const f of fields) {
-    if (f.is_hidden || f.isHidden) continue;
-    if (!isFilled(customer, f)) {
+    if (!isApplicable(customer, f)) continue;
+    if (audience === 'salesman' && isAdminOnly(f)) continue;
+    total++;
+    if (isFilled(customer, f)) {
+      filled++;
+    } else {
       missing.push(f.key);
       if (isRequired(f, salesmanType)) missingRequired.push(f.key);
     }
   }
-  return { missingRequired, missing };
+  return { missingRequired, missing, filled, total, percent: total ? Math.round((filled / total) * 100) : 100 };
 }
 
-/** 'complete' when every visible field is filled, else 'submitted'. Caller handles pending approval. */
+/** 'complete' when every field the salesman can fill is done, else 'submitted'. Caller handles pending approval. */
 export function statusAfterSubmit(customer, fields, salesmanType) {
-  return completeness(customer, fields, salesmanType).missing.length === 0 ? 'complete' : 'submitted';
+  return completeness(customer, fields, salesmanType, { audience: 'salesman' }).missing.length === 0 ? 'complete' : 'submitted';
 }
 
 /**
@@ -171,7 +220,7 @@ export function statusAfterSubmit(customer, fields, salesmanType) {
  * Returns { errors: { key: message }, clean: { name, mobile, crNumber, noCr, noCrReason, vatNumber, data } }
  */
 export function validateSubmission(input = {}, fields = [], options = {}) {
-  const { salesmanType = 'branch', requireName = false, photoCount = 0 } = options;
+  const { salesmanType = 'branch', requireName = false, photoCount = 0, fileLabels = [], audience = 'admin' } = options;
   const errors = {};
   const clean = { data: {} };
 
@@ -198,7 +247,13 @@ export function validateSubmission(input = {}, fields = [], options = {}) {
   };
 
   for (const f of fields) {
-    if (f.is_hidden || f.isHidden || f.type === 'photo') continue;
+    if (f.is_hidden || f.isHidden || f.type === 'photo' || f.type === 'document') continue;
+    if (audience === 'salesman' && isAdminOnly(f)) continue;
+    // Conditional field whose condition is not met (e.g. VAT number when "VAT registered" is No): not stored
+    if (!isApplicable(clean, f)) {
+      if (COLUMN_FIELDS[f.key]) clean[COLUMN_FIELDS[f.key]] = '';
+      continue;
+    }
     if (f.key === 'cr_number' && clean.noCr) {
       clean.crNumber = '';
       continue;
@@ -209,16 +264,48 @@ export function validateSubmission(input = {}, fields = [], options = {}) {
     else if (value !== '') clean.data[f.key] = value;
   }
 
+  // City must belong to the chosen governorate
+  const cityField = fields.find((f) => f.type === 'city' && !(f.is_hidden || f.isHidden));
+  const govField = fields.find((f) => f.type === 'governorate' && !(f.is_hidden || f.isHidden));
+  if (cityField && clean.data[cityField.key]) {
+    const gov = govField ? clean.data[govField.key] : '';
+    const cities = gov ? OMAN_LOCATIONS[gov] || [] : [];
+    const match = cities.find((c) => c.toLowerCase() === String(clean.data[cityField.key]).toLowerCase());
+    if (!gov) errors[cityField.key] = 'Choose the governorate first.';
+    else if (!match) errors[cityField.key] = `Choose a wilayat of ${gov}.`;
+    else clean.data[cityField.key] = match;
+  }
+
   // Required checks (only when the value itself was valid)
-  const candidate = { ...clean, photoCount };
+  const candidate = { ...clean, photoCount, fileLabels };
   for (const f of fields) {
-    if (!isRequired(f, salesmanType) || errors[f.key]) continue;
+    if (!isRequired(f, salesmanType) || errors[f.key] || !isApplicable(candidate, f)) continue;
+    if (audience === 'salesman' && isAdminOnly(f)) continue;
     if (!isFilled(candidate, f)) {
-      errors[f.key] = f.type === 'photo' ? 'Please add at least one photo.' : `${f.label} is required.`;
+      errors[f.key] = f.type === 'photo' ? 'Please add at least one photo.'
+        : f.type === 'document' ? `Please upload the ${f.label}.` : `${f.label} is required.`;
     }
   }
 
   return { errors, clean };
+}
+
+/**
+ * Merge a validated submission into the customer's existing data.
+ * Keys this form did not handle (hidden fields, admin-only fields for a salesman) are kept as they were.
+ * onlyFillEmpty: the salesman may add missing details but not change saved ones.
+ */
+export function mergeData(existingData, cleanData, fields, { audience = 'admin', onlyFillEmpty = false } = {}) {
+  const out = { ...(existingData || {}) };
+  for (const f of fields) {
+    if (COLUMN_FIELDS[f.key] || f.is_hidden || f.isHidden || f.type === 'photo' || f.type === 'document') continue;
+    if (audience === 'salesman' && isAdminOnly(f)) continue;
+    const has = !isBlank(out[f.key]);
+    if (onlyFillEmpty && has) continue;
+    if (!isBlank(cleanData[f.key])) out[f.key] = cleanData[f.key];
+    else if (!onlyFillEmpty) delete out[f.key];
+  }
+  return out;
 }
 
 // ---------------- CSV import ----------------
@@ -270,8 +357,15 @@ const HEADER_ALIASES = {
   contact_number: ['contact number', 'landline', 'telephone', 'tel'],
   email: ['email', 'e-mail', 'email address'],
   route: ['route', 'route name'],
-  segment: ['segment', 'customer segment', 'customer type', 'type'],
-  address: ['address', 'full address'],
+  segment: ['segment', 'customer segment'],
+  customer_type: ['customer type', 'type'],
+  categories: ['categories', 'category', 'customer categories', 'customer category'],
+  shop_name: ['building', 'building name', 'building / shop name', 'building/shop name', 'shop building'],
+  governorate: ['governorate', 'region'],
+  city: ['city', 'wilayat', 'town', 'city (wilayat)'],
+  vat_registered: ['vat registered', 'vat registration', 'vat reg'],
+  customer_status: ['status', 'customer status'],
+  address: ['address', 'full address', 'area', 'area address', 'area / address'],
   postal_code: ['postal code', 'postcode', 'po box', 'zip'],
   location: ['location', 'google map', 'google maps', 'maps link', 'map link', 'gps'],
 };
