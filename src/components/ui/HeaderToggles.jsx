@@ -3,7 +3,7 @@ import { Volume2, VolumeX, Sun, Moon } from 'lucide-react';
 import { isSoundOn, toggleSound, onSoundChange, playClick } from '../../utils/soundService.js';
 import { resolvedTheme, toggleTheme } from '../../utils/theme.js';
 
-const btn = 'h-10 sm:h-9 flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-100 rounded-full border border-slate-200 shadow-xs cursor-pointer';
+const btn = 'h-10 sm:h-9 flex items-center justify-center gap-1.5 text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-100 rounded-xl border border-slate-200 shadow-xs cursor-pointer';
 
 /** Sound ON / Muted and Light / Dark switches for the header. Pure UI: no business state. */
 export default function HeaderToggles({ compact = false, labels = false }) {

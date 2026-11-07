@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, ContactRound, Users, FileText, Menu } from 'lucide-react';
+import { LayoutDashboard, ContactRound, Users, FileText, Menu, Plus } from 'lucide-react';
 import { sectionOf } from './navigation.js';
 
 /**
@@ -13,6 +13,7 @@ export default function MobileBottomNav({
   onOpenDrawer,
   stats,
   currentUser,
+  onNewLead,
 }) {
   const newLeadsBadge = stats?.newLeads ?? 0;
 
@@ -41,11 +42,18 @@ export default function MobileBottomNav({
       }}
     >
       <div className="flex items-center justify-around h-16 px-1 max-w-2xl mx-auto">
-        {navItems.map((item) => {
+        {navItems.map((item, idx) => {
           const Icon = item.icon;
           const isActive = activeSection === item.section;
 
+          const fab = onNewLead && idx === Math.ceil(navItems.length / 2) ? (
+            <button key="fab" type="button" onClick={onNewLead} className="mp-fab" aria-label="New enquiry" title="New enquiry">
+              <span><Plus className="w-6 h-6" strokeWidth={2.5} /></span>
+            </button>
+          ) : null;
           return (
+            <React.Fragment key={item.id}>
+            {fab}
             <button
               key={item.id}
               type="button"
@@ -86,6 +94,7 @@ export default function MobileBottomNav({
                 />
               )}
             </button>
+            </React.Fragment>
           );
         })}
 

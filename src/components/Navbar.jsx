@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { roleLabel } from '../auth/roles.js';
 import BrandLogo from './BrandLogo';
 import BrandWordmark from './BrandWordmark';
@@ -29,6 +29,19 @@ export default function Navbar({
   onOpenMobileDrawer
 }) {
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const searchRef = useRef(null);
+  // Ctrl/Cmd + K jumps to search (like Linear / Slack)
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (searchRef.current && searchRef.current.offsetParent) searchRef.current.focus();
+        else setIsMobileSearchOpen(true);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const userName = currentUser?.name || 'monipack user';
   const userInitials = userName
@@ -40,7 +53,7 @@ export default function Navbar({
 
   return (
     <div 
-      className="relative h-16 px-3 sm:px-6 bg-white/90 backdrop-blur-md border-b border-surface-silver flex items-center justify-between shrink-0 shadow-xs z-20 select-none"
+      className="relative h-16 px-3 sm:px-6 border-b border-surface-silver flex items-center justify-between shrink-0 shadow-xs z-20 select-none"
       style={{
         borderColor: 'var(--color-surface-silver, #E5E7EB)'
       }}
@@ -52,7 +65,7 @@ export default function Navbar({
           <button
             type="button"
             onClick={onOpenMobileDrawer}
-            className="hidden w-9 h-9 flex items-center justify-center text-slate-700 bg-white/80 hover:bg-slate-100 rounded-lg border border-slate-200 transition active:scale-95 cursor-pointer shrink-0 shadow-xs"
+            className="hidden w-9 h-9 flex items-center justify-center text-slate-700 bg-white/80 hover:bg-slate-100 rounded-xl border border-slate-200 transition active:scale-95 cursor-pointer shrink-0 shadow-xs"
             aria-label="Open Navigation Drawer"
             title="Open Menu"
           >
@@ -65,7 +78,7 @@ export default function Navbar({
 
         <div className="min-w-0">
           <h2 
-            className="text-sm sm:text-base font-bold text-slate-900 leading-tight truncate"
+            className="text-sm sm:text-[15px] font-bold text-slate-900 leading-tight truncate mp-display"
           >
             <span className="sm:hidden">{shortTitle || title}</span>
             <span className="hidden sm:inline">{title}</span>
@@ -83,17 +96,19 @@ export default function Navbar({
       <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         
         {/* Desktop Search Input (hidden on mobile) */}
-        <div className="relative hidden lg:block w-44 xl:w-64">
+        <div className="relative hidden lg:block w-44 xl:w-72">
           <Search 
             className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" 
           />
           <input
+            ref={searchRef}
             type="text"
-            placeholder="Search leads, phone, quotes..."
+            placeholder="Search leads, phone, quotes…"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full text-xs rounded-lg pl-9 pr-7 py-2 bg-slate-100/80 hover:bg-slate-100 focus:bg-white border border-slate-200 transition-all placeholder:text-slate-400 text-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+            className="w-full text-[13px] rounded-xl pl-9 pr-14 h-10 bg-slate-50 hover:bg-slate-100/70 focus:bg-white border border-slate-200 transition-all placeholder:text-slate-400 text-slate-800 focus:outline-none focus:ring-4 focus:ring-red-500/10 focus:border-red-500"
           />
+          {!searchQuery && <kbd className="mp-kbd absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none hidden xl:block">Ctrl K</kbd>}
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
@@ -108,7 +123,7 @@ export default function Navbar({
         <button
           type="button"
           onClick={() => setIsMobileSearchOpen(!isMobileSearchOpen)}
-          className="lg:hidden w-10 h-10 flex items-center justify-center text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-100 rounded-lg border border-slate-200 transition active:scale-95 cursor-pointer shadow-xs"
+          className="lg:hidden w-10 h-10 flex items-center justify-center text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-100 rounded-xl border border-slate-200 transition active:scale-95 cursor-pointer shadow-xs"
           title={isMobileSearchOpen ? 'Close Search' : 'Search Leads'}
         >
           {isMobileSearchOpen ? (
@@ -131,7 +146,7 @@ export default function Navbar({
           onClick={onRefresh}
           title="Refresh Data"
           disabled={loading}
-          className="w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-100 rounded-lg border border-slate-200 transition active:scale-95 disabled:opacity-50 cursor-pointer shadow-xs"
+          className="w-10 h-10 sm:w-9 sm:h-9 flex items-center justify-center text-slate-600 hover:text-slate-900 bg-white/80 hover:bg-slate-100 rounded-xl border border-slate-200 transition active:scale-95 disabled:opacity-50 cursor-pointer shadow-xs"
         >
           <RefreshCw 
             className={`w-3.5 h-3.5 sm:w-4 sm:h-4 text-slate-600 ${loading ? 'animate-spin text-red-600' : ''}`}
@@ -189,7 +204,7 @@ export default function Navbar({
           <button
             onClick={onLogout}
             title="Sign Out of monipack CRM"
-            className="hidden sm:flex p-1.5 sm:p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-lg border border-slate-200 transition active:scale-95 cursor-pointer shadow-xs"
+            className="hidden sm:flex p-1.5 sm:p-2 text-slate-500 hover:text-red-600 hover:bg-red-50 rounded-xl border border-slate-200 transition active:scale-95 cursor-pointer shadow-xs"
           >
             <LogOut className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>

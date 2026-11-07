@@ -3,6 +3,7 @@ import { roleLabel } from '../auth/roles.js';
 import BrandWordmark from './BrandWordmark';
 import InstallPromptButton from './pwa/InstallPromptButton.jsx';
 import HeaderToggles from './ui/HeaderToggles.jsx';
+import BranchPicker from './ui/BranchPicker.jsx';
 import { navFor } from './layout/navigation.js';
 import { 
   LayoutDashboard, 
@@ -69,236 +70,106 @@ export default function Sidebar({
         key={item.id}
         type="button"
         onClick={() => handleSelectTab(item.id)}
-        className={`group w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-xs font-semibold transition-all duration-150 active:scale-98 cursor-pointer ${
-          isActive
-            ? 'bg-red-50 text-[#CC1A22] font-bold shadow-xs border border-red-200/60'
-            : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100/70'
-        }`}
+        className={`mp-nav-item${isActive ? ' on' : ''}`}
+        title={item.label}
+        aria-current={isActive ? 'page' : undefined}
       >
-        <div className="flex items-center gap-2.5 min-w-0">
-          <Icon className={`w-4 h-4 shrink-0 transition-transform duration-150 ${
-            isActive ? 'text-[#CC1A22] stroke-[2.5] mp-hop' : 'text-slate-400 group-hover:text-slate-700 group-hover:scale-110 stroke-2'
-          }`} key={isActive ? 'on' : 'off'} />
-          <span className="truncate transition-transform duration-200 group-hover:translate-x-0.5">{item.label}</span>
-        </div>
+        <Icon className={`mp-nav-ic${isActive ? ' mp-hop' : ''}`} key={isActive ? 'on' : 'off'} aria-hidden="true" />
+        <span className="mp-nav-label">{item.label}</span>
         {item.badge !== undefined && item.badge > 0 && (
-          <span
-            className={`text-[10px] px-2 py-0.5 rounded-full font-bold font-mono shrink-0 transition-colors ${
-              isActive
-                ? 'bg-red-100 text-[#CC1A22]'
-                : item.highlight
-                ? 'bg-red-50 text-[#CC1A22] border border-red-200/50'
-                : 'bg-slate-100 text-slate-500'
-            }`}
-          >
-            {item.badge}
-          </span>
+          <em className={`mp-nav-ct${item.highlight ? ' hot' : ''}`}>{item.badge}</em>
         )}
       </button>
     );
   };
 
+  const initials = currentUser?.name ? currentUser.name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase() : 'MP';
+
   return (
-    <div 
-      className="w-full h-full flex flex-col bg-white border-r border-surface-silver select-none shrink-0"
-      style={{
-        backgroundColor: 'var(--color-component-bg, #FFFFFF)',
-        borderColor: 'var(--color-surface-silver, #E5E7EB)'
-      }}
-    >
-      {/* 1. Header: Monipack Logo, B2B CRM Badge, & Mobile Close */}
-      <div 
-        className="p-4 border-b border-surface-silver bg-white"
-        style={{ borderColor: 'var(--color-surface-silver, #E5E7EB)' }}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <a 
-              href="/"
-              className="shrink-0 transition-transform hover:scale-105 active:scale-95 block focus:outline-hidden"
-              title="monipack Home"
-            >
-              <img 
-                src="/assets/logo.png" 
-                alt="monipack" 
-                className="w-10 h-10 max-h-[40px] max-w-[40px] aspect-square object-contain drop-shadow-xs"
-                onError={(e) => {
-                  e.target.src = '/assets/logo.svg';
-                }} 
-              />
-            </a>
-
-            <div className="min-w-0">
-              <div className="flex items-center gap-1.5">
-                <span className="font-monipack text-lg tracking-tight text-slate-900 leading-none">
-                  monipack
-                </span>
-                <span 
-                  className="text-[9px] font-black px-1.5 py-0.5 rounded-md bg-red-50 text-[#CC1A22] border border-red-200/60 uppercase tracking-wider"
-                >
-                  CRM
-                </span>
-              </div>
-              <p className="text-[11px] font-medium text-slate-500 truncate">
-                Morooj Nizwa Int. LLC
-              </p>
-            </div>
-          </div>
-
-          {/* Mobile Close Button (< md only) */}
-          {onCloseMobileDrawer && (
-            <button
-              type="button"
-              onClick={onCloseMobileDrawer}
-              className="p-2.5 lg:hidden text-slate-400 hover:text-slate-900 hover:bg-slate-100 rounded-xl transition active:scale-95 cursor-pointer"
-              title="Close Navigation Drawer"
-              aria-label="Close Navigation Drawer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          )}
-        </div>
-
-        {/* Modern Oman Branch Switcher */}
-        <div className="mt-3">
-          <div className="flex items-center justify-between mb-1.5 px-0.5">
-            <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1">
-              <MapPin className="w-3 h-3 text-[#CC1A22]" />
-              <span>Active Oman Branch</span>
-            </label>
-            <span className="text-[9px] font-mono font-bold text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded">
-              {branches.length || 10} Hubs
-            </span>
-          </div>
-          <div className="relative">
-            <select
-              value={selectedBranch}
-              onChange={(e) => handleSelectBranch(e.target.value)}
-              className="w-full appearance-none bg-slate-50 hover:bg-slate-100/80 text-xs font-semibold text-slate-800 rounded-xl pl-3 pr-8 py-2 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-[#CC1A22] transition cursor-pointer shadow-2xs"
-            >
-              <option value="all">All Oman Branches & Reps ({branches.length || 10})</option>
-              {branches.map((b) => (
-                <option key={b.id || b.name} value={b.id || b.name}>
-                  {b.name}{b.city ? ` (${b.city})` : ''}{b.salesman ? ` — Rep: ${b.salesman}` : ''}
-                </option>
-              ))}
-            </select>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400 pointer-events-none absolute right-3 top-1/2 -translate-y-1/2" />
-          </div>
-        </div>
+    <div className="mp-side">
+      {/* Brand */}
+      <div className="mp-side-brand">
+        <a href="/" className="mp-side-logo" title="monipack Home">
+          <img src="/assets/logo.png" alt="monipack" onError={(e) => { e.target.src = '/assets/logo.svg'; }} />
+          <span className="mp-side-name">
+            <b><span className="font-monipack">monipack</span><i>CRM</i></b>
+            <small>Morooj Nizwa Int. LLC</small>
+          </span>
+        </a>
+        {onCloseMobileDrawer && (
+          <button type="button" onClick={onCloseMobileDrawer} className="mp-side-close lg:hidden" title="Close menu" aria-label="Close menu">
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
-      {/* 2. Quick Action Buttons */}
-      <div 
-        className="p-3 grid grid-cols-2 gap-2 border-b border-surface-silver bg-white"
-        style={{ borderColor: 'var(--color-surface-silver, #E5E7EB)' }}
-      >
+      {/* Branch & rep switcher */}
+      <div className="mp-side-ws">
+        <span className="mp-side-h"><MapPin className="w-3 h-3" /> Active branch</span>
+        <BranchPicker variant="dark" value={selectedBranch} onChange={handleSelectBranch} branches={branches} allLabel="All branches & reps" />
+      </div>
+
+      {/* Quick create */}
+      <div className="mp-side-create">
         <button
           type="button"
-          onClick={() => {
-            onNewLead();
-            if (onCloseMobileDrawer) onCloseMobileDrawer();
-          }}
-          className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 bg-[#CC1A22] hover:bg-[#b0161d] text-white text-xs font-bold rounded-xl shadow-xs transition active:scale-95 cursor-pointer"
+          onClick={() => { onNewLead(); if (onCloseMobileDrawer) onCloseMobileDrawer(); }}
+          className="mp-side-new"
+          title="New enquiry"
         >
-          <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+          <Plus className="w-4 h-4" strokeWidth={2.5} />
           <span>New enquiry</span>
         </button>
         <button
           type="button"
-          onClick={() => {
-            onNewQuote();
-            if (onCloseMobileDrawer) onCloseMobileDrawer();
-          }}
-          className="flex items-center justify-center gap-1.5 py-2.5 px-2.5 bg-slate-50 hover:bg-slate-100 text-slate-800 text-xs font-bold rounded-xl border border-slate-200 transition active:scale-95 cursor-pointer shadow-2xs"
+          onClick={() => { onNewQuote(); if (onCloseMobileDrawer) onCloseMobileDrawer(); }}
+          className="mp-side-quote"
+          title="New quote"
         >
-          <FileText className="w-3.5 h-3.5 text-[#CC1A22]" />
-          <span>New Quote</span>
+          <FileText className="w-4 h-4" />
+          <span>New quote</span>
         </button>
       </div>
 
-      {/* 3. Grouped Navigation Menu */}
-      <nav className="flex-1 py-3 px-3 space-y-4 overflow-y-auto">
-        <div className="space-y-1">
-          {mainItems.map(renderNavItem)}
-        </div>
+      {/* Navigation */}
+      <nav className="mp-side-nav" aria-label="Main">
+        <span className="mp-side-h">Workspace</span>
+        {mainItems.map(renderNavItem)}
 
-        {/* Monipack Ecosystem Portals Card */}
-        <div className="pt-1">
-          <div className="bg-slate-50/80 rounded-xl p-2.5 border border-slate-200/70 space-y-1">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1 mb-1 flex items-center gap-1">
-              <span className="font-monipack lowercase text-[11px] tracking-normal text-slate-500">monipack</span>
-              <span>Ecosystem</span>
-            </p>
-            <a
-              href="https://www.monipack.com"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-950 hover:bg-white transition shadow-none hover:shadow-2xs group"
-            >
-              <span className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span><span className="font-monipack lowercase text-[13px]">monipack</span>.com</span>
-              </span>
-              <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-slate-700" />
-            </a>
-            <a
-              href="https://www.shop.monipack.com"
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center justify-between px-2 py-1.5 rounded-lg text-xs font-semibold text-slate-600 hover:text-slate-950 hover:bg-white transition shadow-none hover:shadow-2xs group"
-            >
-              <span className="flex items-center gap-2">
-                <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
-                <span>shop.<span className="font-monipack lowercase text-[13px]">monipack</span>.com</span>
-              </span>
-              <ExternalLink className="w-3 h-3 text-slate-400 group-hover:text-slate-700" />
-            </a>
-          </div>
+        <div className="mp-side-eco">
+          <span className="mp-side-h"><span className="font-monipack">monipack</span> ecosystem</span>
+          <a href="https://www.monipack.com" target="_blank" rel="noreferrer">
+            <i style={{ background: '#22c55e' }} /><span><span className="font-monipack">monipack</span>.com</span><ExternalLink className="w-3 h-3" />
+          </a>
+          <a href="https://www.shop.monipack.com" target="_blank" rel="noreferrer">
+            <i style={{ background: '#3b82f6' }} /><span>shop.<span className="font-monipack">monipack</span>.com</span><ExternalLink className="w-3 h-3" />
+          </a>
         </div>
       </nav>
 
-      {/* 4. Unified Executive User Profile & System Status Footer */}
-      <div 
-        className="p-3 border-t border-surface-silver bg-slate-50/80 shrink-0"
-        style={{ borderColor: 'var(--color-surface-silver, #E5E7EB)' }}
-      >
-        {/* Sound + theme switches (phones and tablets; on PCs they sit in the header) */}
-        <div className="sm:hidden flex items-center gap-2 mb-2.5">
+      {/* Footer */}
+      <div className="mp-side-foot">
+        {/* Sound + theme switches (phones; on bigger screens they sit in the header) */}
+        <div className="sm:hidden flex items-center gap-2 mb-2.5 mp-side-toggles">
           <HeaderToggles labels />
         </div>
 
-        {/* PWA Install Action */}
-        <InstallPromptButton variant="sidebar" className="mb-2.5" />
+        <InstallPromptButton variant="sidebar" className="mb-2.5 mp-side-install" />
 
         {currentUser && (
-          <div className="flex items-center justify-between gap-2.5 mb-2.5">
-            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-red-600 to-rose-700 text-white font-black text-xs flex items-center justify-center shrink-0 shadow-xs tracking-tight">
-                {currentUser.name ? currentUser.name.split(' ').map(n=>n[0]).join('').substring(0,2).toUpperCase() : 'MP'}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p 
-                  className="text-xs font-bold text-slate-900 truncate leading-snug"
-                  title={currentUser.name}
-                >
-                  <BrandWordmark>{currentUser.name || 'monipack user'}</BrandWordmark>
-                </p>
-                <p className="text-[10px] font-semibold text-slate-400 capitalize truncate">
-                  {roleLabel(currentUser.role)}
-                </p>
-              </div>
-            </div>
+          <div className="mp-side-me">
+            <span className="mp-side-av">{initials}</span>
+            <span className="mp-side-me-txt">
+              <b title={currentUser.name}><BrandWordmark>{currentUser.name || 'monipack user'}</BrandWordmark></b>
+              <small>{roleLabel(currentUser.role)}</small>
+            </span>
             {onLogout && (
               <button
                 type="button"
-                onClick={() => {
-                  if (onCloseMobileDrawer) onCloseMobileDrawer();
-                  onLogout();
-                }}
-                className="p-2.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl border border-transparent hover:border-red-200 transition active:scale-95 cursor-pointer shrink-0"
-                title="Sign Out of monipack CRM"
-                aria-label="Sign Out"
+                onClick={() => { if (onCloseMobileDrawer) onCloseMobileDrawer(); onLogout(); }}
+                className="mp-side-out"
+                title="Sign out of monipack CRM"
+                aria-label="Sign out"
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -306,19 +177,9 @@ export default function Sidebar({
           </div>
         )}
 
-        {/* Integrated HQ Status & Hotline */}
-        <div className="pt-2 border-t border-slate-200/60 flex items-center justify-between text-[11px] text-slate-400 font-medium">
-          <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-slate-600 font-semibold">Ghala HQ</span>
-          </span>
-          <a 
-            href="tel:+96879062219" 
-            className="hover:text-red-700 transition font-mono font-semibold"
-            title="Call Monipack HQ"
-          >
-            +968 79062219
-          </a>
+        <div className="mp-side-hq">
+          <span><i /> Ghala HQ</span>
+          <a href="tel:+96879062219" title="Call Monipack HQ">+968 79062219</a>
         </div>
       </div>
     </div>
