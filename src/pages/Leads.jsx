@@ -31,6 +31,7 @@ import {
   Share2,
   Printer
 } from 'lucide-react';
+import { openPrintable, chipsHtml, tableHtml } from '../utils/pdfReport.js';
 import CustomerCareModal from '../components/CustomerCareModal';
 import LeadImportModal from '../components/LeadImportModal';
 import ShareModal from '../components/ShareModal';
@@ -482,7 +483,7 @@ export default function Leads({
                 className="flex items-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg border border-slate-300 shadow-2xs transition active:scale-95 cursor-pointer"
               >
                 <Download className="w-3.5 h-3.5 text-slate-500" />
-                <span className="hidden sm:inline">Export CSV</span>
+                <span className="hidden sm:inline">Export</span>
                 <ChevronDown className="w-3 h-3 text-slate-400 ml-0.5" />
               </button>
 
@@ -523,6 +524,36 @@ export default function Leads({
                     <span className="font-mono text-xs font-bold bg-red-50 text-red-700 px-1.5 py-0.5 rounded">
                       {leads.length}
                     </span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setShowExportMenu(false);
+                      const stageName = (id) => (activeStages.find((st) => st.id === id)?.label || id).replace(/^STEP \d+:\s*/, '');
+                      const open = filteredLeads.filter((l) => !['won', 'lost'].includes(l.status));
+                      const ok = openPrintable({
+                        title: 'Leads',
+                        subtitle: [selectedCategory, selectedBranch, searchQuery && `Search “${searchQuery}”`].filter((x) => x && !/^All/.test(x)).join(' · ') || 'All leads',
+                        bodyHtml: chipsHtml([
+                          ['Leads', filteredLeads.length],
+                          ['Open', open.length],
+                          ['Open pipeline (OMR)', open.reduce((t, l) => t + Number(l.dealValue || 0), 0).toFixed(3)],
+                          ['Won (OMR)', filteredLeads.filter((l) => l.status === 'won').reduce((t, l) => t + Number(l.dealValue || 0), 0).toFixed(3)],
+                        ]) + tableHtml(
+                          [{ label: 'Date' }, { label: 'Customer' }, { label: 'Mobile' }, { label: 'Product' }, { label: 'Quantity' }, { label: 'Salesman' }, { label: 'Stage' }, { label: 'OMR', num: true }],
+                          filteredLeads.map((l) => [new Date(l.date).toLocaleDateString(), l.name, l.mobile ? `${l.countryCode || ''} ${l.mobile}` : l.phone, l.category,
+                            /Needs Intake/.test(l.quantity || '') ? '' : l.quantity, l.salesman, stageName(l.status), l.dealValue ? Number(l.dealValue).toFixed(3) : ''])
+                        ),
+                      });
+                      if (!ok && showToast) showToast('Allow pop-ups to download the PDF', 'error');
+                    }}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-50 text-xs flex items-center justify-between text-slate-700 border-t border-slate-100 transition cursor-pointer"
+                  >
+                    <div>
+                      <span className="font-bold block text-slate-900">PDF report (current view)</span>
+                      <span className="text-[10px] text-slate-400 block">Printable list with totals</span>
+                    </div>
+                    <span className="font-mono text-xs font-bold bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">PDF</span>
                   </button>
                 </div>
               )}

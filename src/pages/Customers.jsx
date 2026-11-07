@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
 import { FILE_LABEL_NAMES, prepareUpload } from '../utils/fileUpload.js';
+import { openPrintable, chipsHtml, tableHtml, kvHtml, esc } from '../utils/pdfReport.js';
 
 const STATUS = {
   pending_approval: { label: 'Needs approval', cls: 'bg-blue-50 text-blue-800 border-blue-200' },
@@ -93,7 +94,7 @@ export default function Customers({ authFetch, showToast, canManage, initialFilt
             <button type="button" className={btnLight} onClick={() => setImporting((v) => !v)}><Upload className="w-4 h-4" /> Import list</button>
             <button type="button" className={btnLight}
               onClick={() => downloadBlob(authFetch, '/api/customers/export', `monipack_customers_${new Date().toISOString().slice(0, 10)}.csv`).catch((e) => showToast(e.message, 'error'))}>
-              <Download className="w-4 h-4" /> Export
+              <Download className="w-4 h-4" /> Excel
             </button>
             {onOpenSettings && (
               <button type="button" className={btnLight} onClick={() => onOpenSettings('settings-links')}><Link2 className="w-4 h-4" /> Salesman links</button>
@@ -212,6 +213,23 @@ function CustomerList({ authFetch, showToast, canManage, initialFilter = {}, sal
 
   const allChecked = shown.length > 0 && shown.every((r) => selected.includes(r.id));
 
+  const exportPdf = () => {
+    const sm = salesmen.find((x) => x.id === salesmanId)?.name;
+    const filters = [STAGE_CHIPS.find(([id]) => id === stage)?.[1], sm || (salesmanId === 'unassigned' ? 'No salesman' : 'All salesmen'),
+      missing ? `Missing ${fieldLabel[missing] || missing}` : '', search ? `Search “${search}”` : ''].filter(Boolean).join(' · ');
+    const ok = openPrintable({
+      title: 'Customers',
+      subtitle: filters,
+      bodyHtml: chipsHtml(STAGE_CHIPS.map(([id, label]) => [label, counts[id] || 0]))
+        + tableHtml(
+          [{ label: 'Customer' }, { label: 'Mobile' }, { label: 'CR' }, { label: 'Salesman' }, { label: 'Status' }, { label: '%', num: true }, { label: 'Still missing' }],
+          shown.map((c) => [c.name, c.mobile, c.noCr ? 'No CR' : c.crNumber, c.salesmanName || 'No salesman', STATUS[c.stage]?.label || c.stage,
+            c.stage === 'not_started' ? '' : `${c.percent}%`, c.stage === 'not_started' ? 'Waiting for salesman' : c.missing.map((k) => fieldLabel[k] || k).join(', ')])
+        ),
+    });
+    if (!ok) showToast('Allow pop-ups to download the PDF', 'error');
+  };
+
   return (
     <div className="space-y-3">
       <div role="tablist" aria-label="Filter by status" className="flex flex-wrap gap-2">
@@ -245,6 +263,7 @@ function CustomerList({ authFetch, showToast, canManage, initialFilter = {}, sal
           <option value="">Missing: any</option>
           {missingCounts.map((m) => <option key={m.key} value={m.key}>Missing {m.label} ({m.count})</option>)}
         </select>
+        <button type="button" className={btnLight} onClick={exportPdf} disabled={!shown.length}><FileText className="w-4 h-4" /> PDF</button>
         {canManage && (
           <button type="button" className={btnRed} onClick={() => setAdding(true)}><Plus className="w-4 h-4" /> Add customer</button>
         )}
@@ -450,22 +469,29 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
     const src = version === 'submitted' && snap
       ? { name: snap.name || c.name, mobile: snap.mobile, crNumber: snap.crNumber, noCr: snap.noCr, noCrReason: snap.noCrReason, vatNumber: snap.vatNumber, data: snap.data || {} }
       : { name: c.name, mobile: c.mobile, crNumber: c.crNumber, noCr: c.noCr, noCrReason: c.noCrReason, vatNumber: c.vatNumber, data: c.data };
-    const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-    const rowsHtml = editFields.map((f) => {
+    const value = (f) => {
       let v = f.key === 'mobile' ? src.mobile : f.key === 'cr_number' ? (src.noCr ? `No CR – ${src.noCrReason}` : src.crNumber) : f.key === 'vat_number' ? src.vatNumber : src.data[f.key];
-      if (Array.isArray(v)) v = v.join(', ');
-      return `<tr><th>${esc(f.label)}</th><td>${esc(v) || '—'}</td></tr>`;
-    }).join('');
-    const imgs = c.files.filter((f) => thumbs[f.id]).map((f) => `<figure><img src="${thumbs[f.id]}"><figcaption>${esc(FILE_LABEL_NAMES[f.label])}</figcaption></figure>`).join('');
-    const w = window.open('', '_blank');
-    if (!w) { showToast('Allow pop-ups to print', 'error'); return; }
-    w.document.write(`<!doctype html><html dir="auto"><head><meta charset="utf-8"><title>${esc(src.name)}</title>
-      <style>@page{size:A4;margin:14mm}body{font-family:Arial,'Cairo',sans-serif;color:#0f172a}h1{margin:0 0 4px}p.m{color:#475569;margin:0 0 16px;font-size:12px}
-      table{width:100%;border-collapse:collapse;font-size:13px}th,td{border:1px solid #e2e8f0;padding:7px 9px;text-align:left;vertical-align:top}th{width:35%;background:#f8fafc}
-      figure{page-break-before:always;margin:0;text-align:center}img{max-width:100%;max-height:250mm}figcaption{font-size:12px;color:#475569;margin-top:6px}</style></head>
-      <body><h1>${esc(src.name)}</h1><p class="m">${version === 'submitted' && snap ? `As submitted by ${esc(snap.submittedBy || c.salesmanName)} on ${esc(fmt(c.submissions[c.submissions.length - 1].submittedAt))}` : `Current details · Salesman: ${esc(c.salesmanName || '—')}`} · Customer #${esc(c.id)}</p>
-      <table>${rowsHtml}</table>${imgs}<script>window.onload=()=>setTimeout(()=>window.print(),300)<\/script></body></html>`);
-    w.document.close();
+      return Array.isArray(v) ? v.join(', ') : v;
+    };
+    const docs = docFields.map((f) => [f.label, c.files.some((x) => x.label === f.docLabel) ? 'Uploaded (attached below)' : 'Missing']);
+    const imgs = c.files.filter((f) => thumbs[f.id]).map((f) => `<figure><img src="${thumbs[f.id]}"><figcaption>${esc(FILE_LABEL_NAMES[f.label])} · ${esc(fmt(f.uploadedAt))}</figcaption></figure>`).join('');
+    const pdfs = c.files.filter((f) => f.mime === 'application/pdf').length;
+    const ok = openPrintable({
+      title: src.name,
+      subtitle: version === 'submitted' && snap
+        ? `As first submitted by ${snap.submittedBy || c.salesmanName} on ${fmt(c.submissions[c.submissions.length - 1].submittedAt)}`
+        : `Customer #${c.id} · Salesman: ${c.salesmanName || '—'} · ${STATUS[c.stage]?.label || c.status} · ${c.percent}% complete`,
+      bodyHtml: (version !== 'submitted' && (c.missing || []).length ? `<p><b>Still missing:</b> ${esc(c.missing.map((k) => fields.find((f) => f.key === k)?.label || k).join(', '))}</p>` : '')
+        + '<h2>Details</h2>' + kvHtml(editFields.map((f) => [f.label, value(f)]))
+        + (docs.length ? '<h2>Documents</h2>' + kvHtml(docs) : '')
+        + (version !== 'submitted' ? '<h2>Enquiries</h2>' + tableHtml([{ label: 'Date' }, { label: 'Product' }, { label: 'Quantity' }, { label: 'Stage' }, { label: 'Salesman' }, { label: 'OMR', num: true }],
+          (c.leads || []).map((l) => [fmt(l.date), l.category, l.quantity, STAGE_NAMES[l.status] || l.status, l.salesman, l.dealValue ? l.dealValue.toFixed(3) : '']))
+          + '<h2>Quotations</h2>' + tableHtml([{ label: 'Date' }, { label: 'Number' }, { label: 'Status' }, { label: 'OMR', num: true }],
+          (c.quotations || []).map((q) => [fmt(q.date), q.number, q.status, q.total.toFixed(3)])) : '')
+        + (pdfs ? `<p class="sub">${pdfs} document(s) were uploaded as PDF files; download them from the customer page.</p>` : '')
+        + imgs,
+    });
+    if (!ok) showToast('Allow pop-ups to download the PDF', 'error');
   };
 
   return (
@@ -530,13 +556,25 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
             </div>
           </section>
         )}
-        {c.reviewNote && <p className="p-3 rounded-2xl bg-blue-50 text-blue-900 text-sm"><AlertTriangle className="w-4 h-4 inline mr-1" />{c.reviewNote}</p>}
-
-        {canManage && c.status === 'pending_approval' && (
-          <button type="button" className={btnRed} onClick={async () => { if (await action(`/api/customers/${c.id}/approve`, 'POST', null, 'Customer approved.')) load(); }}>
-            <CheckCircle2 className="w-4 h-4" /> Approve customer
-          </button>
-        )}
+        {c.status === 'pending_approval' ? (
+          <div className="p-4 rounded-2xl border border-blue-200 bg-blue-50 space-y-3">
+            <p className="text-sm text-blue-950">
+              <AlertTriangle className="w-4 h-4 inline mr-1" />
+              <strong>Needs your approval.</strong> {c.reviewNote || 'Added by the salesman.'}
+            </p>
+            <p className="text-xs text-blue-900">Check the details below. If it is a real, separate customer, approve it. If it is the same shop as an existing customer, archive this one.</p>
+            {canManage ? (
+              <div className="flex flex-wrap gap-2">
+                <button type="button" className={btnRed} onClick={async () => { if (await action(`/api/customers/${c.id}/approve`, 'POST', null, 'Approved. The salesman can continue with this customer.')) load(); }}>
+                  <CheckCircle2 className="w-4 h-4" /> Approve – it's a real customer
+                </button>
+                <button type="button" className={btnLight} onClick={async () => { if (window.confirm(`Archive ${c.name}? Use this when it is a duplicate of an existing customer.`) && await action(`/api/customers/${c.id}`, 'DELETE', null, 'Archived as duplicate.')) onClose(); }}>
+                  <Archive className="w-4 h-4" /> Archive – it's a duplicate
+                </button>
+              </div>
+            ) : <p className="text-xs text-blue-900">Only the super admin can approve.</p>}
+          </div>
+        ) : c.reviewNote ? <p className="p-3 rounded-2xl bg-slate-50 text-slate-700 text-sm">{c.reviewNote}</p> : null}
 
         <section className="grid md:grid-cols-2 gap-4">
           {canManage && <TextInput id="cd-name" label="Customer name" value={name} onChange={setName} />}
@@ -632,9 +670,9 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
         </section>
 
         <section className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
-          <button type="button" className={btnLight} onClick={() => printProfile('current')}><Printer className="w-4 h-4" /> Print profile (current)</button>
+          <button type="button" className={btnLight} onClick={() => printProfile('current')}><FileText className="w-4 h-4" /> Customer PDF (details + documents)</button>
           {c.submissions.length > 0 && (
-            <button type="button" className={btnLight} onClick={() => printProfile('submitted')}><Printer className="w-4 h-4" /> Print as submitted</button>
+            <button type="button" className={btnLight} onClick={() => printProfile('submitted')}><Printer className="w-4 h-4" /> PDF as first submitted</button>
           )}
         </section>
 
