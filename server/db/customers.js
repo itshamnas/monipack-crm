@@ -408,6 +408,13 @@ export async function transferCustomers(ids, toSalesmanId, byUserId) {
       const c = rows[0];
       if (!c || c.salesman_id === toId(toSalesmanId)) continue;
       await client.query('UPDATE customers SET salesman_id = $1, updated_at = now() WHERE id = $2', [toId(toSalesmanId), c.id]);
+      // The customer's open enquiries move with the customer (won / lost ones keep their history)
+      await client.query(
+        `UPDATE leads SET salesman_id = s.id, salesman_name = s.name, updated_at = now()
+         FROM salesmen s WHERE s.id = $1 AND leads.customer_id = $2 AND leads.archived_at IS NULL
+           AND leads.status NOT IN ('won', 'lost')`,
+        [toId(toSalesmanId), c.id]
+      );
       await client.query(
         'INSERT INTO customer_transfers (customer_id, from_salesman_id, to_salesman_id, by_user_id) VALUES ($1,$2,$3,$4)',
         [c.id, c.salesman_id, toId(toSalesmanId), toId(byUserId)]

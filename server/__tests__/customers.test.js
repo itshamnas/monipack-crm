@@ -444,6 +444,15 @@ describe('Customer data collection (salesman links)', () => {
       expect((await request(app).get('/api/data-centre.xlsx').set(auth(t.manager))).status).toBe(403);
     });
 
+    it('moving a customer to another salesman also moves its open enquiries', async () => {
+      const res = await request(app).post('/api/customers/transfer').set(auth(t.super))
+        .send({ ids: [leadA.customerId], toSalesmanId: String(branchSm.id) });
+      expect(res.body.moved).toBe(1);
+      const lead = await request(app).get(`/api/leads/${leadA.id}`).set(auth(t.super));
+      expect(lead.body.salesman).toBe('Salim Al Hadhrami');
+      await request(app).post('/api/customers/transfer').set(auth(t.super)).send({ ids: [leadA.customerId], toSalesmanId: String(routeSm.id) });
+    });
+
     it('lost needs a reason; another salesman cannot touch the lead', async () => {
       const lost = await request(app).post(`/api/link/${hamadLink}/leads/${leadA.id}`).set(linkHdr(hamadSession)).send({ status: 'lost' });
       expect(lost.status).toBe(400);
