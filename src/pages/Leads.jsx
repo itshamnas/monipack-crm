@@ -251,7 +251,7 @@ export default function Leads({
           setDraggedLeadId(null);
           setDragOverStageId(null);
         }}
-        className={`bg-white rounded-xl p-3.5 border border-slate-200 shadow-2xs hover:shadow-md transition-all group relative ${
+        className={`bg-white rounded-3xl p-3.5 border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] hover:shadow-md transition-all group relative ${
           isMobileFocus ? 'w-full' : 'cursor-grab active:cursor-grabbing'
         } ${draggedLeadId === lead.id ? 'opacity-40 scale-95 ring-2 ring-[#CC1A22]' : ''} ${
           activeMenuLeadId === lead.id ? 'z-30' : 'z-10'
@@ -594,7 +594,7 @@ export default function Leads({
       </div>
 
       {/* Filter Bar (Synchronized with Sidebar Active Branch; redundant dropdown removed) */}
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex flex-wrap items-center gap-3">
+      <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] flex flex-wrap items-center gap-3">
         <div className="flex items-center gap-2 text-xs font-bold text-slate-700">
           <Filter className="w-4 h-4 text-[#CC1A22]" />
           <span>Filters:</span>
@@ -734,7 +734,7 @@ export default function Leads({
 
               {/* Active Stage Header & Summary Card for Mobile Focus */}
               {mobileViewStyle === 'focus' && (
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
+                <div className="bg-white p-3.5 rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] flex items-center justify-between">
                   <div>
                     <h3 className="text-xs font-black text-slate-900 uppercase tracking-wider">
                       {focusedStageObj.label}
@@ -872,7 +872,7 @@ export default function Leads({
 
       {/* TABLE LIST VIEW */}
       {viewMode === 'table' && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] overflow-hidden">
           {/* Mobile Card Feed for Table Mode (< md only) */}
           <div className="md:hidden divide-y divide-slate-100">
             {filteredLeads.slice(0, tableLimit).map((lead) => (
@@ -1145,7 +1145,7 @@ export default function Leads({
                 return (
                   <div
                     key={lead.id}
-                    className={`bg-white rounded-xl p-4 border shadow-2xs hover:shadow-md transition-all flex flex-col justify-between ${
+                    className={`bg-white rounded-3xl p-4 border shadow-2xs hover:shadow-md transition-all flex flex-col justify-between ${
                       isNew ? 'border-red-200 ring-1 ring-red-100' : 'border-slate-200'
                     }`}
                   >

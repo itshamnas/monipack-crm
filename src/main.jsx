@@ -4,6 +4,12 @@ import App from './App.jsx';
 import CustomerLink from './pages/CustomerLink.jsx';
 import './index.css';
 import { registerServiceWorker } from './pwa/registerServiceWorker.js';
+import { initTheme } from './utils/theme.js';
+import { installGlobalSounds } from './utils/soundService.js';
+
+// Theme before the first paint (no white flash in dark mode), and one listener for tactile sounds
+initTheme();
+installGlobalSounds();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>

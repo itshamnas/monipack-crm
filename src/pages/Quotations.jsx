@@ -758,7 +758,7 @@ export default function Quotations({
           {activeView === 'list' ? (
             <button
               onClick={() => setActiveView('create')}
-              className="flex items-center gap-1.5 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-sm shadow-red-900/30 transition active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-[#9E0A22] to-[#C8102E] hover:brightness-110 text-white text-xs font-bold rounded-full shadow-sm shadow-red-900/30 transition active:scale-95 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>Create New Quotation</span>
@@ -776,7 +776,7 @@ export default function Quotations({
 
       {/* CREATE VIEW */}
       {activeView === 'create' && (
-        <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 shadow-xs p-6 space-y-6">
+        <form onSubmit={handleSubmit} className="bg-white rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] p-6 space-y-6">
           <div className="border-b border-slate-200 pb-4">
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
               Customer & Document Details
@@ -902,7 +902,7 @@ export default function Quotations({
             {/* Mobile Line Items Cards (< md only) */}
             <div className="md:hidden space-y-3">
               {form.items.map((item, idx) => (
-                <div key={idx} className="bg-white rounded-xl border border-slate-200 p-3.5 space-y-2.5 shadow-2xs">
+                <div key={idx} className="bg-white rounded-3xl border border-slate-200 p-3.5 space-y-2.5 shadow-2xs">
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-xs text-slate-800 bg-slate-100 px-2 py-0.5 rounded">
                       Item #{idx + 1}
@@ -1286,7 +1286,7 @@ export default function Quotations({
             </button>
             <button
               type="submit"
-              className="flex items-center gap-2 px-6 py-2.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-md shadow-red-900/30 transition active:scale-95 cursor-pointer"
+              className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#9E0A22] to-[#C8102E] hover:brightness-110 text-white text-xs font-bold rounded-full shadow-md shadow-red-900/30 transition active:scale-95 cursor-pointer"
             >
               <Check className="w-4 h-4" />
               <span>Save & Preview Quotation</span>
@@ -1297,7 +1297,7 @@ export default function Quotations({
 
       {/* LIST VIEW */}
       {activeView === 'list' && (
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xs overflow-hidden">
+        <div className="bg-white rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] overflow-hidden">
           {/* List Header with Search & Filter Controls */}
           <div className="p-4 border-b border-slate-200 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex items-center gap-2">

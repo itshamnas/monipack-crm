@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, Plus, ChevronRight, X, Camera, FileText, CheckCircle2, AlertCircle, Loader2, Lock, Trash2, RefreshCw, Inbox, Phone, MessageCircle, Users, Briefcase } from 'lucide-react';
 import { getApiUrl } from '../api/config.js';
 import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
+import SlidingTabs from '../components/ui/SlidingTabs.jsx';
 import { prepareUpload } from '../utils/fileUpload.js';
 
 /**
@@ -196,15 +197,11 @@ export default function CustomerLink() {
             ))}
           </div>
         </div>
-        <div role="tablist" aria-label="My work" className="grid grid-cols-2 gap-1 p-1 bg-white border border-slate-200 rounded-full">
-          {[['customers', 'My customers', Users, list.total], ['leads', 'My leads', Briefcase, leadData.leads.filter((x) => !['won', 'lost'].includes(x.status)).length]].map(([id, label, Icon, n]) => (
-            <button key={id} type="button" role="tab" aria-selected={tab === id} onClick={() => setTab(id)}
-              className={`min-h-[44px] rounded-full text-sm font-bold flex items-center justify-center gap-2 transition ${tab === id ? 'bg-slate-900 text-white' : 'text-slate-600'}`}>
-              <Icon className="w-4 h-4" /> {label}
-              <span className={`text-[11px] px-1.5 rounded-full ${tab === id ? 'bg-white/20' : 'bg-slate-100'}`}>{n}</span>
-            </button>
-          ))}
-        </div>
+        <SlidingTabs ariaLabel="My work" value={tab} onChange={setTab} className="w-full [&>button]:flex-1 [&>button]:justify-center [&>button]:min-h-[44px] [&>button]:text-sm"
+          tabs={[
+            { id: 'customers', label: 'My customers', count: list.total },
+            { id: 'leads', label: 'My leads', count: leadData.leads.filter((x) => !['won', 'lost'].includes(x.status)).length },
+          ]} />
         <div className="relative">
           <Search className="w-5 h-5 text-slate-400 absolute left-4 top-1/2 -translate-y-1/2" aria-hidden="true" />
           <label htmlFor="link-search" className="sr-only">Search customers</label>

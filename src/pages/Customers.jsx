@@ -4,6 +4,7 @@ import {
   AlertTriangle, FileText, Printer, ArrowRightLeft, Plus, X, Eye, EyeOff, Archive, Loader2, Lock, Unlock,
 } from 'lucide-react';
 import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
+import SlidingTabs from '../components/ui/SlidingTabs.jsx';
 import { FILE_LABEL_NAMES, prepareUpload } from '../utils/fileUpload.js';
 import { openPrintable, openPendingWindow, chipsHtml, tableHtml, kvHtml, noteHtml, esc } from '../utils/pdfReport.js';
 import { pdfToImages } from '../utils/pdfPages.js';
@@ -293,15 +294,8 @@ function CustomerList({ authFetch, showToast, canManage, initialFilter = {}, sal
 
   return (
     <div className="space-y-3">
-      <div role="tablist" aria-label="Filter by status" className="flex flex-wrap gap-2">
-        {STAGE_CHIPS.map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={stage === id} onClick={() => setStage(id)}
-            className={`min-h-[40px] px-4 rounded-full text-xs font-bold border inline-flex items-center gap-2 transition ${stage === id ? 'bg-slate-900 text-white border-slate-900' : 'bg-white text-slate-700 border-slate-200 hover:border-slate-400'}`}>
-            {label}
-            <span className={`tabular-nums text-[11px] px-1.5 rounded-full ${stage === id ? 'bg-white/20' : id === 'pending_approval' && counts[id] ? 'bg-blue-100 text-blue-800' : 'bg-slate-100'}`}>{counts[id] || 0}</span>
-          </button>
-        ))}
-      </div>
+      <SlidingTabs ariaLabel="Filter by status" value={stage} onChange={setStage}
+        tabs={STAGE_CHIPS.map(([id, label]) => ({ id, label, count: counts[id] || 0, highlight: id === 'pending_approval' }))} />
 
       <div className={`${card} p-3 flex flex-wrap items-center gap-2`}>
         <div className="relative flex-1 min-w-[200px]">
