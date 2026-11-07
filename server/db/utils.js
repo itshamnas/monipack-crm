@@ -157,7 +157,10 @@ export function quotationToApi(row, items = []) {
     customerName: row.customer_name || 'Valued Customer',
     address: row.address || '',
     attn: row.attn || '',
-    date: row.date || '',
+    // DATE columns come back as local-midnight Date objects: keep the calendar day, never shift it through UTC
+    date: row.date instanceof Date
+      ? `${row.date.getFullYear()}-${String(row.date.getMonth() + 1).padStart(2, '0')}-${String(row.date.getDate()).padStart(2, '0')}`
+      : (row.date ? String(row.date).slice(0, 10) : ''),
     validityDays: Number(row.validity_days || 30),
     salesRep: row.sales_rep || '',
     status: row.status || 'sent',

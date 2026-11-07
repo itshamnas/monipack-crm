@@ -993,6 +993,115 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
             </div>
           </div>
 
+          <div className="border-t border-slate-200 pt-6 space-y-3">
+            <div>
+              <h4 className="text-sm font-bold text-slate-900">Printed on every quotation</h4>
+              <p className="text-xs text-slate-500">Leave a field empty to hide it. Bank details appear under the totals so customers can pay.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Address on documents</label>
+              <input
+                type="text"
+                placeholder="e.g. Ghala Industrial Area, Muscat, Sultanate of Oman"
+                value={settings.headquarters || ''}
+                onChange={(e) => setSettings({ ...settings, headquarters: e.target.value })}
+                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:bg-white focus:outline-none focus:border-red-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">P.O. Box / Postal code</label>
+              <input
+                type="text"
+                placeholder="e.g. P.O. Box 123, PC 112"
+                value={settings.poBox || ''}
+                onChange={(e) => setSettings({ ...settings, poBox: e.target.value })}
+                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:bg-white focus:outline-none focus:border-red-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Sales email</label>
+              <input
+                type="text"
+                placeholder="info@monipack.com"
+                value={settings.email || ''}
+                onChange={(e) => setSettings({ ...settings, email: e.target.value })}
+                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:bg-white focus:outline-none focus:border-red-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Website</label>
+              <input
+                type="text"
+                placeholder="www.monipack.com"
+                value={settings.website || ''}
+                onChange={(e) => setSettings({ ...settings, website: e.target.value })}
+                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:bg-white focus:outline-none focus:border-red-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Commercial Registration (CR) No.</label>
+              <input
+                type="text"
+                placeholder="e.g. 1234567"
+                value={settings.crNumber || ''}
+                onChange={(e) => setSettings({ ...settings, crNumber: e.target.value })}
+                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:bg-white focus:outline-none focus:border-red-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">VAT Registration No. (VATIN)</label>
+              <input
+                type="text"
+                placeholder="e.g. OM1100012345"
+                value={settings.vatNumber || ''}
+                onChange={(e) => setSettings({ ...settings, vatNumber: e.target.value })}
+                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:bg-white focus:outline-none focus:border-red-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Bank name</label>
+              <input
+                type="text"
+                placeholder="e.g. Bank Muscat"
+                value={settings.bankName || ''}
+                onChange={(e) => setSettings({ ...settings, bankName: e.target.value })}
+                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:bg-white focus:outline-none focus:border-red-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Account name</label>
+              <input
+                type="text"
+                placeholder="Morooj Nizwa International LLC"
+                value={settings.bankAccountName || ''}
+                onChange={(e) => setSettings({ ...settings, bankAccountName: e.target.value })}
+                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:bg-white focus:outline-none focus:border-red-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">Account number</label>
+              <input
+                type="text"
+                placeholder=""
+                value={settings.bankAccountNumber || ''}
+                onChange={(e) => setSettings({ ...settings, bankAccountNumber: e.target.value })}
+                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:bg-white focus:outline-none focus:border-red-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-700 mb-1">IBAN</label>
+              <input
+                type="text"
+                placeholder="OM.."
+                value={settings.iban || ''}
+                onChange={(e) => setSettings({ ...settings, iban: e.target.value })}
+                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg p-2.5 focus:bg-white focus:outline-none focus:border-red-500"
+              />
+            </div>
+            </div>
+          </div>
+
           <div className="border-t border-slate-200 pt-6 space-y-4">
             <div className="flex items-center justify-between">
               <div>

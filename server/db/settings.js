@@ -11,6 +11,14 @@ const DEFAULT_SETTINGS = {
   email: 'info@monipack.com',
   supportEmail: 'customersupport@monipack.com',
   headquarters: 'Ghala, Muscat, Sultanate of Oman',
+  // Printed on quotations when filled in (Settings → Staff & system → Company)
+  crNumber: '',
+  vatNumber: '',
+  poBox: '',
+  bankName: '',
+  bankAccountName: '',
+  bankAccountNumber: '',
+  iban: '',
   currency: 'OMR',
   quoteValidityDays: 30,
   exportRestrictedRole: 'admin',
@@ -33,7 +41,7 @@ export async function getSettings() {
     );
     return { ...DEFAULT_SETTINGS };
   }
-  const settings = rows[0].value;
+  const settings = { ...DEFAULT_SETTINGS, ...rows[0].value };
   // Ensure defaultTerms exists
   if (!settings.defaultTerms || !Array.isArray(settings.defaultTerms)) {
     settings.defaultTerms = DEFAULT_SETTINGS.defaultTerms;
