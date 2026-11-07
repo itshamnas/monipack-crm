@@ -267,7 +267,7 @@ function CatalogQuickPickerModal({ isOpen, onClose, products, categories, onAddP
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
+    <div className="fixed inset-0 z-50 mp-overlay bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4">
       <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl max-h-[92vh] sm:max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
         
         {/* Header */}
@@ -1356,7 +1356,7 @@ export default function Quotations({
           </div>
 
           {/* Mobile Quotation Cards Feed (< md only) */}
-          <div className="lg:hidden divide-y divide-slate-100">
+          <div className="mp-stagger lg:hidden divide-y divide-slate-100">
             {filteredQuotations.length > 0 ? (
               filteredQuotations.map((q) => (
                 <div key={q.id} className="p-4 space-y-2.5 hover:bg-slate-50 transition-colors">
@@ -1436,7 +1436,7 @@ export default function Quotations({
                   <th className="py-3 px-4 font-bold text-center">Print / View</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 font-medium">
+              <tbody className="mp-stagger divide-y divide-slate-100 font-medium">
                 {filteredQuotations.length > 0 ? (
                   filteredQuotations.map((q) => (
                     <tr key={q.id} className="hover:bg-slate-50/80 transition-colors">

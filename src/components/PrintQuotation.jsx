@@ -266,7 +266,7 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
 
   return createPortal(
     <div 
-      className="quotation-modal-overlay fixed inset-0 z-50 bg-slate-950 sm:bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-start overflow-y-auto p-2 sm:p-4 md:p-6 pb-20 sm:pb-8"
+      className="quotation-modal-overlay fixed inset-0 z-50 mp-overlay bg-slate-950 sm:bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-start overflow-y-auto p-2 sm:p-4 md:p-6 pb-20 sm:pb-8"
       onClick={(e) => {
         if (e.target === e.currentTarget && !isEditingTerms) {
           onClose();

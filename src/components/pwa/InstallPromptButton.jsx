@@ -93,7 +93,7 @@ export default function InstallPromptButton({ variant = 'sidebar', className = '
         </button>
 
         {showIOSGuide && (
-          <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 mp-overlay bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
             <div className="bg-white rounded-2xl max-w-sm w-full p-5 text-slate-800 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
               <div className="flex items-center gap-2 mb-3 text-red-600 font-bold text-base">
                 <Share className="w-5 h-5" />
@@ -135,7 +135,7 @@ export default function InstallPromptButton({ variant = 'sidebar', className = '
       </button>
 
       {showIOSGuide && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-50 mp-overlay bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl max-w-sm w-full p-5 text-slate-800 shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
             <div className="flex items-center gap-2 mb-3 text-red-600 font-bold text-base">
               <Share className="w-5 h-5" />

@@ -1,3 +1,4 @@
+import CountUp from '../components/ui/CountUp.jsx';
 import React, { useEffect, useMemo, useState } from 'react';
 import { openPrintable, chipsHtml, tableHtml } from '../utils/pdfReport.js';
 import {
@@ -24,7 +25,7 @@ function Bar({ value }) {
   return (
     <span className="inline-flex items-center gap-2">
       <span className="w-20 h-1.5 rounded-full bg-slate-100 overflow-hidden" aria-hidden="true">
-        <span className={`block h-1.5 rounded-full ${color}`} style={{ width: `${v}%` }} />
+        <span className={`block h-1.5 rounded-full mp-bar ${color}`} style={{ width: `${v}%` }} />
       </span>
       <span className="text-xs font-bold tabular-nums">{v}%</span>
     </span>
@@ -143,7 +144,7 @@ export default function Home({ authFetch, leads = [], quotations = [], currentUs
         </div>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3 mp-stagger">
         {[
           ['Customers', t ? t.total : '…', () => onOpenCustomers({})],
           ['Customer data complete', t ? `${t.percentComplete ?? 0}%` : '…', () => onOpenCustomers({})],
@@ -151,9 +152,9 @@ export default function Home({ authFetch, leads = [], quotations = [], currentUs
           ['Open pipeline', omr(stats.pipeline), () => onNavigate('leads')],
           ['Won this month', omr(stats.wonMonth), () => onNavigate('leads')],
         ].map(([label, value, go]) => (
-          <button key={label} type="button" onClick={go} className={`${card} p-4 text-left hover:border-slate-400 transition`}>
+          <button key={label} type="button" onClick={go} className={`${card} p-4 text-left hover:border-slate-400 mp-lift`}>
             <span className="block text-[11px] font-bold uppercase tracking-wider text-slate-500">{label}</span>
-            <span className="block mt-1 text-xl font-extrabold tabular-nums truncate">{value}</span>
+            <span className="block mt-1 text-xl font-extrabold tabular-nums truncate"><CountUp value={value} /></span>
           </button>
         ))}
       </div>
@@ -166,7 +167,7 @@ export default function Home({ authFetch, leads = [], quotations = [], currentUs
         {todo.length === 0 ? (
           <p className="px-5 py-6 text-sm text-slate-600 flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-emerald-600" /> All clear. Nothing is waiting for you.</p>
         ) : (
-          <ul className="divide-y divide-slate-100">
+          <ul className="mp-stagger divide-y divide-slate-100">
             {todo.map(({ n, icon: Icon, text, sub, go }) => (
               <li key={text}>
                 <button type="button" onClick={go} className="w-full px-5 py-3.5 flex items-center gap-4 text-left hover:bg-slate-50 transition">
@@ -197,7 +198,7 @@ export default function Home({ authFetch, leads = [], quotations = [], currentUs
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="mp-stagger divide-y divide-slate-100">
               {rows.length === 0 && <tr><td colSpan={8} className="px-4 py-6 text-center text-slate-500">No salesman activity yet.</td></tr>}
               {rows.map((r) => (
                 <tr key={r.id} className="hover:bg-slate-50">

@@ -1,3 +1,4 @@
+import CountUp from '../components/ui/CountUp.jsx';
 import React, { useState, useMemo } from 'react';
 import { 
   Users, 
@@ -230,14 +231,14 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
       </div>
 
       {/* KPI Cards (2x2 on mobile, 4-cols on lg) */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mp-stagger">
         {cards.map((card, idx) => {
           const Icon = card.icon;
           return (
             <div
               key={idx}
               onClick={card.action}
-              className="bg-white rounded-3xl p-3.5 sm:p-5 border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] hover:shadow-md hover:border-slate-300 transition-all cursor-pointer group flex flex-col justify-between"
+              className="bg-white rounded-3xl p-3.5 sm:p-5 border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] hover:border-slate-300 mp-lift cursor-pointer group flex flex-col justify-between"
             >
               <div className="flex items-center justify-between">
                 <span className="text-[10px] sm:text-xs font-semibold text-slate-500 uppercase tracking-wider truncate mr-1">
@@ -249,7 +250,7 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
               </div>
               <div className="mt-2 sm:mt-3">
                 <p className="text-[13px] sm:text-xl lg:text-2xl font-black font-mono text-slate-900 tracking-tight group-hover:text-red-600 transition-colors">
-                  {card.value}
+                  <CountUp value={card.value} />
                 </p>
                 <p className="text-[10px] sm:text-xs text-slate-500 mt-0.5 sm:mt-1 truncate">
                   {card.subtext}
@@ -335,7 +336,7 @@ export default function Dashboard({ stats, onNavigate, onSelectCategory, onSelec
                   </div>
                   <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
                     <div
-                      className={`h-full rounded-full ${barColor}`}
+                      className={`h-full rounded-full mp-bar ${barColor}`}
                       style={{ width: `${pct}%` }}
                     ></div>
                   </div>

@@ -77,9 +77,9 @@ export default function Sidebar({
       >
         <div className="flex items-center gap-2.5 min-w-0">
           <Icon className={`w-4 h-4 shrink-0 transition-transform duration-150 ${
-            isActive ? 'text-[#CC1A22] stroke-[2.5]' : 'text-slate-400 group-hover:text-slate-700 stroke-2'
-          }`} />
-          <span className="truncate">{item.label}</span>
+            isActive ? 'text-[#CC1A22] stroke-[2.5] mp-hop' : 'text-slate-400 group-hover:text-slate-700 group-hover:scale-110 stroke-2'
+          }`} key={isActive ? 'on' : 'off'} />
+          <span className="truncate transition-transform duration-200 group-hover:translate-x-0.5">{item.label}</span>
         </div>
         {item.badge !== undefined && item.badge > 0 && (
           <span
