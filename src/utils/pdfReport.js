@@ -77,6 +77,13 @@ const STYLE = `
   .chip { border: 1px solid #e2e8f0; border-radius: 8px; padding: 7px 10px; font-size: 9.5px; color: #64748b; text-transform: uppercase; letter-spacing: .05em; }
   .chip b { display: block; font-size: 15px; color: #0f172a; letter-spacing: 0; text-transform: none; margin-top: 2px; }
   .note { padding: 8px 10px; border-left: 3px solid #CC1A22; background: #fef2f2; margin: 8px 0; }
+  .docpage { page-break-before: always; break-before: page; page-break-inside: avoid; break-inside: avoid; }
+  .dochead { display: flex; justify-content: space-between; gap: 12px; align-items: baseline; border: 1px solid #e2e8f0; border-left: 4px solid #CC1A22; border-radius: 6px; padding: 7px 10px; margin-bottom: 10px; background: #f8fafc; }
+  .dochead b { font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+  .dochead span { color: #475569; font-size: 10.5px; }
+  .dochead .match { color: #0f172a; font-weight: 700; }
+  .docimg { text-align: center; }
+  .docimg img { max-width: 100%; max-height: 168mm; object-fit: contain; border: 1px solid #e2e8f0; }
   figure { page-break-before: always; margin: 0; text-align: center; }
   figure img { max-width: 100%; max-height: 225mm; }
   figcaption { color: #475569; margin-top: 6px; }
