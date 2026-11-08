@@ -3,7 +3,7 @@
 set -euo pipefail
 export PATH=/opt/node22/bin:$PATH
 cd /opt/monipack-crm
-sudo -u postgres pg_dump monipack | gzip > /var/lib/monipack/backups/before-update-$(date +%F-%H%M).sql.gz
+sudo -u postgres pg_dump monipack_crm | gzip > /var/lib/monipack-crm/backups/before-update-$(date +%F-%H%M).sql.gz
 git pull --ff-only origin main
 npm ci --no-audit --no-fund
 npm run build
