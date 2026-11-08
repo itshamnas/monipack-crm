@@ -1224,7 +1224,7 @@ if (fs.existsSync(distPath)) {
 // Bind to 0.0.0.0 so localhost (IPv6 ::1 and IPv4 127.0.0.1) and LAN all work reliably
 let server = null;
 if (process.env.NODE_ENV !== 'test') {
-  server = app.listen(PORT, '0.0.0.0', () => {
+  server = app.listen(PORT, process.env.HOST || '0.0.0.0', () => {
     console.log(`===============================================`);
     console.log(` Monipack CRM Server ACTIVE on port ${PORT}`);
     console.log(` Morooj Nizwa International LLC`);
