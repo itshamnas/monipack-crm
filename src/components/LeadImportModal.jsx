@@ -490,13 +490,13 @@ export default function LeadImportModal({
                         <td className="py-2 px-3 font-mono text-[11px]">
                           <span className="text-slate-900 font-semibold">{item.phone || item.mobile || 'No Phone'}</span>
                           {item.phoneValid && (
-                            <span className="ml-1 text-[9px] text-emerald-600 font-bold">✓ OM</span>
+                            <span className="ml-1 text-[11px] text-emerald-600 font-semibold inline-flex items-center gap-0.5"><Check className="w-3 h-3" aria-hidden="true" />Oman</span>
                           )}
                         </td>
                         <td className="py-2 px-3">
                           {item.customerLocation === 'Needs Intake' ? (
                             <span className="px-2 py-0.5 bg-amber-50 text-amber-800 border border-amber-200 rounded text-[10px] font-bold">
-                              📍 Needs Intake
+                              Not asked yet
                             </span>
                           ) : (
                             <span className="text-slate-700 font-medium">{item.customerLocation}</span>
@@ -505,7 +505,7 @@ export default function LeadImportModal({
                         <td className="py-2 px-3">
                           {item.quantity === 'Needs Intake' ? (
                             <span className="px-2 py-0.5 bg-blue-50 text-blue-800 border border-blue-200 rounded text-[10px] font-bold">
-                              📦 Needs Intake
+                              Not asked yet
                             </span>
                           ) : (
                             <span className="text-slate-700 font-medium">{item.quantity}</span>

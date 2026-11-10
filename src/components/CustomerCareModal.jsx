@@ -496,7 +496,7 @@ export default function CustomerCareModal({
                       onClick={() => handleLocationChange(w)}
                       className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition cursor-pointer"
                     >
-                      📍 {w}
+                      <MapPin className="inline w-3 h-3 -mt-0.5 mr-0.5" aria-hidden="true" />{w}
                     </button>
                   ))}
                 </div>

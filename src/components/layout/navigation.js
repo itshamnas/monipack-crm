@@ -1,38 +1,55 @@
-// One place that defines the simplified menu: Home · Customers · Leads · Quotations · Settings.
-// Each main item can hold several pages, shown as tabs at the top of the page.
+// One place that defines the menu:
+// Home · Inbox · Pipeline · Customers · Quotations · Tasks · Settings
+// Inbox = new enquiries to call; Pipeline = deals in progress.
+// Settings pages are grouped (Team / Catalogue / Company / Security) and shown as two rows of tabs.
 
 const has = (user, perm) => !perm || Boolean(user?.permissions?.includes(perm));
 const allowed = (user, item) => has(user, item.perm) && (!item.role || user?.role === item.role);
 
 export const NAV_SECTIONS = [
   { id: 'home', label: 'Home', pages: [
-    { id: 'dashboard', label: 'Home' },
-    { id: 'analytics', label: 'Charts' },
+    { id: 'dashboard', label: 'Overview' },
+    { id: 'analytics', label: 'Reports' },
+  ] },
+  { id: 'inbox', label: 'Inbox', pages: [
+    { id: 'customercare', label: 'Inbox' },
+  ] },
+  { id: 'leads', label: 'Pipeline', pages: [
+    { id: 'leads', label: 'Pipeline' },
   ] },
   { id: 'customers', label: 'Customers', perm: 'customers.view', pages: [
     { id: 'customers', label: 'Customers', perm: 'customers.view' },
   ] },
-  { id: 'leads', label: 'Leads', pages: [
-    { id: 'leads', label: 'Pipeline' },
-    { id: 'customercare', label: 'New enquiries (call queue)' },
+  { id: 'quotations', label: 'Quotations', pages: [
+    { id: 'quotations', label: 'Quotations' },
   ] },
   { id: 'tasks', label: 'Tasks', perm: 'tasks.use', pages: [
     { id: 'tasks', label: 'Tasks', perm: 'tasks.use' },
   ] },
-  { id: 'quotations', label: 'Quotations', pages: [
-    { id: 'quotations', label: 'Quotations' },
-  ] },
   { id: 'settings', label: 'Settings', pages: [
-    { id: 'settings-links', label: 'Salesmen & links', perm: 'customers.manage' },
-    { id: 'settings-fields', label: 'Customer form', perm: 'customers.manage' },
-    { id: 'products', label: 'Products' },
-    { id: 'branches', label: 'Branches' },
-    { id: 'settings-targets', label: 'Sales targets', perm: 'settings.manage' },
-    { id: 'settings', label: 'Staff & system', perm: 'settings.manage' },
-    { id: 'settings-cleanup', label: 'Data cleanup', role: 'super_admin' },
-    { id: 'settings-vault', label: 'Audit vault', role: 'super_admin' },
+    { id: 'settings-links', group: 'Team', label: 'Salesmen & links', perm: 'customers.manage' },
+    { id: 'settings-staff', group: 'Team', label: 'Staff logins', perm: 'settings.manage' },
+    { id: 'settings-targets', group: 'Team', label: 'Sales targets', perm: 'settings.manage' },
+    { id: 'products', group: 'Catalogue', label: 'Products' },
+    { id: 'settings-catalogue', group: 'Catalogue', label: 'Categories', perm: 'settings.manage' },
+    { id: 'settings-fields', group: 'Catalogue', label: 'Customer form', perm: 'customers.manage' },
+    { id: 'branches', group: 'Company', label: 'Branches' },
+    { id: 'settings-stages', group: 'Company', label: 'Pipeline stages', perm: 'settings.manage' },
+    { id: 'settings', group: 'Company', label: 'Company details', perm: 'settings.manage' },
+    { id: 'settings-security', group: 'Security', label: 'Security & audit', perm: 'settings.manage' },
+    { id: 'settings-vault', group: 'Security', label: 'Audit vault', role: 'super_admin' },
+    { id: 'settings-cleanup', group: 'Security', label: 'Data cleanup', role: 'super_admin' },
   ] },
 ];
+
+/** Settings pages that are parts of the big Settings screen: page id -> its inner tab */
+export const SETTINGS_SUBPAGES = {
+  'settings-staff': 'users',
+  'settings-catalogue': 'categories',
+  'settings-stages': 'stages',
+  settings: 'company',
+  'settings-security': 'audit',
+};
 
 /** Sections and pages this user may open */
 export function navFor(user) {

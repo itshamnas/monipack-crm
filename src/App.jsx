@@ -26,7 +26,7 @@ import { celebrate } from './utils/celebrate.js';
 import Customers, { SalesmanLinksPage, CustomerFieldsPage } from './pages/Customers.jsx';
 import Home from './pages/Home.jsx';
 import SectionTabs from './components/layout/SectionTabs.jsx';
-import { sectionOf } from './components/layout/navigation.js';
+import { SETTINGS_SUBPAGES, sectionOf } from './components/layout/navigation.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import MobileBottomNav from './components/layout/MobileBottomNav.jsx';
 import OfflineBanner from './components/pwa/OfflineBanner.jsx';
@@ -276,7 +276,7 @@ export default function App() {
   // Security guard: only users allowed to manage settings can open the Settings page.
   // (Must stay above the early returns below - React hooks cannot run conditionally.)
   useEffect(() => {
-    if (activeTab === 'settings' && currentUser && !currentUser.permissions?.includes('settings.manage')) {
+    if (SETTINGS_SUBPAGES[activeTab] && currentUser && !currentUser.permissions?.includes('settings.manage')) {
       setActiveTab('dashboard');
     }
     if (activeTab === 'customers' && currentUser && !currentUser.permissions?.includes('customers.view')) {
@@ -615,53 +615,25 @@ export default function App() {
 
   // Page Title mapping (with responsive shortTitle for mobile viewports)
   const titles = {
-    analytics: { title: 'Charts', shortTitle: 'Charts', subtitle: 'Pipeline funnel, categories and branches' },
-    'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: 'Each salesman\'s secret link, type and PIN' },
+    dashboard: { title: 'Home', shortTitle: 'Home', subtitle: 'What needs attention today' },
+    analytics: { title: 'Reports', shortTitle: 'Reports', subtitle: 'Pipeline funnel, categories and branches' },
+    customercare: { title: 'Inbox', shortTitle: 'Inbox', subtitle: 'New enquiries to call, understand and assign' },
+    leads: { title: 'Pipeline', shortTitle: 'Pipeline', subtitle: 'Deals in progress: quotations, follow-ups, samples, won and lost' },
+    customers: { title: 'Customers', shortTitle: 'Customers', subtitle: 'Every customer, enquiry, quotation and document in one place' },
+    quotations: { title: 'Quotations', shortTitle: 'Quotations', subtitle: 'Create, send and track price quotations' },
     tasks: { title: 'Tasks', shortTitle: 'Tasks', subtitle: 'To-dos for you and the team' },
+    'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: "Each salesman's secret link, type and PIN" },
+    'settings-staff': { title: 'Staff logins', shortTitle: 'Staff', subtitle: 'Who can sign in, their role and password' },
     'settings-targets': { title: 'Sales targets', shortTitle: 'Targets', subtitle: 'Monthly OMR target for each salesman' },
+    products: { title: 'Products', shortTitle: 'Products', subtitle: 'Product catalogue used in quotations' },
+    'settings-catalogue': { title: 'Categories', shortTitle: 'Categories', subtitle: 'Product categories used across enquiries and the catalogue' },
+    'settings-fields': { title: 'Customer form', shortTitle: 'Customer form', subtitle: 'Fields salesmen fill in, required fields and dropdown choices' },
+    branches: { title: 'Branches', shortTitle: 'Branches', subtitle: 'Branches, hubs and their default salesman' },
+    'settings-stages': { title: 'Pipeline stages', shortTitle: 'Stages', subtitle: 'The steps a deal moves through' },
+    settings: { title: 'Company details', shortTitle: 'Company', subtitle: 'Legal name, CR, VAT and document defaults' },
+    'settings-security': { title: 'Security & audit', shortTitle: 'Security', subtitle: '2-step login, backups, audit trail and data reset' },
     'settings-vault': { title: 'Audit vault', shortTitle: 'Vault', subtitle: 'Super admin only: everything everyone did, locked with a second password' },
     'settings-cleanup': { title: 'Data cleanup', shortTitle: 'Cleanup', subtitle: 'Super admin only: delete test or old data before going live' },
-    'settings-fields': { title: 'Customer form', shortTitle: 'Customer form', subtitle: 'Fields salesmen fill in, required fields and dropdown choices' },
-    customers: {
-      title: 'Customer Data Centre',
-      shortTitle: 'Customers',
-      subtitle: 'Every customer, enquiry, quotation and document in one place'
-    },
-    dashboard: { 
-      title: 'Home', 
-      shortTitle: 'Home', 
-      subtitle: 'What needs attention today' 
-    },
-    customercare: { 
-      title: 'Customer Care & Inbound Intake Desk', 
-      shortTitle: 'Customer Care', 
-      subtitle: 'Step 1 & 2: Call incoming leads, understand requirements & assign to Oman branches' 
-    },
-    leads: { 
-      title: 'Commercial Sales Pipeline', 
-      shortTitle: 'Sales Pipeline', 
-      subtitle: 'Step 3 to 5: Track quotations, follow-ups, samples, and conversions' 
-    },
-    quotations: { 
-      title: 'Quotation Management System', 
-      shortTitle: 'Quotations', 
-      subtitle: 'Generate, track, and print official monipack OMR price quotes' 
-    },
-    products: { 
-      title: 'Multi-Brand Product Catalog', 
-      shortTitle: 'Catalog', 
-      subtitle: 'Packaging, monipack, moniclean, monifood, and Kohe product specifications' 
-    },
-    branches: { 
-      title: 'Oman Branches & Hubs', 
-      shortTitle: 'Branches', 
-      subtitle: 'Regional coverage, warehouses, and client distribution points' 
-    },
-    settings: { 
-      title: 'Super Admin Control Panel', 
-      shortTitle: 'Settings', 
-      subtitle: 'User accounts, company legal details, audit logs, and backups' 
-    },
   };
 
   return (
@@ -891,11 +863,13 @@ export default function App() {
           <div className="p-3 sm:p-6 lg:p-8 max-w-5xl mx-auto pb-24 md:pb-8"><DataCleanup authFetch={authFetch} showToast={showToast} onDone={fetchData} /></div>
         )}
 
-        {activeTab === 'settings' && currentUser?.role === 'super_admin' && (
+        {activeTab === 'settings-security' && currentUser?.role === 'super_admin' && (
           <div className="px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6 max-w-7xl mx-auto"><SecurityCard authFetch={authFetch} showToast={showToast} /></div>
         )}
-        {activeTab === 'settings' && can('settings.manage') && (
+        {SETTINGS_SUBPAGES[activeTab] && can('settings.manage') && (
           <Settings
+            key={activeTab}
+            page={SETTINGS_SUBPAGES[activeTab]}
             authFetch={authFetch}
             showToast={showToast}
             currentUser={currentUser}
