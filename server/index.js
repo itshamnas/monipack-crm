@@ -28,6 +28,7 @@ import {
 import { registerCustomerRoutes } from './customers/routes.js';
 import { registerCleanupRoutes } from './admin/cleanup.js';
 import { registerTaskRoutes } from './tasks/tasks.js';
+import { recordMiddleware, registerVaultRoutes } from './audit/vault.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -112,6 +113,9 @@ const LARGE_BODY_ROUTES = [
 const smallJsonParser = express.json({ limit: '1mb' });
 app.use((req, res, next) => (LARGE_BODY_ROUTES.some((re) => re.test(req.path)) ? next() : smallJsonParser(req, res, next)));
 const largeJsonParser = express.json({ limit: '40mb' }); // a 10 MB PDF + its page images, as base64
+
+// Audit vault: record every change and sensitive download (after the response, never blocks it)
+app.use(recordMiddleware);
 
 // Wrap async route handlers - uncaught errors go to the central error handler
 const asyncHandler = (fn) => (req, res, next) => {
@@ -1174,6 +1178,7 @@ app.delete('/api/settings/branches/:id', authMiddleware, requirePermission('sett
 registerCustomerRoutes(app, { authMiddleware, requirePermission, asyncHandler, largeJsonParser, JWT_SECRET, db });
 registerCleanupRoutes(app, { authMiddleware, asyncHandler, db });
 registerTaskRoutes(app, { authMiddleware, requirePermission, asyncHandler, db });
+registerVaultRoutes(app, { authMiddleware, asyncHandler, JWT_SECRET });
 
 // ---- Central Error Handlers ----
 
