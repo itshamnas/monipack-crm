@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { roleLabel } from '../auth/roles.js';
 import BrandWordmark from './BrandWordmark';
 import InstallPromptButton from './pwa/InstallPromptButton.jsx';
@@ -85,6 +85,19 @@ export default function Sidebar({
     );
   };
 
+  // One highlight that glides to the active menu item
+  const navRef = useRef(null);
+  const [glide, setGlide] = useState(null);
+  useLayoutEffect(() => {
+    const place = () => {
+      const on = navRef.current?.querySelector('.mp-nav-item.on');
+      setGlide(on ? { top: on.offsetTop, height: on.offsetHeight } : null);
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+  }, [activeTab]);
+
   const initials = currentUser?.name ? currentUser.name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase() : 'MP';
 
   return (
@@ -134,7 +147,8 @@ export default function Sidebar({
       </div>
 
       {/* Navigation */}
-      <nav className="mp-side-nav" aria-label="Main">
+      <nav ref={navRef} className={`mp-side-nav${glide ? ' has-glider' : ''}`} aria-label="Main">
+        {glide && <span className="mp-nav-glider" style={{ top: glide.top, height: glide.height }} aria-hidden="true" />}
         <span className="mp-side-h">Workspace</span>
         {mainItems.map(renderNavItem)}
 

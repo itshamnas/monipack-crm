@@ -6,10 +6,12 @@ import './index.css';
 import { registerServiceWorker } from './pwa/registerServiceWorker.js';
 import { initTheme } from './utils/theme.js';
 import { installGlobalSounds } from './utils/soundService.js';
+import { installRipples } from './utils/ripple.js';
 
 // Theme before the first paint (no white flash in dark mode), and one listener for tactile sounds
 initTheme();
 installGlobalSounds();
+installRipples();
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
