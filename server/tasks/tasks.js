@@ -197,12 +197,12 @@ export async function assignees(user) {
     return [{ kind: 'user', id: String(user.id), name: user.name, role: user.role, me: true }];
   }
   const [{ rows: users }, { rows: sms }] = await Promise.all([
-    query("SELECT id, name, role FROM users WHERE archived_at IS NULL AND is_active = true ORDER BY CASE role WHEN 'super_admin' THEN 0 WHEN 'manager' THEN 1 WHEN 'customer_care' THEN 2 ELSE 3 END, name"),
-    query('SELECT id, name, link_enabled FROM salesmen WHERE archived_at IS NULL ORDER BY name'),
+    query("SELECT id, name, role, photo_key FROM users WHERE archived_at IS NULL AND is_active = true ORDER BY CASE role WHEN 'super_admin' THEN 0 WHEN 'manager' THEN 1 WHEN 'customer_care' THEN 2 ELSE 3 END, name"),
+    query('SELECT id, name, link_enabled, photo_key FROM salesmen WHERE archived_at IS NULL ORDER BY name'),
   ]);
   return [
-    ...users.map((u) => ({ kind: 'user', id: String(u.id), name: u.name, role: u.role, me: String(u.id) === String(user.id) })),
-    ...sms.map((s) => ({ kind: 'salesman', id: String(s.id), name: s.name, role: 'salesman_link', linkOn: Boolean(s.link_enabled) })),
+    ...users.map((u) => ({ kind: 'user', id: String(u.id), name: u.name, role: u.role, me: String(u.id) === String(user.id), photoUrl: u.photo_key ? `/api/photos/${u.photo_key}` : null })),
+    ...sms.map((s) => ({ kind: 'salesman', id: String(s.id), name: s.name, role: 'salesman_link', linkOn: Boolean(s.link_enabled), photoUrl: s.photo_key ? `/api/photos/${s.photo_key}` : null })),
   ];
 }
 

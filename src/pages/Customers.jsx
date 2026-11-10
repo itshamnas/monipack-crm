@@ -5,6 +5,10 @@ import {
 } from 'lucide-react';
 import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
 import SlidingTabs from '../components/ui/SlidingTabs.jsx';
+import Avatar from '../components/ui/Avatar.jsx';
+import PhotoPicker from '../components/ui/PhotoPicker.jsx';
+import BranchTypeBadge from '../components/ui/BranchTypeBadge.jsx';
+import { sendPhoto } from '../utils/photo.js';
 import { FILE_LABEL_NAMES, prepareUpload } from '../utils/fileUpload.js';
 import { openPrintable, openPendingWindow, chipsHtml, tableHtml, kvHtml, noteHtml, esc } from '../utils/pdfReport.js';
 import { pdfToImages } from '../utils/pdfPages.js';
@@ -980,6 +984,48 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged, canDelete =
   const [pin, setPin] = useState('');
   const [creating, setCreating] = useState(false);
   const progress = useMemo(() => Object.fromEntries((summary?.salesmen || []).map((s) => [s.salesmanId, s])), [summary]);
+  const isSuper = canDelete; // only the super admin may delete, change photos or set branches
+  const [photoFor, setPhotoFor] = useState(null);
+  const [branchList, setBranchList] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    authFetch('/api/config').then((r) => (r.ok ? r.json() : {})).then((c) => { if (alive && Array.isArray(c.branches)) setBranchList(c.branches); }).catch(() => {});
+    return () => { alive = false; };
+  }, [authFetch]);
+
+  const setBranch = async (l, branchId) => {
+    const res = await authFetch(`/api/salesmen/${l.salesmanId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ branchId: branchId || null }) });
+    const body = await res.json().catch(() => ({}));
+    if (res.ok) {
+      const b = branchList.find((x) => String(x.id) === String(branchId));
+      showToast(b ? `${l.name} is now in ${b.name} (${b.type === 'b2b' ? 'B2B' : 'Retail'}).` : `${l.name} has no branch now.`);
+      onChanged();
+    } else showToast(body.error || 'Could not change branch', 'error');
+  };
+  const savePhoto = async (l, dataUrl) => {
+    await sendPhoto(authFetch, `/api/salesmen/${l.salesmanId}/photo`, dataUrl);
+    showToast(dataUrl ? `Photo updated for ${l.name}.` : `Photo removed for ${l.name}.`);
+    onChanged();
+  };
+  const face = (l, size = 36) => (isSuper ? (
+    <button type="button" onClick={() => setPhotoFor(l)} className="rounded-full shrink-0 hover:ring-2 hover:ring-blue-400/50 transition" title={`Change photo for ${l.name}`} aria-label={`Change photo for ${l.name}`}>
+      <Avatar name={l.name} photoUrl={l.photoUrl} size={size} />
+    </button>
+  ) : <Avatar name={l.name} photoUrl={l.photoUrl} size={size} />);
+  const branchSelect = (l, idSuffix = '') => (
+    <select id={`branch-${l.salesmanId}${idSuffix}`} aria-label={`Branch for ${l.name}`} value={l.branchId || ''} disabled={!isSuper}
+      onChange={(e) => setBranch(l, e.target.value)} className="h-10 px-3 rounded-full border border-slate-300 text-xs bg-white max-w-[180px] disabled:opacity-70">
+      <option value="">No branch</option>
+      {['retail', 'b2b'].map((t) => {
+        const list = branchList.filter((b) => b.type === t);
+        return list.length ? (
+          <optgroup key={t} label={t === 'b2b' ? 'B2B branches' : 'Retail branches'}>
+            {list.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+          </optgroup>
+        ) : null;
+      })}
+    </select>
+  );
 
   const call = async (l, body, msg) => {
     const res = await authFetch(`/api/salesmen/${l.salesmanId}/link`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -1020,12 +1066,17 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged, canDelete =
       {canDelete && <button type="button" className={`${btn} text-slate-500 hover:text-rose-700 hover:bg-rose-50`} onClick={() => setDelFor(l)} aria-label={`Delete ${l.name}`} title="Delete salesman (super admin only)"><Trash2 className="w-3.5 h-3.5" /> Delete</button>}
     </div>
   );
-  const typeSelect = (l, idSuffix = '') => (
+  const typeSelect = (l, idSuffix = '') => (l.branchId ? (
+    <span className="inline-flex flex-col gap-0.5" title="Type follows the branch">
+      <BranchTypeBadge type={l.branchType} />
+      <small className="text-[10px] text-slate-500">follows branch</small>
+    </span>
+  ) : (
     <select id={`type-${l.salesmanId}${idSuffix}`} aria-label={`Type for ${l.name}`} value={l.type} onChange={(e) => setType(l, e.target.value)} className="h-10 px-3 rounded-full border border-slate-300 text-xs bg-white">
       <option value="branch">Branch</option>
       <option value="route_b2b">Route / B2B</option>
     </select>
-  );
+  ));
 
   return (
     <div className="space-y-3">
@@ -1040,14 +1091,17 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged, canDelete =
         {links.map((l) => (
           <li key={l.salesmanId} className={`${card} p-4 space-y-3`}>
             <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
+              {face(l, 40)}
+              <div className="min-w-0 flex-1">
                 <p className="font-bold truncate">{l.name}</p>
+                {l.branchName && <p className="text-xs text-slate-600 truncate">{l.branchName}</p>}
                 <p className="text-xs text-slate-500 mt-0.5">
                   {l.linkEnabled ? <span className="text-emerald-700 font-bold">Link on</span> : 'Link off'} · PIN {l.hasPin ? 'set' : 'none'} · opened {fmt(l.linkLastUsedAt)}
                 </p>
               </div>
               {typeSelect(l, '-m')}
             </div>
+            {(isSuper || l.branchId) && <div className="flex items-center gap-2 text-xs"><span className="text-slate-500">Branch</span>{branchSelect(l, '-m')}</div>}
             {actions(l)}
           </li>
         ))}
@@ -1055,12 +1109,13 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged, canDelete =
       <div className={`${card} overflow-x-auto hidden md:block`}>
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
-            <tr>{['Salesman', 'Type', 'Link', 'PIN', 'Last opened', 'Actions'].map((h) => <th key={h} className="text-left font-bold px-4 py-2.5">{h}</th>)}</tr>
+            <tr>{['Salesman', 'Branch', 'Type', 'Link', 'PIN', 'Last opened', 'Actions'].map((h) => <th key={h} className="text-left font-bold px-4 py-2.5">{h}</th>)}</tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
             {links.map((l) => (
               <tr key={l.salesmanId}>
-                <td className="px-4 py-3 font-semibold whitespace-nowrap">{l.name}</td>
+                <td className="px-4 py-3 font-semibold whitespace-nowrap"><span className="inline-flex items-center gap-2.5">{face(l)}{l.name}</span></td>
+                <td className="px-4 py-3">{branchSelect(l)}</td>
                 <td className="px-4 py-3">
                   {typeSelect(l)}
                 </td>
@@ -1077,6 +1132,11 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged, canDelete =
           </tbody>
         </table>
       </div>
+
+      {photoFor && (
+        <PhotoPicker name={photoFor.name} photoUrl={photoFor.photoUrl} title={`Photo for ${photoFor.name}`}
+          onSave={(d) => savePhoto(photoFor, d)} onRemove={() => savePhoto(photoFor, null)} onClose={() => setPhotoFor(null)} />
+      )}
 
       {delFor && (
         <DeleteSalesmanModal salesman={delFor} others={links.filter((x) => x.salesmanId !== delFor.salesmanId)} authFetch={authFetch} showToast={showToast}

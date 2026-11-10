@@ -5,6 +5,8 @@ import InstallPromptButton from './pwa/InstallPromptButton.jsx';
 import HeaderToggles from './ui/HeaderToggles.jsx';
 import BranchPicker from './ui/BranchPicker.jsx';
 import { navFor } from './layout/navigation.js';
+import Avatar from './ui/Avatar.jsx';
+import PhotoPicker from './ui/PhotoPicker.jsx';
 import { 
   LayoutDashboard, 
   Users, 
@@ -42,8 +44,10 @@ export default function Sidebar({
   onNewQuote,
   onCloseMobileDrawer,
   onLogout,
-  taskDue = 0
+  taskDue = 0,
+  onMyPhoto
 }) {
+  const [photoOpen, setPhotoOpen] = useState(false);
   // Simplified menu: Home · Customers · Leads · Quotations · Settings
   const ICONS = { home: LayoutDashboard, inbox: Inbox, leads: Kanban, customers: ContactRound, quotations: FileText, tasks: ListChecks, settings: Settings };
   const BADGES = { inbox: stats?.newLeads || 0, quotations: 0, tasks: taskDue || 0 };
@@ -100,7 +104,6 @@ export default function Sidebar({
     return () => window.removeEventListener('resize', place);
   }, [activeTab]);
 
-  const initials = currentUser?.name ? currentUser.name.split(' ').map((n) => n[0]).join('').substring(0, 2).toUpperCase() : 'MP';
 
   return (
     <div className="mp-side">
@@ -176,7 +179,15 @@ export default function Sidebar({
 
         {currentUser && (
           <div className="mp-side-me">
-            <span className="mp-side-av">{initials}</span>
+            <button
+              type="button"
+              className="mp-side-av-btn"
+              onClick={() => onMyPhoto && setPhotoOpen(true)}
+              title={onMyPhoto ? 'Change your photo' : currentUser.name}
+              aria-label="Change your photo"
+            >
+              <Avatar name={currentUser.name || ''} photoUrl={currentUser.photoUrl} size={34} />
+            </button>
             <span className="mp-side-me-txt">
               <b title={currentUser.name}><BrandWordmark>{currentUser.name || 'monipack user'}</BrandWordmark></b>
               <small>{roleLabel(currentUser.role)}</small>
@@ -200,6 +211,16 @@ export default function Sidebar({
           <a href="tel:+96879062219" title="Call Monipack HQ">+968 79062219</a>
         </div>
       </div>
+      {photoOpen && currentUser && (
+        <PhotoPicker
+          name={currentUser.name}
+          photoUrl={currentUser.photoUrl}
+          title="Your photo"
+          onSave={(d) => onMyPhoto(d)}
+          onRemove={() => onMyPhoto(null)}
+          onClose={() => setPhotoOpen(false)}
+        />
+      )}
     </div>
   );
 }

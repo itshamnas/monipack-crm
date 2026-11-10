@@ -110,6 +110,7 @@ export function branchToApi(row) {
     phone: row.phone || '',
     salesman: row.salesman_name || row.default_salesman_name || '',
     isHeadquarters: Boolean(row.is_headquarters),
+    type: row.type === 'b2b' ? 'b2b' : 'retail',
   };
 }
 
@@ -206,6 +207,7 @@ export function userToApi(row) {
     salesmanId: row.salesman_id != null ? String(row.salesman_id) : null,
     salesmanName: row.salesman_name || null,
     lastLoginAt: row.last_login_at ? new Date(row.last_login_at).toISOString() : null,
+    photoUrl: row.photo_key ? `/api/photos/${row.photo_key}` : null,
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
   };
@@ -250,6 +252,7 @@ export function salesmanToApi(row) {
     phone: row.phone || '',
     type: row.type || 'branch',
     branchId: row.branch_id != null ? String(row.branch_id) : null,
+    photoUrl: row.photo_key ? `/api/photos/${row.photo_key}` : null,
     isActive: Boolean(row.is_active),
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,

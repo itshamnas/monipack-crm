@@ -153,6 +153,10 @@ export function linkToApi(r) {
     hasPin: Boolean(r.link_pin_hash),
     linkCreatedAt: iso(r.link_created_at),
     linkLastUsedAt: iso(r.link_last_used_at),
+    branchId: r.branch_id != null ? String(r.branch_id) : null,
+    branchName: r.branch_name || null,
+    branchType: r.branch_type || null,
+    photoUrl: r.photo_key ? `/api/photos/${r.photo_key}` : null,
   };
 }
 
@@ -201,7 +205,9 @@ export async function setSalesmanLink(id, { action, pin } = {}) {
 }
 
 export async function listLinks() {
-  const { rows } = await query('SELECT * FROM salesmen WHERE archived_at IS NULL ORDER BY name');
+  const { rows } = await query(`SELECT s.*, b.name AS branch_name, b.type AS branch_type
+    FROM salesmen s LEFT JOIN branches b ON b.id = s.branch_id AND b.archived_at IS NULL
+    WHERE s.archived_at IS NULL ORDER BY s.name`);
   return rows.map(linkToApi);
 }
 
