@@ -470,8 +470,9 @@ export default function CustomerCare({
               <div>
                 {/* Status & Category Tag */}
                 <div className="flex items-center justify-between gap-2 mb-3">
+                  <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                   <span
-                    className={`text-[9px] font-extrabold uppercase px-2.5 py-0.5 rounded-full ${
+                    className={`text-[9px] font-extrabold uppercase px-2.5 py-0.5 rounded-full whitespace-nowrap ${
                       isAwaitingCall
                         ? 'bg-red-100 text-red-800 border border-red-200 animate-pulse'
                         : 'bg-emerald-100 text-emerald-800 border border-emerald-200'
@@ -479,9 +480,15 @@ export default function CustomerCare({
                   >
                     {isAwaitingCall ? '● Needs Call & Intake' : '✓ Understood & Assigned'}
                   </span>
+                  {isAwaitingCall && (() => {
+                    const mins = Math.max(0, Math.round((Date.now() - new Date(lead.createdAt || lead.date || Date.now()).getTime()) / 60000));
+                    const label = mins < 60 ? `${mins}m` : mins < 1440 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${Math.floor(mins / 1440)}d`;
+                    return <span className={`mp-wait whitespace-nowrap ${mins >= 60 ? 'late' : 'ok'}`} title="Time since this enquiry came in. Calling within the first hour wins far more deals.">Waiting {label}</span>;
+                  })()}
+                  </div>
 
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded">
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    <span className="text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded whitespace-nowrap max-w-[110px] truncate">
                       {lead.category || 'General Inbound'}
                     </span>
                     <button

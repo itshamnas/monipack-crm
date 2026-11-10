@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import AppLayout from './components/layout/AppLayout.jsx';
 import Sidebar from './components/Sidebar.jsx';
 import Navbar from './components/Navbar.jsx';
@@ -16,6 +16,10 @@ import CustomerCare from './pages/CustomerCare.jsx';
 import DataCleanup from './pages/DataCleanup.jsx';
 import SalesTargets from './pages/SalesTargets.jsx';
 import Tasks from './pages/Tasks.jsx';
+import Celebration from './components/ui/Celebration.jsx';
+import TodayFocus from './components/TodayFocus.jsx';
+import { recordAction } from './utils/momentum.js';
+import { celebrate } from './utils/celebrate.js';
 import Customers, { SalesmanLinksPage, CustomerFieldsPage } from './pages/Customers.jsx';
 import Home from './pages/Home.jsx';
 import SectionTabs from './components/layout/SectionTabs.jsx';
@@ -101,6 +105,33 @@ export default function App() {
   };
 
   // Authenticated Fetch Helper
+  // Momentum + celebrations: count each saved action, celebrate real wins. Never blocks or changes a request.
+  const leadsRef = useRef([]);
+  const userRef = useRef(null);
+  const afterWriteRef = useRef(() => {});
+  leadsRef.current = leads;
+  userRef.current = currentUser;
+  afterWriteRef.current = (url, options, res) => {
+    const method = String(options?.method || 'GET').toUpperCase();
+    if (!res?.ok || method === 'GET' || method === 'DELETE') return;
+    const path = String(url).split('?')[0];
+    let body = {};
+    try { body = typeof options.body === 'string' ? JSON.parse(options.body) : {}; } catch { body = {}; }
+    if (method === 'PATCH' && /^\/api\/leads\/[^/]+$/.test(path) && body.status === 'won') {
+      const prev = leadsRef.current.find((l) => String(l.id) === path.split('/').pop());
+      if (prev && prev.status !== 'won') {
+        const v = Number(prev.dealValue || 0);
+        celebrate('won', 'Deal won', `${prev.name || 'Customer'}${v ? ` · OMR ${v.toLocaleString('en-US', { maximumFractionDigits: 3 })}` : ''}`);
+      }
+    }
+    if (method === 'PATCH' && /^\/api\/tasks\/[^/]+$/.test(path) && body.status === 'done') celebrate('task');
+    if (/^\/api\/(leads(\/[^/]+(\/activity)?)?|quotations|tasks(\/[^/]+(\/comments)?)?|customers(\/[^/]+)?)$/.test(path)) {
+      const u = userRef.current;
+      const r = recordAction(u?.id, u?.role);
+      if (r?.reachedGoal) celebrate('goal', `Daily goal reached: ${r.today} actions`, r.streak > 1 ? `${r.streak} days in a row. Keep it going.` : 'Come back tomorrow to start a streak');
+    }
+  };
+
   const authFetch = useCallback(
     async (url, options = {}) => {
       const fullUrl = getApiUrl(url);
@@ -121,6 +152,7 @@ export default function App() {
           throw new Error('Please set a new password first.');
         }
       }
+      try { afterWriteRef.current(url, options, res); } catch { /* momentum is decoration only */ }
       return res;
     },
     [token]
@@ -569,17 +601,26 @@ export default function App() {
         isMobileDrawerOpen={isMobileDrawerOpen}
         onCloseMobileDrawer={() => setIsMobileDrawerOpen(false)}
         notifications={
-          toast && (
+          <>
+          <Celebration />
+          {toast && (
             <div
+              key={toast.message}
               className={`fixed mp-toast z-50 px-4 py-3 rounded-2xl text-center sm:text-left shadow-xl border text-xs font-bold animate-in fade-in slide-in-from-bottom-4 duration-200 ${
                 toast.type === 'error'
                   ? 'bg-primary text-white border-primary-hover'
                   : 'bg-text-main text-white border-slate-800'
               }`}
             >
-              {toast.message}
+              <span className="inline-flex items-center gap-2">
+                {toast.type !== 'error' && (
+                  <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className="shrink-0"><circle cx="8" cy="8" r="7" fill="none" stroke="#34D399" strokeWidth="1.6" opacity=".5" /><path className="mp-check-draw" d="M4.6 8.3l2.2 2.2 4.6-4.8" fill="none" stroke="#34D399" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                )}
+                <span>{toast.message}</span>
+              </span>
             </div>
-          )
+          )}
+          </>
         }
         mobileBottomNav={
           <MobileBottomNav
@@ -642,6 +683,11 @@ export default function App() {
               taskDue={taskDue}
               onOpenCustomers={(f) => { setCustomerFilter({ ...f, _k: Date.now() }); setActiveTab('customers'); }}
             />
+          )}
+          {activeTab === 'dashboard' && !can('customers.view') && (
+            <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 max-w-[1400px] mx-auto">
+              <TodayFocus leads={leads} pipelineStages={pipelineStages} currentUser={currentUser} taskDue={taskDue} onNavigate={setActiveTab} />
+            </div>
           )}
           {(activeTab === 'analytics' || (activeTab === 'dashboard' && !can('customers.view'))) && (
           <Dashboard
