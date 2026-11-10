@@ -4,6 +4,7 @@ import {
 } from 'lucide-react';
 import { avatarStyle } from '../components/ui/BranchPicker.jsx';
 import { openPrintable, tableHtml, chipsHtml } from '../utils/pdfReport.js';
+import Avatar from '../components/ui/Avatar.jsx';
 
 /**
  * Task manager (Linear / Asana style).
@@ -57,6 +58,8 @@ const dueText = (iso) => {
 const toLocalInput = (iso) => { if (!iso) return ''; const d = new Date(iso); const p = (n) => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`; };
 const quick = (days, hour = 17) => { const d = new Date(); d.setDate(d.getDate() + days); d.setHours(hour, 0, 0, 0); return d.toISOString(); };
 const keyOf = (a) => (a ? `${a.kind}:${a.id}` : '');
+// Photos of everyone who can get a task (filled from /api/tasks/assignees)
+const PHOTOS = new Map();
 
 export default function Tasks({ authFetch, showToast, currentUser, onTasksChanged }) {
   const perms = currentUser?.permissions || [];
@@ -86,7 +89,7 @@ export default function Tasks({ authFetch, showToast, currentUser, onTasksChange
   }, [authFetch, scope, showToast]);
   useEffect(() => { setTasks(null); load(); }, [load]);
   useEffect(() => {
-    authFetch('/api/tasks/assignees').then((r) => (r.ok ? r.json() : [])).then(setPeople).catch(() => {});
+    authFetch('/api/tasks/assignees').then((r) => (r.ok ? r.json() : [])).then((list) => { PHOTOS.clear(); (list || []).forEach((p) => p.photoUrl && PHOTOS.set(keyOf(p), p.photoUrl)); setPeople(list); }).catch(() => {});
   }, [authFetch]);
   useEffect(() => { try { localStorage.setItem('mp_tasks_view', view); } catch { /* ignore */ } }, [view]);
 
@@ -334,7 +337,7 @@ function Meta({ t, showAssignee }) {
       {t.commentCount > 0 && <span className="inline-flex items-center gap-1 text-slate-500"><MessageSquare className="w-3 h-3" />{t.commentCount}</span>}
       {showAssignee && t.assignee && (
         <span className="ml-auto inline-flex items-center gap-1.5 text-slate-600" title={`Assigned to ${t.assignee.name}`}>
-          <span className="w-5 h-5 rounded-full grid place-items-center text-[8.5px] font-bold text-white" style={avatarStyle(t.assignee.name)}>{initials(t.assignee.name)}</span>
+          <Avatar name={t.assignee.name} photoUrl={PHOTOS.get(keyOf(t.assignee))} size={20} />
           <span className="hidden sm:inline max-w-[110px] truncate">{t.assignee.name}</span>
         </span>
       )}

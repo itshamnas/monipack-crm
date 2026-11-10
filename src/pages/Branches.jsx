@@ -1,4 +1,5 @@
 import React from 'react';
+import BranchTypeBadge from '../components/ui/BranchTypeBadge.jsx';
 import { Building2, Phone, Mail, MapPin, Users, ChevronRight, ShieldCheck, UserCheck } from 'lucide-react';
 
 export default function Branches({ branches, leads, onSelectBranch, onNavigate }) {
@@ -7,13 +8,18 @@ export default function Branches({ branches, leads, onSelectBranch, onNavigate }
       {/* Header */}
       <div>
         <div className="flex items-center gap-2">
-          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Oman Branch Network</h2>
+          <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Branches</h2>
           <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200">
-            {branches?.length || 10} Regional Hubs
+            {branches?.length || 0} branches
           </span>
+          {(branches || []).some((b) => b.type) && (
+            <span className="text-xs text-slate-500 font-semibold">
+              {(branches || []).filter((b) => b.type === 'retail').length} Retail · {(branches || []).filter((b) => b.type === 'b2b').length} B2B
+            </span>
+          )}
         </div>
         <p className="text-xs text-slate-500 mt-1">
-          Distribution centers, retail outlets, and customer support points across the Sultanate of Oman.
+          Retail shops and B2B routes across Oman. Tap a branch to see its enquiries.
         </p>
       </div>
 
@@ -72,6 +78,7 @@ export default function Branches({ branches, leads, onSelectBranch, onNavigate }
                     <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
                       <Building2 className="w-4 h-4 text-red-600 shrink-0" />
                       <span>{b.name}</span>
+                      <BranchTypeBadge type={b.type} />
                     </h3>
                     <p className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
                       <MapPin className="w-3 h-3 text-slate-400 shrink-0" />

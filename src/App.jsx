@@ -31,6 +31,7 @@ import ErrorBoundary from './components/ErrorBoundary.jsx';
 import MobileBottomNav from './components/layout/MobileBottomNav.jsx';
 import OfflineBanner from './components/pwa/OfflineBanner.jsx';
 import { getApiUrl } from './api/config.js';
+import { sendPhoto } from './utils/photo.js';
 
 export default function App() {
   // Authentication State
@@ -83,6 +84,16 @@ export default function App() {
     setCurrentUser(newUser);
     localStorage.setItem('monipack_auth_token', newToken);
     localStorage.setItem('monipack_auth_user', JSON.stringify(newUser));
+  };
+
+  // Set (dataUrl) or remove (null) my own profile photo
+  const handleMyPhoto = async (dataUrl) => {
+    const photoUrl = await sendPhoto(authFetch, '/api/me/photo', dataUrl);
+    setCurrentUser((u) => {
+      const next = u ? { ...u, photoUrl } : u;
+      try { localStorage.setItem('monipack_auth_user', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
   };
 
   const handleLoginSuccess = (newToken, newUser) => {
@@ -696,6 +707,7 @@ export default function App() {
             onCloseMobileDrawer={() => setIsMobileDrawerOpen(false)}
             onLogout={handleLogout}
             taskDue={taskDue}
+            onMyPhoto={handleMyPhoto}
           />
         }
         header={
@@ -713,6 +725,7 @@ export default function App() {
             onOpenMobileDrawer={() => setIsMobileDrawerOpen(true)}
             authFetch={authFetch}
             onNavigate={setActiveTab}
+            onMyPhoto={handleMyPhoto}
           />
         }
       >
@@ -729,6 +742,7 @@ export default function App() {
               onNewLead={handleOpenNewLead}
               canManageCustomers={can('customers.manage')}
               taskDue={taskDue}
+              branches={branches}
               onOpenCustomers={(f) => { setCustomerFilter({ ...f, _k: Date.now() }); setActiveTab('customers'); }}
             />
           )}
@@ -831,6 +845,21 @@ export default function App() {
             onSelectBranch={(b) => setSelectedBranch(b)}
             onNavigate={setActiveTab}
           />
+        )}
+
+        {/* Only the super admin adds / edits branches (Retail or B2B) */}
+        {activeTab === 'branches' && currentUser?.role === 'super_admin' && (
+          <div className="mp-branch-editor">
+            <Settings
+              key="branch-editor"
+              page="branches"
+              authFetch={authFetch}
+              showToast={showToast}
+              currentUser={currentUser}
+              onRefreshConfig={fetchData}
+              products={products}
+            />
+          </div>
         )}
 
         {activeTab === 'customers' && can('customers.view') && (

@@ -15,6 +15,8 @@ import { saveFile, readFile } from './storage.js';
 import * as tdb from '../tasks/tasks.js';
 import { notify, managers } from '../notify/notify.js';
 import { workbook } from './xlsx.js';
+import { setSalesmanPhoto } from '../profile/photos.js';
+import { query } from '../db/pool.js';
 
 const LINK_SESSION_HOURS = 12;
 
@@ -205,7 +207,17 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
       salesmanName: req.linkSalesman.name,
       salesmanType: req.linkSalesman.type,
       requiresPin: Boolean(req.linkSalesman.link_pin_hash),
+      photoUrl: req.linkSalesman.photo_key ? `/api/photos/${req.linkSalesman.photo_key}` : null,
     });
+  }));
+
+  // Salesman sets his own photo from his link page
+  app.put('/api/link/:token/photo', linkGuard, loadLinkSalesman, linkAuth, asyncHandler(async (req, res) => {
+    try {
+      const url = await setSalesmanPhoto(req.linkSalesman.id, req.body?.photo || null);
+      await log(req, 'photo');
+      res.json({ photoUrl: url });
+    } catch (e) { res.status(e.status || 500).json({ error: e.status ? e.message : 'Could not save the photo.' }); }
   }));
 
   app.post('/api/link/:token/session', linkGuard, loadLinkSalesman, asyncHandler(async (req, res) => {
@@ -923,11 +935,26 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
   }));
 
   app.patch('/api/salesmen/:id', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
-    const { type, phone } = req.body || {};
+    const { type, phone, branchId } = req.body || {};
     if (type !== undefined && !SALESMAN_TYPES.includes(type)) return res.status(400).json({ error: 'Choose Branch or Route / B2B.' });
-    const sm = await db.updateSalesman(req.params.id, { type, phone });
+    // Branch chosen: the salesman's type follows the branch (Retail -> Branch, B2B -> Route / B2B)
+    if (branchId !== undefined) {
+      const bid = branchId ? parseInt(branchId, 10) : null;
+      let btype = null;
+      if (bid) {
+        const { rows } = await query('SELECT type FROM branches WHERE id = $1 AND archived_at IS NULL', [bid]);
+        if (!rows[0]) return res.status(400).json({ error: 'That branch does not exist.' });
+        btype = rows[0].type;
+      }
+      await query(`UPDATE salesmen SET branch_id = $1, type = COALESCE($2, type), updated_at = now() WHERE id = $3 AND archived_at IS NULL`,
+        [bid, btype ? (btype === 'b2b' ? 'route_b2b' : 'branch') : null, parseInt(req.params.id, 10)]);
+    } else if (type !== undefined) {
+      const { rows } = await query('SELECT b.type FROM salesmen s JOIN branches b ON b.id = s.branch_id AND b.archived_at IS NULL WHERE s.id = $1', [parseInt(req.params.id, 10)]);
+      if (rows[0]) return res.status(400).json({ error: 'This salesman\'s type follows his branch. Change the branch, or the branch type in Settings, Branches.' });
+    }
+    const sm = await db.updateSalesman(req.params.id, { type: branchId !== undefined ? undefined : type, phone });
     if (!sm) return res.status(404).json({ error: 'Salesman not found.' });
-    await audit(req, `Salesman ${sm.name} updated (type ${sm.type})`);
+    await audit(req, `Salesman ${sm.name} updated (type ${sm.type}${branchId !== undefined ? `, branch ${branchId || 'none'}` : ''})`);
     res.json(sm);
   }));
 

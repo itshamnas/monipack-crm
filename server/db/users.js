@@ -4,7 +4,7 @@ import { userToApi } from './utils.js';
 import { normalizeRole } from '../auth/permissions.js';
 
 const USER_COLUMNS = `u.id, u.name, u.email, u.role, u.can_export, u.is_active, u.token_version,
-  u.must_change_password, u.last_login_at, u.salesman_id, u.created_at, u.updated_at,
+  u.must_change_password, u.last_login_at, u.salesman_id, u.created_at, u.updated_at, u.photo_key,
   s.name AS salesman_name`;
 
 const USER_SELECT = `SELECT ${USER_COLUMNS} FROM users u LEFT JOIN salesmen s ON s.id = u.salesman_id`;
@@ -48,7 +48,7 @@ export async function getUserAuthState(id) {
   const numId = toId(id);
   if (numId === null) return null;
   const { rows } = await query(
-    `SELECT id, name, email, role, can_export, is_active, token_version, must_change_password, salesman_id
+    `SELECT id, name, email, role, can_export, is_active, token_version, must_change_password, salesman_id, photo_key, totp_enabled
      FROM users WHERE id = $1 AND archived_at IS NULL`,
     [numId]
   );
