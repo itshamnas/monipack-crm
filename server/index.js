@@ -31,6 +31,8 @@ import { registerTaskRoutes } from './tasks/tasks.js';
 import { registerTwoFactorRoutes, twoFactorRequired, issueChallenge } from './auth/twoFactor.js';
 import { registerBackupRoutes, startBackupSchedule } from './backup/daily.js';
 import { recordMiddleware, registerVaultRoutes } from './audit/vault.js';
+import { query as dbQuery } from './db/pool.js';
+import { registerNotificationRoutes, notify, usersForSalesman, managers as managerIds } from './notify/notify.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -570,6 +572,27 @@ app.get('/api/leads/template', (req, res) => {
   }
 });
 
+// Duplicate check while typing a new enquiry: same mobile (last 8 digits) in open leads or customers
+app.get('/api/leads/check-duplicate', authMiddleware, requirePermission('leads.create', 'leads.update'), asyncHandler(async (req, res) => {
+  const digits = String(req.query.mobile || '').replace(/\D/g, '');
+  if (digits.length < 7) return res.json({ leads: [], customers: [] });
+  const tail = digits.slice(-8);
+  const exclude = parseInt(req.query.excludeId, 10) || 0;
+  const [leads, customers] = await Promise.all([
+    dbQuery(
+      `SELECT id, name, status, salesman_name, created_at FROM leads
+       WHERE archived_at IS NULL AND id <> $2 AND right(regexp_replace(coalesce(mobile, phone, ''), '\\D', '', 'g'), 8) = $1
+       ORDER BY created_at DESC LIMIT 5`, [tail, exclude]),
+    dbQuery(
+      `SELECT c.id, c.name, s.name AS salesman FROM customers c LEFT JOIN salesmen s ON s.id = c.salesman_id
+       WHERE c.archived_at IS NULL AND right(regexp_replace(coalesce(c.mobile, ''), '\\D', '', 'g'), 8) = $1 LIMIT 5`, [tail]),
+  ]);
+  res.json({
+    leads: leads.rows.map((r) => ({ id: String(r.id), name: r.name, status: r.status, salesman: r.salesman_name || '', date: r.created_at })),
+    customers: customers.rows.map((r) => ({ id: String(r.id), name: r.name, salesman: r.salesman || '' })),
+  });
+}));
+
 app.get('/api/leads/:id', authMiddleware, requirePermission('leads.view_all', 'leads.view_own'), asyncHandler(async (req, res) => {
   const lead = await loadLeadForUser(req, req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
@@ -593,6 +616,10 @@ app.post('/api/leads', authMiddleware, requirePermission('leads.create'), asyncH
     if (me?.branchId) input.branchId = me.branchId;
   }
   const created = await db.createLead(input);
+  if (created?.salesmanId) {
+    const ids = (await usersForSalesman(created.salesmanId)).filter((x) => String(x) !== String(req.user.id));
+    await notify(ids, { kind: 'lead', title: `New lead for you: ${created.name}`, body: `${created.category || ''}${created.customerLocation ? ` · ${created.customerLocation}` : ''}`, link: 'leads' });
+  }
   await db.addActivity({
     leadId: created.id,
     leadName: created.name,
@@ -613,9 +640,23 @@ app.patch('/api/leads/:id', authMiddleware, requirePermission('leads.update'), a
   const prev = await loadLeadForUser(req, req.params.id);
   if (!prev) return res.status(404).json({ error: 'Lead not found' });
 
+  // A lost deal must say why (so the business can see why it loses)
+  if (req.body.status === 'lost' && prev.status !== 'lost' && !String(req.body.lostReason || '').trim()) {
+    return res.status(400).json({ error: 'Choose the reason this deal was lost.', code: 'LOST_REASON_REQUIRED' });
+  }
+  if (req.body.lostReason !== undefined) req.body.lostReason = String(req.body.lostReason || '').trim().slice(0, 255);
+
   const updated = await db.updateLead(req.params.id, withoutAssignmentFields(req, req.body), { changedBy: req.user.name });
   if (!updated) return res.status(404).json({ error: 'Lead not found' });
 
+  if (updated.salesmanId && String(updated.salesmanId) !== String(prev.salesmanId || '')) {
+    const ids = (await usersForSalesman(updated.salesmanId)).filter((x) => String(x) !== String(req.user.id));
+    await notify(ids, { kind: 'lead', title: `${req.user.name} assigned you a lead: ${updated.name}`, body: updated.category || '', link: 'leads' });
+  }
+  if (req.body.status === 'won' && prev.status !== 'won') {
+    const ids = (await managerIds()).filter((x) => String(x) !== String(req.user.id));
+    await notify(ids, { kind: 'won', title: `Deal won: ${updated.name}`, body: `${Number(updated.dealValue || 0) ? `OMR ${Number(updated.dealValue).toLocaleString('en-US', { maximumFractionDigits: 3 })} · ` : ''}by ${req.user.name}`, link: 'leads' });
+  }
   if (req.body.status && req.body.status !== prev.status) {
     await db.addActivity({
       leadId: updated.id,
@@ -868,6 +909,24 @@ app.put('/api/quotations/:id', authMiddleware, requirePermission('quotations.upd
     description: `Quotation "${updated.code}" updated by ${req.user.name}`,
   });
   res.json(updated);
+}));
+
+// Quotation status: draft / sent / accepted / rejected (expired is shown from date + validity)
+app.post('/api/quotations/:id/status', authMiddleware, requirePermission('quotations.status'), asyncHandler(async (req, res) => {
+  const existing = await db.getQuotationById(req.params.id);
+  if (!existing || !(await canUseQuotation(req, existing))) return res.status(404).json({ error: 'Quotation not found' });
+  const status = String(req.body?.status || '');
+  if (!['draft', 'sent', 'accepted', 'rejected'].includes(status)) return res.status(400).json({ error: 'Unknown quotation status.' });
+  const reason = String(req.body?.reason || '').trim();
+  if (status === 'rejected' && !reason) return res.status(400).json({ error: 'Say why the customer rejected the quotation.' });
+  const out = await db.setQuotationStatus(existing.id, status, { reason, markLeadWon: Boolean(req.body?.markLeadWon), changedBy: req.user.name });
+  if (!out) return res.status(404).json({ error: 'Quotation not found' });
+  await db.addActivity({ leadId: existing.leadId || null, type: 'quotation', description: `Quotation "${existing.code}" marked ${status}${reason ? ` (${reason})` : ''} by ${req.user.name}${out.leadWon ? '; lead marked Won' : ''}` });
+  if (status === 'accepted') {
+    const ids = (await managerIds()).filter((x) => String(x) !== String(req.user.id));
+    await notify(ids, { kind: 'won', title: `Quotation accepted: ${existing.code} · ${existing.customerName}`, body: `OMR ${Number(existing.grandTotalOMR || 0).toLocaleString('en-US', { maximumFractionDigits: 3 })} · by ${req.user.name}`, link: 'quotations' });
+  }
+  res.json(out);
 }));
 
 app.delete('/api/quotations/:id', authMiddleware, requirePermission('quotations.archive'), asyncHandler(async (req, res) => {
@@ -1201,6 +1260,7 @@ registerTaskRoutes(app, { authMiddleware, requirePermission, asyncHandler, db })
 registerVaultRoutes(app, { authMiddleware, asyncHandler, JWT_SECRET });
 registerTwoFactorRoutes(app, { authMiddleware, asyncHandler, db, JWT_SECRET, signToken, buildSessionUser });
 registerBackupRoutes(app, { authMiddleware, asyncHandler });
+registerNotificationRoutes(app, { authMiddleware, asyncHandler });
 startBackupSchedule();
 
 // ---- Central Error Handlers ----

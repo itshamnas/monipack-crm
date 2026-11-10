@@ -34,6 +34,11 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
   const [pipelineStages, setPipelineStages] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
+  // One salesman list everywhere: branches pick from existing salesmen (created in Salesmen & links)
+  const [salesmenList, setSalesmenList] = useState([]);
+  useEffect(() => {
+    authFetch('/api/salesmen').then((r) => (r.ok ? r.json() : [])).then((d) => setSalesmenList(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [authFetch]);
 
   // Modals & Inputs
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -1242,15 +1247,16 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Assigned Salesman / Representative *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Ahmed Al Balushi"
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Default salesman for this branch</label>
+                <select
                   value={newBranch.salesman}
                   onChange={(e) => setNewBranch({ ...newBranch, salesman: e.target.value })}
-                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:border-red-500"
-                />
+                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5 bg-white focus:outline-none focus:border-red-500"
+                >
+                  <option value="">Not assigned</option>
+                  {salesmenList.map((sm) => <option key={sm.id} value={sm.name}>{sm.name}</option>)}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">Add new salesmen in Settings → Salesmen &amp; links.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1318,14 +1324,16 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Assigned Salesman / Representative *</label>
-                <input
-                  type="text"
-                  required
-                  value={editingBranch.salesman || ''}
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Default salesman for this branch</label>
+                <select
+                  value={editingBranch.salesman && editingBranch.salesman !== 'Unassigned' ? editingBranch.salesman : ''}
                   onChange={(e) => setEditingBranch({ ...editingBranch, salesman: e.target.value })}
-                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:border-red-500"
-                />
+                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5 bg-white focus:outline-none focus:border-red-500"
+                >
+                  <option value="">Not assigned</option>
+                  {editingBranch.salesman && editingBranch.salesman !== 'Unassigned' && !salesmenList.some((sm) => sm.name === editingBranch.salesman) && <option value={editingBranch.salesman}>{editingBranch.salesman}</option>}
+                  {salesmenList.map((sm) => <option key={sm.id} value={sm.name}>{sm.name}</option>)}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

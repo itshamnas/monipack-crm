@@ -80,6 +80,7 @@ const db = {
   // Quotations
   getQuotations: quotations.getQuotations,
   getQuotationById: quotations.getQuotationById,
+  setQuotationStatus: quotations.setQuotationStatus,
   createQuotation: quotations.createQuotation,
   updateQuotation: quotations.updateQuotation,
   deleteQuotation: quotations.deleteQuotation,
