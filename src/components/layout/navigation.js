@@ -30,6 +30,7 @@ export const NAV_SECTIONS = [
     { id: 'settings-targets', label: 'Sales targets', perm: 'settings.manage' },
     { id: 'settings', label: 'Staff & system', perm: 'settings.manage' },
     { id: 'settings-cleanup', label: 'Data cleanup', role: 'super_admin' },
+    { id: 'settings-vault', label: 'Audit vault', role: 'super_admin' },
   ] },
 ];
 

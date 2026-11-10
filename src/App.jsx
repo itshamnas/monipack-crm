@@ -16,6 +16,7 @@ import CustomerCare from './pages/CustomerCare.jsx';
 import DataCleanup from './pages/DataCleanup.jsx';
 import SalesTargets from './pages/SalesTargets.jsx';
 import Tasks from './pages/Tasks.jsx';
+import AuditVault from './pages/AuditVault.jsx';
 import Celebration from './components/ui/Celebration.jsx';
 import TodayFocus from './components/TodayFocus.jsx';
 import { recordAction } from './utils/momentum.js';
@@ -258,6 +259,9 @@ export default function App() {
       setActiveTab('dashboard');
     }
     if (activeTab === 'tasks' && currentUser && !currentUser.permissions?.includes('tasks.use')) {
+      setActiveTab('dashboard');
+    }
+    if (activeTab === 'settings-vault' && currentUser && currentUser.role !== 'super_admin') {
       setActiveTab('dashboard');
     }
     if (activeTab === 'settings-cleanup' && currentUser && currentUser.role !== 'super_admin') {
@@ -551,6 +555,7 @@ export default function App() {
     'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: 'Each salesman\'s secret link, type and PIN' },
     tasks: { title: 'Tasks', shortTitle: 'Tasks', subtitle: 'To-dos for you and the team' },
     'settings-targets': { title: 'Sales targets', shortTitle: 'Targets', subtitle: 'Monthly OMR target for each salesman' },
+    'settings-vault': { title: 'Audit vault', shortTitle: 'Vault', subtitle: 'Super admin only: everything everyone did, locked with a second password' },
     'settings-cleanup': { title: 'Data cleanup', shortTitle: 'Cleanup', subtitle: 'Super admin only: delete test or old data before going live' },
     'settings-fields': { title: 'Customer form', shortTitle: 'Customer form', subtitle: 'Fields salesmen fill in, required fields and dropdown choices' },
     customers: {
@@ -790,7 +795,7 @@ export default function App() {
         )}
 
         {activeTab === 'settings-links' && can('customers.manage') && (
-          <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-24 md:pb-8"><SalesmanLinksPage authFetch={authFetch} showToast={showToast} /></div>
+          <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-24 md:pb-8"><SalesmanLinksPage authFetch={authFetch} showToast={showToast} canDelete={currentUser?.role === 'super_admin'} /></div>
         )}
 
         {activeTab === 'settings-fields' && can('customers.manage') && (
@@ -803,6 +808,10 @@ export default function App() {
 
         {activeTab === 'settings-targets' && can('settings.manage') && (
           <div className="p-3 sm:p-6 lg:p-8 max-w-5xl mx-auto pb-24 md:pb-8"><SalesTargets authFetch={authFetch} showToast={showToast} /></div>
+        )}
+
+        {activeTab === 'settings-vault' && currentUser?.role === 'super_admin' && (
+          <AuditVault authFetch={authFetch} showToast={showToast} />
         )}
 
         {activeTab === 'settings-cleanup' && currentUser?.role === 'super_admin' && (
