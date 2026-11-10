@@ -144,12 +144,12 @@
 
 /* Dark mode: brand panel stays as is, sign-in side goes dark */
 @media screen {
-  html.dark .mp-login { background: #0b1220; }
-  html.dark .mp-login .shell { background: #111a2b; box-shadow: 0 40px 80px -30px rgba(0,0,0,.6), 0 0 0 1px #24324a; }
-  html.dark .mp-login .panel { background: radial-gradient(90% 60% at 50% 0%, #152033, #0f1828); }
+  html.dark .mp-login { background: radial-gradient(1000px 640px at 60% -10%, rgba(61,90,240,.30), transparent 62%), linear-gradient(180deg, #0B1230, #070B1A 70%); }
+  html.dark .mp-login .shell { background: #0F1736; box-shadow: 0 40px 80px -30px rgba(0,0,0,.7), 0 0 0 1px rgba(140,160,255,.16); }
+  html.dark .mp-login .panel { background: radial-gradient(90% 60% at 50% 0%, rgba(91,124,250,.20), #0F1736 70%); }
   html.dark .mp-login .card h2 { color: #e8eef8; }
   html.dark .mp-login label { color: #cbd5e1; }
-  html.dark .mp-login .field input { background: #0b1220; border-color: #24324a; color: #e8eef8; }
+  html.dark .mp-login .field input { background: rgba(6,10,28,.6); border-color: rgba(140,160,255,.26); color: #e8ecff; }
   html.dark .mp-login .eye:hover { background: #1b2840; }
   html.dark .mp-login .badge { background: rgba(16,185,129,.12); border-color: rgba(16,185,129,.35); color: #6ee7b7; }
 }

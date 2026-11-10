@@ -1,0 +1,146 @@
+/* ==========================================================================
+   Navy glass theme (default look of the whole CRM).
+   Applies on screen when <html class="dark">; light mode and printing are untouched.
+   Palette and motion match the Home command-centre dashboard (dashboard.css).
+   ========================================================================== */
+@media screen {
+  html.dark {
+    --n-bg: #070B1A;
+    --n-bg2: #0B1230;
+    --n-card: #0F1736;
+    --n-card-a: rgba(18, 27, 64, 0.72);
+    --n-sub: #131D42;
+    --n-raise: #1A2552;
+    --n-line: rgba(140, 160, 255, 0.14);
+    --n-line2: rgba(140, 160, 255, 0.26);
+    --n-ink: #E8ECFF;
+    --n-mute: #8B95C3;
+    --n-dim: #6B75A6;
+    --n-blue: #5B7CFA;
+    --n-blue2: #3D5AF0;
+    --n-red: #F0414A;
+    --n-red2: #C8102E;
+    --mp-side-bg: #060A18;
+    --mp-side-2: #0F1736;
+    --mp-side-line: rgba(140, 160, 255, 0.12);
+    --mp-side-ink: #C9D0F0;
+    --mp-side-mute: #7C86B8;
+  }
+
+  /* Page: deep navy with soft blue / red glow and fine texture */
+  html.dark body {
+    background:
+      radial-gradient(1000px 640px at 45% -12%, rgba(61, 90, 240, 0.34), transparent 62%),
+      radial-gradient(700px 600px at 0% 60%, rgba(61, 90, 240, 0.12), transparent 60%),
+      radial-gradient(800px 520px at 100% 0%, rgba(200, 16, 46, 0.12), transparent 60%),
+      radial-gradient(900px 700px at 70% 110%, rgba(52, 211, 153, 0.06), transparent 60%),
+      linear-gradient(180deg, var(--n-bg2), var(--n-bg) 70%) fixed;
+    background-attachment: fixed;
+    color: var(--n-ink);
+  }
+  html.dark #monipack-content-canvas { background: transparent !important; }
+  html.dark #monipack-content-canvas::before {
+    content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none;
+    background-image: repeating-linear-gradient(135deg, rgba(255,255,255,0.016) 0 1px, transparent 1px 9px);
+  }
+
+  /* Header: frosted bar */
+  html.dark #monipack-header-region {
+    background: rgba(9, 14, 36, 0.72) !important;
+    border-color: var(--n-line) !important;
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+  }
+
+  /* Sidebar: darker navy, blue active pill like the reference */
+  html.dark .mp-side-region, html.dark .mp-side { background: var(--mp-side-bg); }
+  html.dark .mp-side-region { border-right: 1px solid var(--n-line); }
+  html.dark .mp-nav-item:hover { background: rgba(91, 124, 250, 0.10); }
+  html.dark .mp-nav-item.on { background: linear-gradient(90deg, rgba(91, 124, 250, 0.30), rgba(91, 124, 250, 0.08)); box-shadow: inset 0 0 0 1px rgba(140, 165, 255, 0.22); }
+  html.dark .mp-nav-item.on::before { background: linear-gradient(180deg, #8FA6FF, var(--n-blue2)); box-shadow: 0 0 12px rgba(91,124,250,.8); }
+  html.dark .mp-nav-item.on .mp-nav-ic { color: #A9BBFF; }
+  html.dark .mp-nav-ct { background: rgba(140,160,255,0.12); color: #B8C2EC; }
+  html.dark .mp-side-quote:hover { background: var(--n-raise); }
+  html.dark .mp-side-eco { border-color: var(--n-line); }
+
+  /* Cards everywhere: navy glass */
+  html.dark #monipack-content-canvas .bg-white,
+  html.dark .mp-card {
+    background-color: var(--n-card-a) !important;
+    backdrop-filter: blur(14px) saturate(130%);
+    -webkit-backdrop-filter: blur(14px) saturate(130%);
+  }
+  html.dark #monipack-content-canvas .bg-white .bg-white { background-color: rgba(255, 255, 255, 0.025) !important; backdrop-filter: none; }
+  html.dark #monipack-content-canvas .bg-white.border:is(.rounded-3xl, .rounded-2xl, .rounded-xl, .rounded-\[20px\], .rounded-\[18px\]):not(button):not(.quotation-sheet),
+  html.dark .mp-card {
+    border-color: var(--n-line) !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 20px 40px -26px rgba(0,0,0,0.7) !important;
+  }
+  html.dark .quotation-sheet, html.dark .quotation-sheet .bg-white { background-color: #fff !important; backdrop-filter: none; } /* documents stay paper-white */
+
+  /* Tables */
+  html.dark #monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) thead,
+  html.dark #monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) thead th { background: rgba(8, 13, 34, 0.6); border-color: var(--n-line); color: var(--n-dim); }
+  html.dark #monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) tbody tr:hover { background-color: rgba(91, 124, 250, 0.07); }
+  html.dark #monipack-content-canvas table:not(.quotation-sheet table):not(.mp-doc) tbody td { border-color: rgba(140, 160, 255, 0.08); }
+
+  /* Buttons */
+  html.dark .mp-btn-line { background: rgba(255,255,255,0.04); color: var(--n-ink); border-color: var(--n-line2); }
+  html.dark .mp-btn-line:hover { background: rgba(255,255,255,0.08); border-color: rgba(160,180,255,.4); }
+  html.dark .mp-btn-dark { background: linear-gradient(180deg, #6E8BFF, var(--n-blue2)); color: #fff; box-shadow: 0 8px 22px -10px rgba(91,124,250,.8), inset 0 1px 0 rgba(255,255,255,.25); }
+  html.dark .mp-btn-dark:hover { background: linear-gradient(180deg, #7D97FF, #4A66F5); }
+  html.dark .mp-btn-soft { background: rgba(140,160,255,0.12); color: #C9D0F0; }
+  html.dark .mp-btn-red, html.dark .mp-side-new { background: linear-gradient(180deg, #F2545C, var(--n-red2)); box-shadow: 0 8px 22px -8px rgba(240,65,74,.65), inset 0 1px 0 rgba(255,255,255,.25); }
+  html.dark #monipack-content-canvas button.bg-slate-900, html.dark #monipack-content-canvas .bg-slate-900:is(button, a) {
+    background: linear-gradient(180deg, #6E8BFF, var(--n-blue2)) !important; color: #fff !important; box-shadow: 0 8px 20px -10px rgba(91,124,250,.8);
+  }
+
+  /* Sliding tabs: blue pill on a dark track */
+  html.dark .mp-tabs { background: rgba(4, 8, 24, 0.55) !important; border-color: var(--n-line) !important; }
+  html.dark .mp-tabs-pill { background: linear-gradient(180deg, #6E8BFF, var(--n-blue2)) !important; box-shadow: 0 6px 16px -6px rgba(91,124,250,.9), inset 0 1px 0 rgba(255,255,255,.25) !important; }
+  html.dark .mp-tabs-pill + * , html.dark .mp-tabs [aria-selected="true"] { color: #fff; }
+
+  /* Fields */
+  html.dark #monipack-content-canvas :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]):not([type="range"]),
+  html.dark .mp-sheet :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]),
+  html.dark [role="dialog"] :is(input, select, textarea):not([type="checkbox"]):not([type="radio"]) {
+    background-color: rgba(6, 10, 28, 0.55);
+    border-color: var(--n-line2);
+    color: var(--n-ink);
+  }
+  html.dark :is(input, select, textarea):focus { border-color: #6E8BFF !important; box-shadow: 0 0 0 4px rgba(91,124,250,.18) !important; outline: none; }
+  html.dark :is(input, textarea)::placeholder { color: var(--n-dim); }
+  html.dark select option, html.dark select optgroup { background: var(--n-card); color: var(--n-ink); }
+  html.dark input[type="checkbox"], html.dark input[type="radio"] { accent-color: var(--n-blue); }
+
+  /* Filter chips, pipeline board, lead cards */
+  html.dark .mp-fchip { background: rgba(255,255,255,0.03); border-color: var(--n-line); color: var(--n-mute); }
+  html.dark .mp-fchip.on { background: var(--n-blue2); border-color: transparent; color: #fff; box-shadow: 0 6px 16px -8px rgba(91,124,250,.9); }
+  html.dark .mp-col { background: rgba(10, 16, 40, 0.55); border-color: var(--n-line); backdrop-filter: blur(10px); }
+  html.dark .mp-col-head { border-color: var(--n-line); }
+  html.dark .mp-col.is-over { background: rgba(91, 124, 250, 0.10); }
+  html.dark .mp-lc, html.dark .mp-lc-act { background: linear-gradient(180deg, rgba(30,44,98,.55), rgba(20,30,70,.55)); border-color: var(--n-line); }
+  html.dark .mp-lc:hover { border-color: var(--n-line2); }
+  html.dark .mp-col-empty, html.dark .mp-more { border-color: var(--n-line2); }
+
+  /* Side sheet, pop-ups, branch picker, command search */
+  html.dark .mp-sheet, html.dark .mp-sheet-foot { background: linear-gradient(180deg, #111A3E, #0B1230) !important; border-color: var(--n-line); }
+  html.dark .mp-sheet-layer, html.dark .fixed.inset-0[class*="bg-slate-900\/"], html.dark .fixed.inset-0[class*="bg-black\/"] { background-color: rgba(3, 6, 18, 0.66) !important; backdrop-filter: blur(4px); }
+  html.dark .mp-bp-pop { background: #0F1736; color: var(--n-ink); border-color: var(--n-line); }
+  html.dark .mp-bp-search, html.dark .mp-bp-foot { border-color: var(--n-line); }
+  html.dark .mp-bp-opt.act { background: rgba(91,124,250,.16); }
+  html.dark .mp-bp-light { background: var(--n-sub); border-color: var(--n-line); color: var(--n-ink); }
+  html.dark .mp-kbd, html.dark .mp-bp-search kbd, html.dark .mp-bp-foot kbd { background: rgba(255,255,255,.05); border-color: var(--n-line); color: var(--n-mute); }
+
+  /* Toasts and phone bottom bar */
+  html.dark .mp-toast { background: rgba(15, 23, 54, 0.92) !important; border: 1px solid var(--n-line2); color: var(--n-ink); backdrop-filter: blur(14px); }
+  html.dark #monipack-mobile-bottom-nav { background: rgba(7, 11, 26, 0.86) !important; border-color: var(--n-line) !important; backdrop-filter: blur(18px); }
+
+  /* Accent: links and focus rings in brand blue, brand red kept for primary actions */
+  html.dark #monipack-content-canvas a:not([class*="bg-"]):not(.mp-btn) { color: #9DB2FF; }
+  html.dark :focus-visible { outline-color: #6E8BFF; }
+
+  /* Home dashboard sits directly on the page now */
+  html.dark .mpd { background: transparent; border-radius: 0; overflow: visible; }
+  html.dark .mpd::before { display: none; }
+}
