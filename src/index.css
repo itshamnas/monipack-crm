@@ -6,6 +6,7 @@
 @import "./styles/shell.css";
 @import "./styles/pages.css";
 @import "./styles/dashboard.css";
+@import "./styles/navy.css";
 
 /* ==========================================================================
    Monipack Official Brand Typeface: Nadianne Bold
@@ -28,7 +29,7 @@
 
 @layer base {
   body {
-    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-family: 'Outfit', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
     background-color: var(--app-bg, #F3F4F6);
     color: var(--text-main, #111827);
   }

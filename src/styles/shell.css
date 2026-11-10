@@ -4,7 +4,7 @@
    Styling only.
    ========================================================================== */
 :root {
-  --mp-display: 'Plus Jakarta Sans', Inter, system-ui, sans-serif;
+  --mp-display: 'Outfit', 'Plus Jakarta Sans', Inter, system-ui, sans-serif;
   --mp-side-bg: #0C111D;
   --mp-side-2: #141B2B;
   --mp-side-line: #1E2738;
