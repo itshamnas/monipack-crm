@@ -1,9 +1,9 @@
 /**
- * Light / dark theme. Preference in localStorage ('monipack_theme_v2' = 'light' | 'dark'); no choice = navy (dark).
+ * Light / dark theme. Preference in localStorage ('monipack_theme_v3' = 'light' | 'dark'); no choice = white glass (light).
  * toggleTheme(event) sweeps the new theme across the screen as a circle growing from the click point
  * (View Transitions API, 650 ms). Browsers without it, or users who asked for reduced motion, switch instantly.
  */
-const KEY = 'monipack_theme_v2'; // v2: navy is the default look
+const KEY = 'monipack_theme_v3'; // v3: white glass is the default look, navy optional
 
 export function getThemeChoice() {
   try { return localStorage.getItem(KEY) || 'system'; } catch { return 'system'; }
@@ -11,14 +11,14 @@ export function getThemeChoice() {
 
 export function resolvedTheme(choice = getThemeChoice()) {
   if (choice === 'dark' || choice === 'light') return choice;
-  return 'dark'; // navy glass is the default for everyone
+  return 'light'; // white glass is the default for everyone
 }
 
 export function applyTheme(theme = resolvedTheme()) {
   const html = document.documentElement;
   html.classList.toggle('dark', theme === 'dark');
   const meta = document.querySelector('meta[name="theme-color"]');
-  if (meta) meta.setAttribute('content', theme === 'dark' ? '#070B1A' : '#CC1A22');
+  if (meta) meta.setAttribute('content', theme === 'dark' ? '#070B1A' : '#FFFFFF');
 }
 
 /** Call once at start-up: applies the theme and follows the device while the user has not chosen. */
