@@ -19,17 +19,10 @@ import {
   Edit3,
   Share2
 } from 'lucide-react';
+import { LOST_REASONS } from '../utils/lostReasons.js';
 
-const LOST_REASONS = [
-  { id: 'price', label: 'Price too high / Budget mismatch' },
-  { id: 'quantity', label: 'Quantity / MOQ requirement mismatch' },
-  { id: 'availability', label: 'Product availability / Out of stock' },
-  { id: 'postponed', label: 'Project postponed / Delayed purchasing' },
-  { id: 'competitor', label: 'Chose competitor supplier' },
-  { id: 'logistics', label: 'Logistics / Delivery timeline mismatch' },
-  { id: 'no_response', label: 'No response / Invalid phone number' },
-  { id: 'other', label: 'Other commercial reason' },
-];
+// Shared list (pipeline, call queue and reports use the same reasons)
+
 
 const REQUIREMENT_CHIPS = [
   'Catalog & Price List',
@@ -503,7 +496,7 @@ export default function CustomerCareModal({
                       onClick={() => handleLocationChange(w)}
                       className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 hover:bg-slate-200 transition cursor-pointer"
                     >
-                      📍 {w}
+                      <MapPin className="inline w-3 h-3 -mt-0.5 mr-0.5" aria-hidden="true" />{w}
                     </button>
                   ))}
                 </div>

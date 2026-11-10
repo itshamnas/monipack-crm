@@ -177,7 +177,7 @@ export default function WhatsAppModal({ isOpen, onClose, lead, onLogActivity }) 
               }`}
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copied Message! ✓' : 'Copy Text'}</span>
+              <span>{copied ? 'Copied' : 'Copy Text'}</span>
             </button>
 
             <div className="flex gap-2">

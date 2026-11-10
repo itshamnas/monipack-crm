@@ -22,11 +22,13 @@ import {
   UserCheck,
   MapPin,
   Edit2,
-  KeyRound
+  KeyRound,
+  X
 } from 'lucide-react';
 
-export default function Settings({ authFetch, showToast, currentUser, onRefreshConfig, products = [] }) {
-  const [activeSubTab, setActiveSubTab] = useState('categories'); // 'categories', 'branches', 'stages', 'users', 'company', 'audit'
+export default function Settings({ authFetch, showToast, currentUser, onRefreshConfig, products = [], page = null }) {
+  // page: when Settings is opened as one Settings page (Staff logins, Categories, ...), show only that part
+  const [activeSubTab, setActiveSubTab] = useState(page || 'categories'); // 'categories', 'branches', 'stages', 'users', 'company', 'audit'
   const [settings, setSettings] = useState(null);
   const [usersList, setUsersList] = useState([]);
   const [auditLogs, setAuditLogs] = useState([]);
@@ -34,6 +36,11 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
   const [pipelineStages, setPipelineStages] = useState([]);
   const [branches, setBranches] = useState([]);
   const [loading, setLoading] = useState(false);
+  // One salesman list everywhere: branches pick from existing salesmen (created in Salesmen & links)
+  const [salesmenList, setSalesmenList] = useState([]);
+  useEffect(() => {
+    authFetch('/api/salesmen').then((r) => (r.ok ? r.json() : [])).then((d) => setSalesmenList(Array.isArray(d) ? d : [])).catch(() => {});
+  }, [authFetch]);
 
   // Modals & Inputs
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -452,118 +459,19 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
 
   return (
     <div className="p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-24 md:pb-8 animate-in fade-in duration-150">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-red-100 text-red-700 flex items-center justify-center font-bold shrink-0">
-              <SettingsIcon className="w-5 h-5" />
-            </div>
-            <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Super Admin Settings</h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
-              👑 Super Admin Only
-            </span>
+      {/* Danger zone actions live on the Security page */}
+      {(!page || page === 'audit') && currentUser?.role === 'super_admin' && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-rose-200 bg-rose-50/60 p-4">
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-semibold text-slate-900">Data tools</h2>
+            <p className="text-[13px] text-slate-600">Download a full snapshot of the database, or permanently remove every lead.</p>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Dynamic product categories, branch & salesman assignments, pipeline stages, users, and audit logs.
-          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" onClick={handleDownloadBackup} className="mp-btn mp-btn-line"><Database className="w-4 h-4" /> Download snapshot</button>
+            <button type="button" onClick={handlePurgeLeads} className="mp-btn mp-btn-line text-rose-700" title="Permanently remove all leads"><Trash2 className="w-4 h-4" /> Reset leads</button>
+          </div>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2 self-start sm:self-auto">
-          <button
-            type="button"
-            onClick={handlePurgeLeads}
-            className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-bold rounded-lg border border-rose-200 transition active:scale-95 cursor-pointer"
-            title="Permanently remove all leads to start with clean database"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-            <span>Reset Leads Data</span>
-          </button>
-
-          <button
-            onClick={handleDownloadBackup}
-            className="flex items-center gap-1.5 px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold rounded-lg shadow-sm transition active:scale-95 cursor-pointer"
-          >
-            <Database className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Download Database Snapshot</span>
-          </button>
-        </div>
-      </div>
-
-      {/* Sub Tabs Navigation */}
-      <div className="flex border-b border-slate-200 gap-4 sm:gap-6 text-xs font-bold overflow-x-auto pb-1 -mx-3 px-3 sm:mx-0 sm:px-0">
-        <button
-          onClick={() => setActiveSubTab('categories')}
-          className={`pb-3 flex items-center gap-2 transition border-b-2 -mb-px whitespace-nowrap cursor-pointer ${
-            activeSubTab === 'categories'
-              ? 'border-red-600 text-red-600 font-black'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Tag className="w-4 h-4" />
-          <span>Product Categories ({categories.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('branches')}
-          className={`pb-3 flex items-center gap-2 transition border-b-2 -mb-px whitespace-nowrap ${
-            activeSubTab === 'branches'
-              ? 'border-red-600 text-red-600 font-black'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <MapPin className="w-4 h-4" />
-          <span>Branches & Salesmen ({branches.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('stages')}
-          className={`pb-3 flex items-center gap-2 transition border-b-2 -mb-px whitespace-nowrap ${
-            activeSubTab === 'stages'
-              ? 'border-red-600 text-red-600 font-black'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Kanban className="w-4 h-4" />
-          <span>Pipeline Stages ({pipelineStages.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('users')}
-          className={`pb-3 flex items-center gap-2 transition border-b-2 -mb-px whitespace-nowrap ${
-            activeSubTab === 'users'
-              ? 'border-red-600 text-red-600 font-black'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Users className="w-4 h-4" />
-          <span>Staff Accounts ({usersList.length})</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('company')}
-          className={`pb-3 flex items-center gap-2 transition border-b-2 -mb-px whitespace-nowrap ${
-            activeSubTab === 'company'
-              ? 'border-red-600 text-red-600 font-black'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Building className="w-4 h-4" />
-          <span>Company Defaults</span>
-        </button>
-
-        <button
-          onClick={() => setActiveSubTab('audit')}
-          className={`pb-3 flex items-center gap-2 transition border-b-2 -mb-px whitespace-nowrap ${
-            activeSubTab === 'audit'
-              ? 'border-red-600 text-red-600 font-black'
-              : 'border-transparent text-slate-500 hover:text-slate-800'
-          }`}
-        >
-          <Clock className="w-4 h-4" />
-          <span>Audit Trail</span>
-        </button>
-      </div>
+      )}
 
       {/* TAB 1: PRODUCT CATEGORIES */}
       {activeSubTab === 'categories' && (
@@ -1225,7 +1133,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
               <h3 className="text-sm font-bold">Add Oman Branch & Salesman</h3>
-              <button onClick={() => setIsAddBranchOpen(false)} className="text-slate-400 hover:text-white">✕</button>
+              <button aria-label="Close" onClick={() => setIsAddBranchOpen(false)} className="text-slate-400 hover:text-white"><X className="w-4 h-4" aria-hidden="true" /></button>
             </div>
 
             <form onSubmit={handleAddBranch} className="p-6 space-y-4">
@@ -1242,15 +1150,16 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Assigned Salesman / Representative *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Shamnas Acheerakath / Ahmed Al Balushi"
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Default salesman for this branch</label>
+                <select
                   value={newBranch.salesman}
                   onChange={(e) => setNewBranch({ ...newBranch, salesman: e.target.value })}
-                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:border-red-500"
-                />
+                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5 bg-white focus:outline-none focus:border-red-500"
+                >
+                  <option value="">Not assigned</option>
+                  {salesmenList.map((sm) => <option key={sm.id} value={sm.name}>{sm.name}</option>)}
+                </select>
+                <p className="mt-1 text-[11px] text-slate-500">Add new salesmen in Settings → Salesmen &amp; links.</p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1302,7 +1211,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
               <h3 className="text-sm font-bold">Edit Branch & Salesman</h3>
-              <button onClick={() => setEditingBranch(null)} className="text-slate-400 hover:text-white">✕</button>
+              <button aria-label="Close" onClick={() => setEditingBranch(null)} className="text-slate-400 hover:text-white"><X className="w-4 h-4" aria-hidden="true" /></button>
             </div>
 
             <form onSubmit={handleUpdateBranch} className="p-6 space-y-4">
@@ -1318,14 +1227,16 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Assigned Salesman / Representative *</label>
-                <input
-                  type="text"
-                  required
-                  value={editingBranch.salesman || ''}
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Default salesman for this branch</label>
+                <select
+                  value={editingBranch.salesman && editingBranch.salesman !== 'Unassigned' ? editingBranch.salesman : ''}
                   onChange={(e) => setEditingBranch({ ...editingBranch, salesman: e.target.value })}
-                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:border-red-500"
-                />
+                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5 bg-white focus:outline-none focus:border-red-500"
+                >
+                  <option value="">Not assigned</option>
+                  {editingBranch.salesman && editingBranch.salesman !== 'Unassigned' && !salesmenList.some((sm) => sm.name === editingBranch.salesman) && <option value={editingBranch.salesman}>{editingBranch.salesman}</option>}
+                  {salesmenList.map((sm) => <option key={sm.id} value={sm.name}>{sm.name}</option>)}
+                </select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -1376,7 +1287,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
               <h3 className="text-sm font-bold">Add Pipeline Stage</h3>
-              <button onClick={() => setIsAddStageOpen(false)} className="text-slate-400 hover:text-white">✕</button>
+              <button aria-label="Close" onClick={() => setIsAddStageOpen(false)} className="text-slate-400 hover:text-white"><X className="w-4 h-4" aria-hidden="true" /></button>
             </div>
 
             <form onSubmit={handleAddStage} className="p-6 space-y-4">
@@ -1434,7 +1345,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
               <h3 className="text-sm font-bold">Add Staff Account</h3>
-              <button onClick={() => setIsAddUserOpen(false)} className="text-slate-400 hover:text-white">✕</button>
+              <button aria-label="Close" onClick={() => setIsAddUserOpen(false)} className="text-slate-400 hover:text-white"><X className="w-4 h-4" aria-hidden="true" /></button>
             </div>
 
             <form onSubmit={handleCreateUser} className="p-6 space-y-4">
@@ -1551,7 +1462,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                 <KeyRound className="w-4 h-4 text-blue-400" />
                 <h3 className="text-sm font-bold">Reset Staff Password</h3>
               </div>
-              <button
+              <button aria-label="Close"
                 type="button"
                 onClick={() => {
                   setResetPasswordModal(null);
@@ -1559,7 +1470,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                 }}
                 className="text-slate-400 hover:text-white"
               >
-                ✕
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
 

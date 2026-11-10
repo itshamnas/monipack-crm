@@ -570,11 +570,11 @@ export default function Products({
                 <Edit2 className="w-4 h-4 text-red-400" />
                 <h3 className="text-sm font-bold">Edit Product: {editingProduct.sku}</h3>
               </div>
-              <button
+              <button aria-label="Close"
                 onClick={() => setEditingProduct(null)}
                 className="text-slate-400 hover:text-white"
               >
-                ✕
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
 
@@ -724,11 +724,11 @@ export default function Products({
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150 my-auto my-3 sm:my-6">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
               <h3 className="text-sm font-bold">Add Product to Catalog</h3>
-              <button
+              <button aria-label="Close"
                 onClick={() => setIsModalOpen(false)}
                 className="text-slate-400 hover:text-white"
               >
-                ✕
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             </div>
 

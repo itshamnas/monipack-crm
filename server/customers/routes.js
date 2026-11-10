@@ -13,6 +13,7 @@ import {
 } from './logic.js';
 import { saveFile, readFile } from './storage.js';
 import * as tdb from '../tasks/tasks.js';
+import { notify, managers } from '../notify/notify.js';
 import { workbook } from './xlsx.js';
 
 const LINK_SESSION_HOURS = 12;
@@ -278,6 +279,7 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     });
     await cdb.addSubmission(row.id, sm.id, { ...clean, submittedBy: sm.name, salesmanType: sm.type });
     await log(req, 'submit');
+    if (dups.length) await notify(await managers(), { kind: 'approval', title: `${sm.name}: possible duplicate customer ${saved.name}`, body: 'Check and approve', link: 'customers' });
     res.json({
       customer: { id: String(saved.id), name: saved.name, status: saved.status },
       duplicate: dups.length > 0,
@@ -339,6 +341,7 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     });
     await cdb.addSubmission(created.id, sm.id, { ...clean, submittedBy: sm.name, salesmanType: sm.type, newCustomer: true });
     await log(req, 'new_customer');
+    await notify(await managers(), { kind: 'approval', title: `${sm.name} added a new customer: ${created.name}`, body: 'Waiting for your approval', link: 'customers' });
     res.status(201).json({
       customer: { id: String(created.id), name: created.name, status: created.status },
       duplicate: dups.length > 0,

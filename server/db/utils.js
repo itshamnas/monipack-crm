@@ -166,6 +166,8 @@ export function quotationToApi(row, items = []) {
     validityDays: Number(row.validity_days || 30),
     salesRep: row.sales_rep || '',
     status: row.status || 'sent',
+    statusChangedAt: row.status_changed_at || null,
+    statusReason: row.status_reason || '',
     items: items.map(qi => ({
       id: String(qi.id),
       seq: qi.seq,

@@ -1,0 +1,36 @@
+/* ==========================================================================
+   Design system pass (both themes): one calm type scale, readable small text,
+   sentence case for labels, consistent pop-up headers. Printing untouched.
+   ========================================================================== */
+@media screen {
+  /* Weights: 800/900 everywhere looked shouty; use bold at most */
+  #monipack-content-canvas :is(.font-black, .font-extrabold):not(.font-monipack):not(.quotation-sheet *) { font-weight: 700; }
+  #monipack-header-region :is(.font-black, .font-extrabold) { font-weight: 700; }
+
+  /* Nothing smaller than 11px */
+  #monipack-content-canvas :is(.text-\[8px\], .text-\[9px\], .text-\[9\.5px\], .text-\[10px\]):not(.quotation-sheet *),
+  [role="dialog"] :is(.text-\[8px\], .text-\[9px\], .text-\[9\.5px\], .text-\[10px\]):not(.quotation-sheet *) { font-size: 11px; }
+
+  /* ALL-CAPS labels read as shouting: sentence case, except table headers and eyebrow labels */
+  #monipack-content-canvas .uppercase:not(th):not(thead *):not(.mpd-eyebrow):not(.mp-focus-eyebrow):not(.quotation-sheet *):not(code):not(.font-mono),
+  [role="dialog"] .uppercase:not(th):not(thead *):not(.quotation-sheet *):not(code):not(.font-mono) {
+    text-transform: none;
+    letter-spacing: 0;
+  }
+  #monipack-content-canvas :is(th, thead *):not(.quotation-sheet *) { letter-spacing: 0.06em; font-weight: 600; }
+
+  /* Older pop-ups with a black header bar: same clean header as the rest */
+  html:not(.dark) .px-6.py-4.bg-slate-900.text-white {
+    background: #fff !important; color: #0B1220 !important; border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+  }
+  html:not(.dark) .px-6.py-4.bg-slate-900.text-white h3 { font-size: 16px; font-weight: 600; }
+  html:not(.dark) .px-6.py-4.bg-slate-900.text-white button { color: #64748B !important; width: 36px; height: 36px; display: grid; place-items: center; border-radius: 10px; }
+  html:not(.dark) .px-6.py-4.bg-slate-900.text-white button:hover { background: #F1F5F9; color: #0B1220 !important; }
+
+  /* Lucide line icons: one stroke weight everywhere */
+  #monipack-content-canvas svg.lucide[stroke-width="2"], #monipack-header-region svg.lucide[stroke-width="2"], .mp-side svg.lucide[stroke-width="2"] { stroke-width: 1.85; }
+
+  /* Settings sub-tabs */
+  html.dark .mp-subtabs button { color: #8B95C3; }
+  html.dark .mp-subtabs button[aria-current="page"] { color: #E8ECFF; }
+}

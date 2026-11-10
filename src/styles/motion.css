@@ -146,3 +146,9 @@ input, select, textarea { transition: border-color var(--mo-fast), box-shadow va
 @media (min-width: 1024px) and (max-width: 1279px) {
   .mp-side-region .mp-side-new, .mp-side-region .mp-side-quote { flex: none; height: 42px; min-height: 42px; }
 }
+
+/* Notification bell: a short ring when there is something unread */
+.mp-bell-ring { transform-origin: 50% 2px; animation: mo-ring 1.6s ease-in-out 0.4s 2; }
+@keyframes mo-ring { 0%, 50%, 100% { transform: rotate(0); } 10% { transform: rotate(14deg); } 20% { transform: rotate(-12deg); } 30% { transform: rotate(8deg); } 40% { transform: rotate(-4deg); } }
+@media screen { html.dark .mp-bell { background: rgba(255,255,255,.04); border-color: rgba(140,160,255,.26); color: #C9D0F0; } html.dark .mp-bell + .mp-mom-pop .border-slate-100 { border-color: rgba(140,160,255,.14); } }
+@media (prefers-reduced-motion: reduce) { .mp-bell-ring { animation: none; } }

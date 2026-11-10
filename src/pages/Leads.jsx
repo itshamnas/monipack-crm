@@ -30,7 +30,7 @@ import {
   FileSpreadsheet,
   Share2,
   Printer,
-  CalendarClock
+  CalendarClock, PhoneCall, CheckCircle2, Check, X
 } from 'lucide-react';
 import { openPrintable, chipsHtml, tableHtml } from '../utils/pdfReport.js';
 import CustomerCareModal from '../components/CustomerCareModal';
@@ -417,7 +417,7 @@ export default function Leads({
             }}
             className="mt-2.5 w-full min-h-[40px] px-3 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 active:scale-[0.98] transition cursor-pointer"
           >
-            <span>Move to {stageName(nextStage.label)}</span><span aria-hidden="true">→</span>
+            <span>Move to {stageName(nextStage.label)}</span><ArrowRight className="w-3.5 h-3.5" aria-hidden="true" />
           </button>
         )}
       </div>
@@ -591,14 +591,14 @@ export default function Leads({
           <span className="mp-fchip on">
             <MapPin className="w-3.5 h-3.5" />
             <span>Branch: <strong>{((branches || []).find((b) => String(b.id ?? b.name) === String(selectedBranch))?.name) || selectedBranch}</strong></span>
-            <button onClick={() => setSelectedBranch('all')} className="ml-0.5 w-5 h-5 grid place-items-center rounded-full hover:bg-red-100 cursor-pointer" title="Show all branches" aria-label="Clear branch filter">✕</button>
+            <button onClick={() => setSelectedBranch('all')} className="ml-0.5 w-5 h-5 grid place-items-center rounded-full hover:bg-red-100 cursor-pointer" title="Show all branches" aria-label="Clear branch filter"><X className="w-3 h-3" aria-hidden="true" /></button>
           </span>
         )}
 
         {searchQuery && (
           <span className="mp-fchip on">
             <span>Search: <strong>“{searchQuery}”</strong></span>
-            <button onClick={() => setSearchQuery('')} className="ml-0.5 w-5 h-5 grid place-items-center rounded-full hover:bg-red-100 cursor-pointer" aria-label="Clear search">✕</button>
+            <button onClick={() => setSearchQuery('')} className="ml-0.5 w-5 h-5 grid place-items-center rounded-full hover:bg-red-100 cursor-pointer" aria-label="Clear search"><X className="w-3 h-3" aria-hidden="true" /></button>
           </span>
         )}
 
@@ -1076,7 +1076,7 @@ export default function Leads({
                             isNew ? 'bg-red-100 text-red-800' : 'bg-emerald-100 text-emerald-800'
                           }`}
                         >
-                          {isNew ? '● Needs Call & Intake' : '✓ Understood & Assigned'}
+                          {isNew ? <><PhoneCall className="inline w-3 h-3 -mt-0.5 mr-1" aria-hidden="true" />Needs a call</> : <><CheckCircle2 className="inline w-3 h-3 -mt-0.5 mr-1" aria-hidden="true" />Assigned</>}
                         </span>
                         <span className="text-[10px] text-slate-500 font-mono bg-slate-100 px-2 py-0.5 rounded">
                           {lead.category?.split(' ')[0]}
@@ -1315,7 +1315,7 @@ export default function Leads({
               }`}
             >
               <span className="truncate pr-1">{s.label}</span>
-              {menuAnchor.lead.status === s.id && <span className="text-[10px] text-emerald-600 font-bold shrink-0">✓</span>}
+              {menuAnchor.lead.status === s.id && <Check className="w-4 h-4 text-emerald-600 shrink-0" aria-label="Current stage" />}
             </button>
           ))}
 

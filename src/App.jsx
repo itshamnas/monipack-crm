@@ -17,6 +17,8 @@ import DataCleanup from './pages/DataCleanup.jsx';
 import SalesTargets from './pages/SalesTargets.jsx';
 import Tasks from './pages/Tasks.jsx';
 import AuditVault from './pages/AuditVault.jsx';
+import SecurityCard from './components/SecurityCard.jsx';
+import LostReasonModal from './components/LostReasonModal.jsx';
 import Celebration from './components/ui/Celebration.jsx';
 import TodayFocus from './components/TodayFocus.jsx';
 import { recordAction } from './utils/momentum.js';
@@ -24,7 +26,7 @@ import { celebrate } from './utils/celebrate.js';
 import Customers, { SalesmanLinksPage, CustomerFieldsPage } from './pages/Customers.jsx';
 import Home from './pages/Home.jsx';
 import SectionTabs from './components/layout/SectionTabs.jsx';
-import { sectionOf } from './components/layout/navigation.js';
+import { SETTINGS_SUBPAGES, sectionOf } from './components/layout/navigation.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
 import MobileBottomNav from './components/layout/MobileBottomNav.jsx';
 import OfflineBanner from './components/pwa/OfflineBanner.jsx';
@@ -84,8 +86,13 @@ export default function App() {
   };
 
   const handleLoginSuccess = (newToken, newUser) => {
+    try { localStorage.setItem('mp_last_active', String(Date.now())); } catch { /* ignore */ }
     saveSession(newToken, newUser);
-    if (!newUser?.mustChangePassword) {
+    let left = null;
+    try { left = sessionStorage.getItem('mp_recovery_left'); sessionStorage.removeItem('mp_recovery_left'); } catch { /* ignore */ }
+    if (left != null) {
+      showToast(`Signed in with a recovery code. ${left} left. Set up 2-step login again on your new phone in Settings.`, Number(left) <= 2 ? 'error' : undefined);
+    } else if (!newUser?.mustChangePassword) {
       showToast(`Welcome back, ${newUser.name}!`);
     }
   };
@@ -104,6 +111,29 @@ export default function App() {
       showToast('Signed out successfully.');
     }
   };
+
+  // Idle sign-out: after 60 minutes with no clicks or typing (shared across tabs), sign out.
+  const IDLE_MS = 60 * 60 * 1000;
+  useEffect(() => {
+    if (!token) return undefined;
+    const KEY = 'mp_last_active';
+    const lastActive = () => { try { return Number(localStorage.getItem(KEY)) || Date.now(); } catch { return Date.now(); } };
+    if (Date.now() - lastActive() > IDLE_MS) { handleLogout(false); showToast('You were signed out after 60 minutes without activity.'); return undefined; }
+    let lastWrite = 0;
+    const touch = () => {
+      const now = Date.now();
+      if (now - lastWrite < 15000) return;
+      lastWrite = now;
+      try { localStorage.setItem(KEY, String(now)); } catch { /* ignore */ }
+    };
+    touch();
+    const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+    events.forEach((e) => window.addEventListener(e, touch, { passive: true }));
+    const timer = setInterval(() => {
+      if (Date.now() - lastActive() > IDLE_MS) { handleLogout(false); showToast('You were signed out after 60 minutes without activity.'); }
+    }, 30000);
+    return () => { events.forEach((e) => window.removeEventListener(e, touch)); clearInterval(timer); };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Authenticated Fetch Helper
   // Momentum + celebrations: count each saved action, celebrate real wins. Never blocks or changes a request.
@@ -246,7 +276,7 @@ export default function App() {
   // Security guard: only users allowed to manage settings can open the Settings page.
   // (Must stay above the early returns below - React hooks cannot run conditionally.)
   useEffect(() => {
-    if (activeTab === 'settings' && currentUser && !currentUser.permissions?.includes('settings.manage')) {
+    if (SETTINGS_SUBPAGES[activeTab] && currentUser && !currentUser.permissions?.includes('settings.manage')) {
       setActiveTab('dashboard');
     }
     if (activeTab === 'customers' && currentUser && !currentUser.permissions?.includes('customers.view')) {
@@ -293,9 +323,15 @@ export default function App() {
     setIsLeadModalOpen(true);
   };
 
-  const handleSaveLead = async (leadData) => {
+  const handleSaveLead = async (leadDataIn) => {
+    let leadData = leadDataIn;
     try {
       if (editingLead) {
+        if (leadData.status === 'lost' && editingLead.status !== 'lost' && !String(leadData.lostReason || '').trim()) {
+          const answer = await askLostReason(editingLead);
+          if (!answer) return;
+          leadData = { ...leadData, lostReason: answer.reason, ...(answer.note ? { notes: `${leadData.notes ? `${leadData.notes}\n` : ''}[${new Date().toLocaleDateString('en-GB')}] Lost: ${answer.note}` } : {}) };
+        }
         const res = await authFetch(`/api/leads/${editingLead.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -344,6 +380,10 @@ export default function App() {
   };
 
   const handleUpdateStatus = async (id, newStatus) => {
+    if (newStatus === 'lost') {
+      try { await handleUpdateLead(id, { status: 'lost' }); showToast('Marked as lost'); } catch { /* kept open or error already shown */ }
+      return;
+    }
     try {
       const res = await authFetch(`/api/leads/${id}`, {
         method: 'PATCH',
@@ -362,7 +402,22 @@ export default function App() {
     }
   };
 
-  const handleUpdateLead = async (id, updates) => {
+  // Moving a deal to Lost always asks why (one pop-up for pipeline drag, menus and the lead form)
+  const [lostAsk, setLostAsk] = useState(null);
+  const askLostReason = (lead) => new Promise((resolve) => setLostAsk({ lead, resolve }));
+
+  const handleUpdateLead = async (id, updatesIn) => {
+    let updates = updatesIn;
+    if (updates?.status === 'lost' && !String(updates.lostReason || '').trim()) {
+      const lead = leads.find((l) => String(l.id) === String(id));
+      if (lead?.status !== 'lost') {
+        const answer = await askLostReason(lead || { id, name: updates.name || 'This deal' });
+        if (!answer) { fetchData(); const e = new Error('Kept open'); e.silent = true; throw e; }
+        const stamp = new Date().toLocaleDateString('en-GB');
+        const notesBase = updates.notes !== undefined ? updates.notes : (lead?.notes || '');
+        updates = { ...updates, lostReason: answer.reason, ...(answer.note ? { notes: `${notesBase ? `${notesBase}\n` : ''}[${stamp}] Lost: ${answer.note}` } : {}) };
+      }
+    }
     try {
       const res = await authFetch(`/api/leads/${id}`, {
         method: 'PATCH',
@@ -378,7 +433,7 @@ export default function App() {
       fetchData();
       return await res.json();
     } catch (err) {
-      showToast(err.message || 'Failed to update lead', 'error');
+      if (!err.silent) showToast(err.message || 'Failed to update lead', 'error');
       throw err;
     }
   };
@@ -413,6 +468,15 @@ export default function App() {
     } catch (err) {
       showToast('Failed to create quotation', 'error');
     }
+  };
+
+  const handleSetQuoteStatus = async (quote, status, extra) => {
+    const res = await authFetch(`/api/quotations/${quote.id}/status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status, ...extra }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(data.error || 'Could not change the quotation status', 'error'); throw new Error(data.error || 'failed'); }
+    if (data.leadWon) celebrate('won', 'Deal won', `${quote.customerName} · OMR ${Number(quote.grandTotalOMR || 0).toLocaleString('en-US', { maximumFractionDigits: 3 })}`);
+    else showToast(`Quotation ${quote.code} marked ${status}`);
+    fetchData();
   };
 
   const handleUpdateQuotation = async (id, updates, callback) => {
@@ -551,53 +615,25 @@ export default function App() {
 
   // Page Title mapping (with responsive shortTitle for mobile viewports)
   const titles = {
-    analytics: { title: 'Charts', shortTitle: 'Charts', subtitle: 'Pipeline funnel, categories and branches' },
-    'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: 'Each salesman\'s secret link, type and PIN' },
+    dashboard: { title: 'Home', shortTitle: 'Home', subtitle: 'What needs attention today' },
+    analytics: { title: 'Reports', shortTitle: 'Reports', subtitle: 'Pipeline funnel, categories and branches' },
+    customercare: { title: 'Inbox', shortTitle: 'Inbox', subtitle: 'New enquiries to call, understand and assign' },
+    leads: { title: 'Pipeline', shortTitle: 'Pipeline', subtitle: 'Deals in progress: quotations, follow-ups, samples, won and lost' },
+    customers: { title: 'Customers', shortTitle: 'Customers', subtitle: 'Every customer, enquiry, quotation and document in one place' },
+    quotations: { title: 'Quotations', shortTitle: 'Quotations', subtitle: 'Create, send and track price quotations' },
     tasks: { title: 'Tasks', shortTitle: 'Tasks', subtitle: 'To-dos for you and the team' },
+    'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: "Each salesman's secret link, type and PIN" },
+    'settings-staff': { title: 'Staff logins', shortTitle: 'Staff', subtitle: 'Who can sign in, their role and password' },
     'settings-targets': { title: 'Sales targets', shortTitle: 'Targets', subtitle: 'Monthly OMR target for each salesman' },
+    products: { title: 'Products', shortTitle: 'Products', subtitle: 'Product catalogue used in quotations' },
+    'settings-catalogue': { title: 'Categories', shortTitle: 'Categories', subtitle: 'Product categories used across enquiries and the catalogue' },
+    'settings-fields': { title: 'Customer form', shortTitle: 'Customer form', subtitle: 'Fields salesmen fill in, required fields and dropdown choices' },
+    branches: { title: 'Branches', shortTitle: 'Branches', subtitle: 'Branches, hubs and their default salesman' },
+    'settings-stages': { title: 'Pipeline stages', shortTitle: 'Stages', subtitle: 'The steps a deal moves through' },
+    settings: { title: 'Company details', shortTitle: 'Company', subtitle: 'Legal name, CR, VAT and document defaults' },
+    'settings-security': { title: 'Security & audit', shortTitle: 'Security', subtitle: '2-step login, backups, audit trail and data reset' },
     'settings-vault': { title: 'Audit vault', shortTitle: 'Vault', subtitle: 'Super admin only: everything everyone did, locked with a second password' },
     'settings-cleanup': { title: 'Data cleanup', shortTitle: 'Cleanup', subtitle: 'Super admin only: delete test or old data before going live' },
-    'settings-fields': { title: 'Customer form', shortTitle: 'Customer form', subtitle: 'Fields salesmen fill in, required fields and dropdown choices' },
-    customers: {
-      title: 'Customer Data Centre',
-      shortTitle: 'Customers',
-      subtitle: 'Every customer, enquiry, quotation and document in one place'
-    },
-    dashboard: { 
-      title: 'Home', 
-      shortTitle: 'Home', 
-      subtitle: 'What needs attention today' 
-    },
-    customercare: { 
-      title: 'Customer Care & Inbound Intake Desk', 
-      shortTitle: 'Customer Care', 
-      subtitle: 'Step 1 & 2: Call incoming leads, understand requirements & assign to Oman branches' 
-    },
-    leads: { 
-      title: 'Commercial Sales Pipeline', 
-      shortTitle: 'Sales Pipeline', 
-      subtitle: 'Step 3 to 5: Track quotations, follow-ups, samples, and conversions' 
-    },
-    quotations: { 
-      title: 'Quotation Management System', 
-      shortTitle: 'Quotations', 
-      subtitle: 'Generate, track, and print official monipack OMR price quotes' 
-    },
-    products: { 
-      title: 'Multi-Brand Product Catalog', 
-      shortTitle: 'Catalog', 
-      subtitle: 'Packaging, monipack, moniclean, monifood, and Kohe product specifications' 
-    },
-    branches: { 
-      title: 'Oman Branches & Hubs', 
-      shortTitle: 'Branches', 
-      subtitle: 'Regional coverage, warehouses, and client distribution points' 
-    },
-    settings: { 
-      title: 'Super Admin Control Panel', 
-      shortTitle: 'Settings', 
-      subtitle: 'User accounts, company legal details, audit logs, and backups' 
-    },
   };
 
   return (
@@ -608,6 +644,11 @@ export default function App() {
         notifications={
           <>
           <Celebration />
+          {lostAsk && (
+            <LostReasonModal leadName={lostAsk.lead?.name || ''}
+              onCancel={() => { lostAsk.resolve(null); setLostAsk(null); }}
+              onConfirm={(reason, note) => { lostAsk.resolve({ reason, note }); setLostAsk(null); }} />
+          )}
           {toast && (
             <div
               key={toast.message}
@@ -670,6 +711,8 @@ export default function App() {
             currentUser={currentUser}
             onLogout={handleLogout}
             onOpenMobileDrawer={() => setIsMobileDrawerOpen(true)}
+            authFetch={authFetch}
+            onNavigate={setActiveTab}
           />
         }
       >
@@ -761,6 +804,8 @@ export default function App() {
             onUpdateQuotation={handleUpdateQuotation}
             onDeleteQuotation={can('quotations.archive') ? handleDeleteQuotation : null}
             onRefresh={fetchData}
+            currentUser={currentUser}
+            onSetQuoteStatus={can('quotations.status') ? handleSetQuoteStatus : null}
           />
         )}
 
@@ -818,8 +863,13 @@ export default function App() {
           <div className="p-3 sm:p-6 lg:p-8 max-w-5xl mx-auto pb-24 md:pb-8"><DataCleanup authFetch={authFetch} showToast={showToast} onDone={fetchData} /></div>
         )}
 
-        {activeTab === 'settings' && can('settings.manage') && (
+        {activeTab === 'settings-security' && currentUser?.role === 'super_admin' && (
+          <div className="px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6 max-w-7xl mx-auto"><SecurityCard authFetch={authFetch} showToast={showToast} /></div>
+        )}
+        {SETTINGS_SUBPAGES[activeTab] && can('settings.manage') && (
           <Settings
+            key={activeTab}
+            page={SETTINGS_SUBPAGES[activeTab]}
             authFetch={authFetch}
             showToast={showToast}
             currentUser={currentUser}
@@ -844,6 +894,7 @@ export default function App() {
         categories={categories}
         pipelineStages={pipelineStages}
         authFetch={authFetch}
+        onOpenExisting={(id) => { const l = leads.find((x) => String(x.id) === String(id)); if (l) { setEditingLead(l); } else { showToast('That lead belongs to another salesman.', 'error'); } }}
       />
 
       <WhatsAppModal

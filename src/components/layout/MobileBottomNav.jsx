@@ -1,5 +1,5 @@
 import React from 'react';
-import { LayoutDashboard, ContactRound, Users, FileText, Menu, Plus, ListChecks } from 'lucide-react';
+import { LayoutDashboard, Inbox, Kanban, Menu, Plus, ListChecks } from 'lucide-react';
 import { sectionOf } from './navigation.js';
 
 /**
@@ -18,17 +18,13 @@ export default function MobileBottomNav({
 }) {
   const newLeadsBadge = stats?.newLeads ?? 0;
 
-  const canCustomers = Boolean(currentUser?.permissions?.includes('customers.view'));
+  // 4 tabs + the + button: Home, Inbox, (+), Pipeline, Tasks. Customers, Quotations and Settings are in Menu.
+  const count = (n) => (n > 0 ? (n > 99 ? '99+' : n) : null);
   const navItems = [
     { id: 'dashboard', section: 'home', label: 'Home', icon: LayoutDashboard, badge: null },
-    ...(canCustomers ? [{ id: 'customers', section: 'customers', label: 'Customers', icon: ContactRound, badge: null }] : []),
-    {
-      id: 'leads', section: 'leads', label: 'Leads', icon: Users,
-      badge: newLeadsBadge > 0 ? (newLeadsBadge > 99 ? '99+' : newLeadsBadge) : null,
-      badgeColor: 'bg-[#CC1A22] text-white',
-    },
-    ...(currentUser?.permissions?.includes('tasks.use') ? [{ id: 'tasks', section: 'tasks', label: 'Tasks', icon: ListChecks, badge: taskDue > 0 ? (taskDue > 99 ? '99+' : taskDue) : null }] : []),
-    { id: 'quotations', section: 'quotations', label: 'Quotes', icon: FileText, badge: null },
+    { id: 'customercare', section: 'inbox', label: 'Inbox', icon: Inbox, badge: count(newLeadsBadge), badgeColor: 'bg-[#CC1A22] text-white' },
+    { id: 'leads', section: 'leads', label: 'Pipeline', icon: Kanban, badge: null },
+    ...(currentUser?.permissions?.includes('tasks.use') ? [{ id: 'tasks', section: 'tasks', label: 'Tasks', icon: ListChecks, badge: count(taskDue) }] : []),
   ];
   const activeSection = sectionOf(activeTab, currentUser)?.id;
 
@@ -48,7 +44,7 @@ export default function MobileBottomNav({
           const Icon = item.icon;
           const isActive = activeSection === item.section;
 
-          const fab = onNewLead && idx === Math.ceil(navItems.length / 2) ? (
+          const fab = onNewLead && idx === 2 ? (
             <button key="fab" type="button" onClick={onNewLead} className="mp-fab" aria-label="New enquiry" title="New enquiry">
               <span><Plus className="w-6 h-6" strokeWidth={2.5} /></span>
             </button>
@@ -62,14 +58,14 @@ export default function MobileBottomNav({
               onClick={() => onTabChange(item.id)}
               className={`flex-1 flex flex-col items-center justify-center h-full py-1 relative transition-colors duration-150 active:scale-95 cursor-pointer ${
                 isActive
-                  ? 'text-[#CC1A22] font-black'
-                  : 'text-slate-500 hover:text-slate-900 font-semibold'
+                  ? 'text-[#CC1A22] font-semibold'
+                  : 'text-slate-500 hover:text-slate-900 font-medium'
               }`}
             >
               {/* Badge indicator */}
               {item.badge && (
                 <span
-                  className={`absolute top-1.5 right-[24%] sm:right-[30%] min-w-4 h-4 px-1 rounded-full text-[9px] font-black flex items-center justify-center leading-none shadow-xs ${
+                  className={`absolute top-1.5 right-[24%] sm:right-[30%] min-w-4 h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center leading-none shadow-xs ${
                     item.badgeColor || 'bg-[#CC1A22] text-white'
                   }`}
                 >
@@ -84,7 +80,7 @@ export default function MobileBottomNav({
                 }`}
                 style={isActive ? { color: 'var(--color-primary, #CC1A22)' } : undefined}
               />
-              <span className="text-[10px] tracking-tight mt-0.5 leading-none">
+              <span className="text-[11px] mt-1 leading-none">
                 {item.label}
               </span>
 
@@ -107,7 +103,7 @@ export default function MobileBottomNav({
           className="flex-1 flex flex-col items-center justify-center h-full py-1 text-slate-500 hover:text-slate-900 font-semibold transition-colors duration-150 active:scale-95 cursor-pointer"
         >
           <Menu className="w-5 h-5 stroke-2" />
-          <span className="text-[10px] tracking-tight mt-0.5 leading-none">
+          <span className="text-[11px] mt-1 leading-none">
             Menu
           </span>
         </button>

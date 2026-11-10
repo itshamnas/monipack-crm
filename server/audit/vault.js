@@ -32,6 +32,7 @@ const RULES = [
   ['POST', /^\/api\/leads\/bulk-import$/, 'leads', () => 'Imported leads'],
   ['POST', /^\/api\/quotations$/, 'quotations', () => 'Created a quotation'],
   ['PUT', /^\/api\/quotations\/[^/]+$/, 'quotations', () => 'Edited a quotation'],
+  ['POST', /^\/api\/quotations\/[^/]+\/status$/, 'quotations', (r) => `Marked a quotation "${r.body?.status || ''}"`],
   ['DELETE', /^\/api\/quotations\/[^/]+$/, 'quotations', () => 'Deleted a quotation'],
   ['POST', /^\/api\/customers$/, 'customers', () => 'Created a customer'],
   ['PATCH', /^\/api\/customers\/[^/]+$/, 'customers', () => 'Edited a customer'],
@@ -142,7 +143,8 @@ export async function appendVault(entry) {
 
 /** Express middleware: record every change and every sensitive read, after the response is sent. */
 export function recordMiddleware(req, res, next) {
-  if (!req.path.startsWith('/api/') || req.path.startsWith('/api/vault')) return next();
+  // These record themselves with clearer wording
+  if (!req.path.startsWith('/api/') || /^\/api\/(vault|backup\/|auth\/2fa|auth\/login\/2fa|notifications)/.test(req.path)) return next();
   const rule = RULES.find(([m, re]) => m === req.method && re.test(req.path));
   const isWrite = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
   if (!rule && !isWrite) return next();

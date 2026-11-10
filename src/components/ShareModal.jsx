@@ -57,7 +57,7 @@ export default function ShareModal({
          branches.find((b) => b.name === lead.branch) ||
          branches[0])
       : null;
-    const currentAssignedSalesman = lead.salesman || defaultBranchObj?.salesman || 'Shamnas Acheerakath';
+    const currentAssignedSalesman = lead.salesman || defaultBranchObj?.salesman || 'Not assigned';
 
     if (recipientType === 'salesman') {
       const bObj = branches.find((b) => lead.branchId && b.id === lead.branchId) ||
@@ -150,7 +150,7 @@ Customer Care: +968 79062219 | www.monipack.com`;
        branches.find((b) => b.name === lead.branch) ||
        branches[0])
     : null;
-  const currentAssignedSalesman = lead.salesman || defaultBranchObj?.salesman || 'Shamnas Acheerakath';
+  const currentAssignedSalesman = lead.salesman || defaultBranchObj?.salesman || 'Not assigned';
 
   const dealVal = Number(lead.dealValue || 0);
   const dealValFormatted = dealVal > 0
@@ -170,7 +170,7 @@ Customer Care: +968 79062219 | www.monipack.com`;
     try {
       await navigator.clipboard.writeText(message);
       setCopied(true);
-      if (showToast) showToast('Dispatch brief copied to clipboard! ✓');
+      if (showToast) showToast('Brief copied');
       setTimeout(() => setCopied(false), 2500);
     } catch {
       alert('Brief copied to clipboard.');
@@ -502,7 +502,7 @@ Customer Care: +968 79062219 | www.monipack.com`;
               }`}
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copied Brief! ✓' : 'Copy Text'}</span>
+              <span>{copied ? 'Copied' : 'Copy Text'}</span>
             </button>
 
             {navigator.share && (

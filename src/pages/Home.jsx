@@ -1,3 +1,5 @@
+import { lostReasonLabel } from '../utils/lostReasons.js';
+import { effectiveQuoteStatus } from '../components/QuoteStatus.jsx';
 import CountUp from '../components/ui/CountUp.jsx';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { openPrintable, chipsHtml, tableHtml } from '../utils/pdfReport.js';
@@ -119,9 +121,28 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
 
   // Coaching nudge: salesmen with open leads who have gone quiet for 3+ days
   const quietReps = rows.filter((r) => r.openLeads > 0 && (!r.last || Date.now() - new Date(r.last).getTime() > 3 * 86400000)).length;
-  const todo = [...todoBase,
+  const todo = [
+    { n: 1, icon: ShieldCheck, text: 'turn on 2-step login for your super admin account', sub: 'Protects the account that can change everything', go: () => onNavigate('settings-security'), show: currentUser?.role === 'super_admin' && currentUser?.twoFactorEnabled === false },
+    ...todoBase,
     { n: quietReps, icon: Users, text: 'salesmen with open leads but no update for 3+ days', sub: 'A quick call keeps the team moving', go: () => onNavigate('leads'), show: true },
   ].filter((x) => x.show && x.n > 0);
+
+  // Why deals are lost (last 90 days) and how quotations end
+  const lostWhy = useMemo(() => {
+    const from = Date.now() - 90 * 86400000; const m = new Map(); let n = 0;
+    leads.forEach((l) => {
+      if (l.status !== 'lost' || new Date(l.updatedAt || l.date || 0).getTime() < from) return;
+      n++; const k = lostReasonLabel(l.lostReason); m.set(k, (m.get(k) || 0) + 1);
+    });
+    const rowsL = [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
+    return { n, rows: rowsL.map(([k, v]) => ({ k, v, w: n ? (v / n) * 100 : 0 })) };
+  }, [leads]);
+  const quoteRes = useMemo(() => {
+    const c = { draft: 0, sent: 0, expired: 0, accepted: 0, rejected: 0 }; let value = 0;
+    quotations.forEach((q) => { const s = effectiveQuoteStatus(q); c[s] = (c[s] || 0) + 1; if (s === 'accepted') value += Number(q.grandTotalOMR || 0); });
+    const decided = c.accepted + c.rejected;
+    return { c, value, rate: decided ? (c.accepted / decided) * 100 : null };
+  }, [quotations]);
 
   // Team today (shown in the header line)
   const teamToday = useMemo(() => {
@@ -428,6 +449,33 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
                     ))}
                   </div>
                 </div>
+              </div>
+            </section>
+          </div>
+
+          {/* Lost reasons + quotation results */}
+          <div className="mpd-grid2">
+            <section className="mpd-card" aria-labelledby="lost-h">
+              <div className="mpd-card-h"><div className="flex-1"><h2 id="lost-h">Why deals are lost</h2><p>{lostWhy.n ? `${lostWhy.n} lost in the last 90 days` : 'No lost deals in the last 90 days'}</p></div></div>
+              <div className="mpd-bd">
+                {lostWhy.rows.length === 0 && <p className="text-[12.5px] mpd-mute py-3">When a deal is lost, the reason shows here so you can fix the cause.</p>}
+                {lostWhy.rows.map((b, i) => (
+                  <div key={b.k} className="mpd-bd-row"><span title={b.k}>{b.k}</span><span className="mpd-track"><i style={{ width: `${Math.max(2, b.w)}%`, background: 'linear-gradient(90deg,#E1222B,#FF8A8F)', animationDelay: `${i * 50}ms` }} /></span><b>{b.v}</b></div>
+                ))}
+              </div>
+            </section>
+            <section className="mpd-card" aria-labelledby="qr-h">
+              <div className="mpd-card-h flex-wrap">
+                <div className="flex-1 min-w-[160px]"><h2 id="qr-h">Quotation results</h2><p>{quoteRes.rate === null ? 'Mark quotations accepted or rejected to see your win rate' : <>Win rate <b className="mpd-hl">{quoteRes.rate.toFixed(0)}%</b> · OMR {quoteRes.value.toLocaleString('en-US', { maximumFractionDigits: 0 })} accepted</>}</p></div>
+                <button type="button" onClick={() => onNavigate('quotations')} className="mpd-btn" style={{ height: 30 }}>Open quotations <ChevronRight className="w-3.5 h-3.5" /></button>
+              </div>
+              <div className="grid grid-cols-5 gap-2 px-4 pb-4 pt-1">
+                {[['Draft', quoteRes.c.draft, '#94A3B8'], ['Sent', quoteRes.c.sent, '#3D5AF0'], ['Expired', quoteRes.c.expired, '#F59E0B'], ['Accepted', quoteRes.c.accepted, '#10B981'], ['Rejected', quoteRes.c.rejected, '#E1222B']].map(([l, v, c]) => (
+                  <div key={l} className="text-center rounded-xl py-2.5" style={{ background: 'rgba(255,255,255,.04)', border: '1px solid var(--d-line)' }}>
+                    <b className="block text-[20px] font-medium tabular-nums" style={{ color: c }}><CountUp value={v} /></b>
+                    <span className="text-[11px] mpd-mute">{l}</span>
+                  </div>
+                ))}
               </div>
             </section>
           </div>

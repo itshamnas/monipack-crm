@@ -26,6 +26,7 @@ const ALL_PERMISSIONS = [
   'quotations.view',
   'quotations.create',
   'quotations.update',
+  'quotations.status',
   'quotations.archive',
   'products.view',
   'products.manage',
@@ -47,7 +48,7 @@ const ROLE_PERMISSIONS = {
     'dashboard.view',
     'leads.view_all', 'leads.create', 'leads.update', 'leads.assign', 'leads.archive', 'leads.import',
     // 'leads.export' is added only when the user has can_export = true
-    'quotations.view', 'quotations.create', 'quotations.update', 'quotations.archive',
+    'quotations.view', 'quotations.create', 'quotations.update', 'quotations.status', 'quotations.archive',
     'products.view', 'products.manage',
     'branches.view',
     'audit.view',
@@ -57,7 +58,7 @@ const ROLE_PERMISSIONS = {
   customer_care: [
     'dashboard.view',
     'leads.view_all', 'leads.create', 'leads.update', 'leads.assign', 'leads.import',
-    'quotations.view', 'quotations.create',
+    'quotations.view', 'quotations.create', 'quotations.status',
     'products.view',
     'branches.view',
     'tasks.use', 'tasks.assign',
@@ -65,7 +66,7 @@ const ROLE_PERMISSIONS = {
   salesman: [
     'dashboard.view',
     'leads.view_own', 'leads.create', 'leads.update',
-    'quotations.view', 'quotations.create', 'quotations.update',
+    'quotations.view', 'quotations.create', 'quotations.update', 'quotations.status',
     'products.view',
     'branches.view',
     'tasks.use',

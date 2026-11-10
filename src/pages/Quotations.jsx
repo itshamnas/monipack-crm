@@ -28,6 +28,7 @@ import {
   Share2
 } from 'lucide-react';
 import PrintQuotation from '../components/PrintQuotation.jsx';
+import QuoteStatus, { effectiveQuoteStatus, QUOTE_STATUS } from '../components/QuoteStatus.jsx';
 
 export const DEFAULT_TERMS = [
   'All prices are quoted in Omani Rial (OMR).',
@@ -488,12 +489,15 @@ export default function Quotations({
   onUpdateQuotation,
   onDeleteQuotation,
   onRefresh,
+  currentUser,
+  onSetQuoteStatus,
 }) {
   const [activeView, setActiveView] = useState('list'); // 'list' or 'create'
   const [selectedQuotationForPrint, setSelectedQuotationForPrint] = useState(null);
   const [isCatalogPickerOpen, setIsCatalogPickerOpen] = useState(false);
   const [quoteSearchQuery, setQuoteSearchQuery] = useState('');
   const [quoteVatFilter, setQuoteVatFilter] = useState('all'); // 'all', 'with_vat', 'without_vat'
+  const [quoteStatusFilter, setQuoteStatusFilter] = useState('all');
 
   const filteredQuotations = useMemo(() => {
     if (!quotations) return [];
@@ -509,9 +513,10 @@ export default function Quotations({
       }
       if (quoteVatFilter === 'with_vat' && q.enableVat === false) return false;
       if (quoteVatFilter === 'without_vat' && q.enableVat !== false) return false;
+      if (quoteStatusFilter !== 'all' && effectiveQuoteStatus(q) !== quoteStatusFilter) return false;
       return true;
     });
-  }, [quotations, quoteSearchQuery, quoteVatFilter]);
+  }, [quotations, quoteSearchQuery, quoteVatFilter, quoteStatusFilter]);
 
   const handleDeleteQuotationClick = (q) => {
     if (window.confirm(`Are you sure you want to permanently delete quotation "${q.code}" for ${q.customerName}? This action cannot be undone.`)) {
@@ -529,18 +534,18 @@ export default function Quotations({
     attn: '',
     date: new Date().toISOString().split('T')[0],
     validityDays: 30,
-    salesRep: 'Shamnas Acheerakath',
+    salesRep: currentUser?.name || '',
     enableVat: true,
     vatRate: 5,
     terms: [...DEFAULT_TERMS],
     items: [
       {
         productId: '',
-        item: 'Clear PET Cold Cups 16oz',
-        description: 'Includes matching flat lids (1000 pcs/ctn)',
-        quantity: 10,
-        unit: 'CTN',
-        unitPriceOMR: 14.5,
+        item: '',
+        description: '',
+        quantity: 1,
+        unit: 'PCS',
+        unitPriceOMR: 0,
       },
     ],
   });
@@ -554,7 +559,7 @@ export default function Quotations({
         customerName: prefilledLead.name || '',
         attn: prefilledLead.phone || prefilledLead.mobile || '',
         address: `${prefilledLead.customerLocation || prefilledLead.branch || 'Muscat'}, Sultanate of Oman`,
-        salesRep: prefilledLead.salesman || prev.salesRep || 'Shamnas Acheerakath',
+        salesRep: prefilledLead.salesman || prev.salesRep || currentUser?.name || '',
       }));
       setActiveView('create');
       if (onClearPrefilledLead) onClearPrefilledLead();
@@ -1317,14 +1322,25 @@ export default function Quotations({
                   className="w-full pl-8 pr-7 py-2.5 sm:py-2 text-xs bg-white border border-slate-200 rounded-full focus:outline-none focus:ring-1 focus:ring-red-500 font-medium"
                 />
                 {quoteSearchQuery && (
-                  <button
+                  <button aria-label="Clear search"
                     onClick={() => setQuoteSearchQuery('')}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
                   >
-                    ✕
+                    <X className="w-4 h-4" aria-hidden="true" />
                   </button>
                 )}
               </div>
+
+              {/* Status Filter */}
+              <select
+                value={quoteStatusFilter}
+                onChange={(e) => setQuoteStatusFilter(e.target.value)}
+                aria-label="Quotation status"
+                className="text-xs bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-slate-700 font-medium focus:outline-none focus:ring-1 focus:ring-red-500 cursor-pointer"
+              >
+                <option value="all">All statuses</option>
+                {Object.entries(QUOTE_STATUS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </select>
 
               {/* VAT Filter */}
               <select
@@ -1337,11 +1353,12 @@ export default function Quotations({
                 <option value="without_vat">Tax Exempt (0%)</option>
               </select>
 
-              {(quoteSearchQuery || quoteVatFilter !== 'all') && (
+              {(quoteSearchQuery || quoteVatFilter !== 'all' || quoteStatusFilter !== 'all') && (
                 <button
                   onClick={() => {
                     setQuoteSearchQuery('');
                     setQuoteVatFilter('all');
+                    setQuoteStatusFilter('all');
                   }}
                   className="text-xs text-[#CC1A22] hover:text-red-700 font-bold px-2 py-1 cursor-pointer"
                 >
@@ -1360,7 +1377,7 @@ export default function Quotations({
                     <span className="font-mono font-black text-xs text-red-700 bg-red-50 border border-red-200 px-2 py-0.5 rounded">
                       {q.code}
                     </span>
-                    <span className="font-mono text-xs text-slate-400 font-semibold">{q.date}</span>
+                    <span className="flex items-center gap-2"><QuoteStatus quote={q} onSetStatus={onSetQuoteStatus} /><span className="font-mono text-xs text-slate-400 font-semibold">{q.date}</span></span>
                   </div>
 
                   <div>
@@ -1425,6 +1442,7 @@ export default function Quotations({
                   <th className="py-3 px-4 font-bold">Quote Ref</th>
                   <th className="py-3 px-4 font-bold">Customer / Business</th>
                   <th className="py-3 px-4 font-bold">Address</th>
+                  <th className="py-3 px-4 font-bold">Status</th>
                   <th className="py-3 px-4 font-bold">Issue Date</th>
                   <th className="py-3 px-4 font-bold">Items</th>
                   <th className="py-3 px-4 font-bold text-right">Grand Total (OMR)</th>
@@ -1441,6 +1459,7 @@ export default function Quotations({
                       </td>
                       <td className="py-3 px-4 font-bold text-slate-900 capitalize">{q.customerName}</td>
                       <td className="py-3 px-4 text-slate-600">{q.address}</td>
+                      <td className="py-3 px-4"><QuoteStatus quote={q} onSetStatus={onSetQuoteStatus} /></td>
                       <td className="py-3 px-4 font-mono text-slate-500 whitespace-nowrap">{q.date}</td>
                       <td className="py-3 px-4 text-slate-600">
                         {q.items ? q.items.length : 0} items
@@ -1491,7 +1510,7 @@ export default function Quotations({
                   ))
                 ) : (
                   <tr>
-                    <td colSpan="8" className="text-center py-10 text-slate-400">
+                    <td colSpan="9" className="text-center py-10 text-slate-400">
                       {quoteSearchQuery || quoteVatFilter !== 'all' ? (
                         <div>
                           <p className="text-xs font-semibold text-slate-600 mb-1">No quotations matched your filters</p>

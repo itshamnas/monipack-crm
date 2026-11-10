@@ -227,7 +227,7 @@ export default function PrintQuotation({ quotation, onClose, onUpdateTerms, onUp
 📅 *Date:* ${quotation.date || new Date().toISOString().split('T')[0]} (Valid 30 Days)
 📦 *Total Line Items:* ${items.length} item(s)
 💰 *Grand Total (OMR):* OMR ${grandTotal.toFixed(3)} ${vatText}
-👤 *Sales Representative:* ${quotation.salesRep || 'Shamnas Acheerakath'}
+👤 *Sales Representative:* ${quotation.salesRep || 'Monipack sales team'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 View / Download Official A4 Specification: https://crm.monipack.com
 Commercial Hotline: +968 79062219 | info@monipack.com`;
@@ -252,7 +252,7 @@ Commercial Hotline: +968 79062219 | info@monipack.com`;
 📅 *Date:* ${quotation.date || new Date().toISOString().split('T')[0]} (Valid 30 Days)
 📦 *Total Line Items:* ${items.length} item(s)
 💰 *Grand Total (OMR):* OMR ${grandTotal.toFixed(3)} ${vatText}
-👤 *Sales Representative:* ${quotation.salesRep || 'Shamnas Acheerakath'}
+👤 *Sales Representative:* ${quotation.salesRep || 'Monipack sales team'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Commercial Hotline: +968 79062219 | www.monipack.com`;
     try {
@@ -501,7 +501,7 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
               className="w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-lg text-xs flex items-center justify-center gap-1.5 transition cursor-pointer"
             >
               {quoteCopied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-slate-500" />}
-              <span>{quoteCopied ? 'Copied Summary! ✓' : 'Copy Quote Text'}</span>
+              <span>{quoteCopied ? 'Copied' : 'Copy Quote Text'}</span>
             </button>
           </div>
         </div>

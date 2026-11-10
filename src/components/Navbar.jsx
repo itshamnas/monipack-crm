@@ -5,6 +5,7 @@ import BrandWordmark from './BrandWordmark';
 import InstallPromptButton from './pwa/InstallPromptButton.jsx';
 import HeaderToggles from './ui/HeaderToggles.jsx';
 import MomentumChip from './ui/MomentumChip.jsx';
+import NotificationBell from './ui/NotificationBell.jsx';
 import { 
   Search, 
   RefreshCw, 
@@ -27,7 +28,9 @@ export default function Navbar({
   stats, 
   currentUser, 
   onLogout,
-  onOpenMobileDrawer
+  onOpenMobileDrawer,
+  authFetch,
+  onNavigate,
 }) {
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const searchRef = useRef(null);
@@ -111,11 +114,11 @@ export default function Navbar({
           />
           {!searchQuery && <kbd className="mp-kbd absolute right-2.5 top-1/2 -translate-y-1/2 pointer-events-none hidden xl:block">Ctrl K</kbd>}
           {searchQuery && (
-            <button
+            <button aria-label="Clear search"
               onClick={() => setSearchQuery('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-1 cursor-pointer"
             >
-              ✕
+              <X className="w-4 h-4" aria-hidden="true" />
             </button>
           )}
         </div>
@@ -134,7 +137,8 @@ export default function Navbar({
           )}
         </button>
 
-        {/* Today's progress + streak */}
+        {/* Notifications + today's progress */}
+        {authFetch && <NotificationBell authFetch={authFetch} onNavigate={onNavigate} />}
         <MomentumChip currentUser={currentUser} />
 
         {/* PWA Install Button (Header) */}
@@ -240,11 +244,11 @@ export default function Navbar({
               }}
             />
             {searchQuery && (
-              <button
+              <button aria-label="Clear search"
                 onClick={() => setSearchQuery('')}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold p-1 cursor-pointer"
               >
-                ✕
+                <X className="w-4 h-4" aria-hidden="true" />
               </button>
             )}
           </div>
