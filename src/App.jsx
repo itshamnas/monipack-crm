@@ -18,6 +18,7 @@ import SalesTargets from './pages/SalesTargets.jsx';
 import Tasks from './pages/Tasks.jsx';
 import AuditVault from './pages/AuditVault.jsx';
 import SecurityCard from './components/SecurityCard.jsx';
+import LostReasonModal from './components/LostReasonModal.jsx';
 import Celebration from './components/ui/Celebration.jsx';
 import TodayFocus from './components/TodayFocus.jsx';
 import { recordAction } from './utils/momentum.js';
@@ -322,9 +323,15 @@ export default function App() {
     setIsLeadModalOpen(true);
   };
 
-  const handleSaveLead = async (leadData) => {
+  const handleSaveLead = async (leadDataIn) => {
+    let leadData = leadDataIn;
     try {
       if (editingLead) {
+        if (leadData.status === 'lost' && editingLead.status !== 'lost' && !String(leadData.lostReason || '').trim()) {
+          const answer = await askLostReason(editingLead);
+          if (!answer) return;
+          leadData = { ...leadData, lostReason: answer.reason, ...(answer.note ? { notes: `${leadData.notes ? `${leadData.notes}\n` : ''}[${new Date().toLocaleDateString('en-GB')}] Lost: ${answer.note}` } : {}) };
+        }
         const res = await authFetch(`/api/leads/${editingLead.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
@@ -373,6 +380,10 @@ export default function App() {
   };
 
   const handleUpdateStatus = async (id, newStatus) => {
+    if (newStatus === 'lost') {
+      try { await handleUpdateLead(id, { status: 'lost' }); showToast('Marked as lost'); } catch { /* kept open or error already shown */ }
+      return;
+    }
     try {
       const res = await authFetch(`/api/leads/${id}`, {
         method: 'PATCH',
@@ -391,7 +402,22 @@ export default function App() {
     }
   };
 
-  const handleUpdateLead = async (id, updates) => {
+  // Moving a deal to Lost always asks why (one pop-up for pipeline drag, menus and the lead form)
+  const [lostAsk, setLostAsk] = useState(null);
+  const askLostReason = (lead) => new Promise((resolve) => setLostAsk({ lead, resolve }));
+
+  const handleUpdateLead = async (id, updatesIn) => {
+    let updates = updatesIn;
+    if (updates?.status === 'lost' && !String(updates.lostReason || '').trim()) {
+      const lead = leads.find((l) => String(l.id) === String(id));
+      if (lead?.status !== 'lost') {
+        const answer = await askLostReason(lead || { id, name: updates.name || 'This deal' });
+        if (!answer) { fetchData(); const e = new Error('Kept open'); e.silent = true; throw e; }
+        const stamp = new Date().toLocaleDateString('en-GB');
+        const notesBase = updates.notes !== undefined ? updates.notes : (lead?.notes || '');
+        updates = { ...updates, lostReason: answer.reason, ...(answer.note ? { notes: `${notesBase ? `${notesBase}\n` : ''}[${stamp}] Lost: ${answer.note}` } : {}) };
+      }
+    }
     try {
       const res = await authFetch(`/api/leads/${id}`, {
         method: 'PATCH',
@@ -407,7 +433,7 @@ export default function App() {
       fetchData();
       return await res.json();
     } catch (err) {
-      showToast(err.message || 'Failed to update lead', 'error');
+      if (!err.silent) showToast(err.message || 'Failed to update lead', 'error');
       throw err;
     }
   };
@@ -442,6 +468,15 @@ export default function App() {
     } catch (err) {
       showToast('Failed to create quotation', 'error');
     }
+  };
+
+  const handleSetQuoteStatus = async (quote, status, extra) => {
+    const res = await authFetch(`/api/quotations/${quote.id}/status`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status, ...extra }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { showToast(data.error || 'Could not change the quotation status', 'error'); throw new Error(data.error || 'failed'); }
+    if (data.leadWon) celebrate('won', 'Deal won', `${quote.customerName} · OMR ${Number(quote.grandTotalOMR || 0).toLocaleString('en-US', { maximumFractionDigits: 3 })}`);
+    else showToast(`Quotation ${quote.code} marked ${status}`);
+    fetchData();
   };
 
   const handleUpdateQuotation = async (id, updates, callback) => {
@@ -637,6 +672,11 @@ export default function App() {
         notifications={
           <>
           <Celebration />
+          {lostAsk && (
+            <LostReasonModal leadName={lostAsk.lead?.name || ''}
+              onCancel={() => { lostAsk.resolve(null); setLostAsk(null); }}
+              onConfirm={(reason, note) => { lostAsk.resolve({ reason, note }); setLostAsk(null); }} />
+          )}
           {toast && (
             <div
               key={toast.message}
@@ -699,6 +739,8 @@ export default function App() {
             currentUser={currentUser}
             onLogout={handleLogout}
             onOpenMobileDrawer={() => setIsMobileDrawerOpen(true)}
+            authFetch={authFetch}
+            onNavigate={setActiveTab}
           />
         }
       >
@@ -791,6 +833,7 @@ export default function App() {
             onDeleteQuotation={can('quotations.archive') ? handleDeleteQuotation : null}
             onRefresh={fetchData}
             currentUser={currentUser}
+            onSetQuoteStatus={can('quotations.status') ? handleSetQuoteStatus : null}
           />
         )}
 
@@ -877,6 +920,7 @@ export default function App() {
         categories={categories}
         pipelineStages={pipelineStages}
         authFetch={authFetch}
+        onOpenExisting={(id) => { const l = leads.find((x) => String(x.id) === String(id)); if (l) { setEditingLead(l); } else { showToast('That lead belongs to another salesman.', 'error'); } }}
       />
 
       <WhatsAppModal

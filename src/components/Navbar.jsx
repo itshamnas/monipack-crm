@@ -5,6 +5,7 @@ import BrandWordmark from './BrandWordmark';
 import InstallPromptButton from './pwa/InstallPromptButton.jsx';
 import HeaderToggles from './ui/HeaderToggles.jsx';
 import MomentumChip from './ui/MomentumChip.jsx';
+import NotificationBell from './ui/NotificationBell.jsx';
 import { 
   Search, 
   RefreshCw, 
@@ -27,7 +28,9 @@ export default function Navbar({
   stats, 
   currentUser, 
   onLogout,
-  onOpenMobileDrawer
+  onOpenMobileDrawer,
+  authFetch,
+  onNavigate,
 }) {
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
   const searchRef = useRef(null);
@@ -134,7 +137,8 @@ export default function Navbar({
           )}
         </button>
 
-        {/* Today's progress + streak */}
+        {/* Notifications + today's progress */}
+        {authFetch && <NotificationBell authFetch={authFetch} onNavigate={onNavigate} />}
         <MomentumChip currentUser={currentUser} />
 
         {/* PWA Install Button (Header) */}

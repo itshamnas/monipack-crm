@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { X, Save, Building, Phone, Mail, MapPin, Tag, DollarSign, FileText, Trash2, UserCheck, CalendarClock, MessageSquare, PhoneCall, StickyNote, ArrowRightLeft, Send } from 'lucide-react';
+import { X, Save, Building, Phone, Mail, MapPin, Tag, DollarSign, FileText, Trash2, UserCheck, CalendarClock, MessageSquare, PhoneCall, StickyNote, ArrowRightLeft, Send, AlertTriangle } from 'lucide-react';
 import CustomerPicker from './customers/CustomerPicker.jsx';
 import BranchPicker from './ui/BranchPicker.jsx';
 
@@ -60,8 +60,10 @@ export default function LeadModal({
   categories: propCategories,
   pipelineStages: propStages,
   authFetch,
+  onOpenExisting,
 }) {
   const [customer, setCustomer] = useState(null); // existing customer this enquiry belongs to
+  const [dupes, setDupes] = useState(null); // same mobile already in leads / customers
   const activeCategories = propCategories && propCategories.length > 0 ? propCategories : CATEGORIES;
   const activeStages = propStages && propStages.length > 0 ? propStages : STAGES;
 
@@ -207,6 +209,21 @@ export default function LeadModal({
     }));
   };
 
+  // Warn about the same mobile number already in the CRM (checked while typing)
+  useEffect(() => {
+    if (!isOpen || !authFetch) { setDupes(null); return undefined; }
+    const digits = String(formData.mobile || '').replace(/\D/g, '');
+    if (digits.length < 7) { setDupes(null); return undefined; }
+    let stop = false;
+    const t = setTimeout(async () => {
+      try {
+        const r = await authFetch(`/api/leads/check-duplicate?mobile=${digits}${lead?.id ? `&excludeId=${lead.id}` : ''}`);
+        if (!stop && r.ok) setDupes(await r.json());
+      } catch { /* the warning is only a help */ }
+    }, 450);
+    return () => { stop = true; clearTimeout(t); };
+  }, [formData.mobile, isOpen, lead?.id, authFetch]);
+
   if (!isOpen) return null;
 
   const handleSubmit = (e) => {
@@ -250,6 +267,8 @@ export default function LeadModal({
   const lbl = 'block text-[12px] font-semibold text-slate-700 mb-1.5';
   const stepName = (l = '') => String(l).replace(/^STEP\s*\d+\s*:\s*/i, '');
   const branchValue = formData.branchId || branches.find((b) => b.name === formData.branch)?.id || '';
+
+
 
   return (
     <div className="mp-sheet-layer" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -312,6 +331,21 @@ export default function LeadModal({
                   />
                 </div>
               </div>
+              {dupes && (dupes.leads.length > 0 || dupes.customers.length > 0) && (
+                <div className="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[12.5px] text-amber-900" role="status">
+                  <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> This number is already in the CRM</p>
+                  <ul className="mt-1.5 space-y-1">
+                    {dupes.leads.map((d) => (
+                      <li key={`l${d.id}`} className="flex flex-wrap items-center gap-x-2">
+                        <span><b>{d.name}</b> · lead in <b>{d.status}</b>{d.salesman ? ` · ${d.salesman}` : ' · not assigned'}</span>
+                        {onOpenExisting && <button type="button" onClick={() => onOpenExisting(d.id)} className="font-semibold text-blue-700 hover:underline">Open it</button>}
+                      </li>
+                    ))}
+                    {dupes.customers.map((d) => <li key={`c${d.id}`}><b>{d.name}</b> · customer{d.salesman ? ` of ${d.salesman}` : ''}</li>)}
+                  </ul>
+                  <p className="mt-1.5 text-amber-800">Open the existing lead instead of adding it twice, or save anyway if it is a new requirement.</p>
+                </div>
+              )}
               <div>
                 <label className={lbl}>Email</label>
                 <div className="relative">

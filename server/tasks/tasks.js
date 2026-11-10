@@ -1,4 +1,13 @@
 import { query } from '../db/pool.js';
+import { notify, usersForSalesman } from '../notify/notify.js';
+
+// Tell the person a task was given to (not when you give it to yourself)
+async function notifyAssignee(actor, task, verb) {
+  const a = task?.assignee; if (!a) return;
+  const ids = a.kind === 'user' ? [a.id] : await usersForSalesman(a.id);
+  const others = ids.filter((id) => String(id) !== String(actor.id));
+  await notify(others, { kind: 'task', title: `${actor.name} ${verb}: ${task.title}`, body: task.dueAt ? `Due ${new Date(task.dueAt).toLocaleString('en-GB', { timeZone: 'Asia/Muscat', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : '', link: 'tasks' });
+}
 
 /**
  * Task manager: data access + staff API routes.
@@ -228,6 +237,7 @@ export function registerTaskRoutes(app, { authMiddleware, requirePermission, asy
   }));
   app.post('/api/tasks', authMiddleware, use, wrap(async (req, res) => {
     const t = await createTask(req.user, req.body || {});
+    await notifyAssignee(req.user, t, 'gave you a task');
     res.status(201).json(t);
   }));
   app.get('/api/tasks/:id', authMiddleware, use, wrap(async (req, res) => {
@@ -237,7 +247,12 @@ export function registerTaskRoutes(app, { authMiddleware, requirePermission, asy
   app.patch('/api/tasks/:id', authMiddleware, use, wrap(async (req, res) => {
     const f = await load(req, res); if (!f) return;
     if (!f.access.status) return res.status(403).json({ error: 'You cannot change this task.' });
-    res.json(await updateTask(req.user, f.row, req.body || {}, f.access));
+    const t = await updateTask(req.user, f.row, req.body || {}, f.access);
+    if (req.body?.assignee !== undefined && `${t.assignee?.kind}:${t.assignee?.id}` !== `${f.task.assignee?.kind}:${f.task.assignee?.id}`) await notifyAssignee(req.user, t, 'gave you a task');
+    if (req.body?.status === 'done' && f.task.status !== 'done' && String(f.row.created_by_user_id) !== String(req.user.id)) {
+      await notify([f.row.created_by_user_id], { kind: 'task', title: `${req.user.name} finished: ${t.title}`, link: 'tasks' });
+    }
+    res.json(t);
   }));
   app.delete('/api/tasks/:id', authMiddleware, use, wrap(async (req, res) => {
     const f = await load(req, res); if (!f) return;

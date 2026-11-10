@@ -305,3 +305,39 @@ export async function purgeAllQuotations() {
   await query('UPDATE quotations SET archived_at = now(), updated_at = now() WHERE archived_at IS NULL');
   return count;
 }
+
+
+/**
+ * Move a quotation through draft / sent / accepted / rejected.
+ * Accepted can also mark the linked lead as Won at the quotation total.
+ */
+export async function setQuotationStatus(id, status, { reason = '', markLeadWon = false, changedBy = 'System' } = {}) {
+  const numId = parseInt(id, 10);
+  if (isNaN(numId)) return null;
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT * FROM quotations WHERE id = $1 AND archived_at IS NULL FOR UPDATE', [numId]);
+    const q = rows[0];
+    if (!q) { await client.query('ROLLBACK'); return null; }
+    await client.query('UPDATE quotations SET status = $1, status_reason = $2, status_changed_at = now(), updated_at = now() WHERE id = $3',
+      [status, String(reason || '').slice(0, 255), numId]);
+    let leadWon = false;
+    if (status === 'accepted' && markLeadWon && q.lead_id) {
+      const { rows: lr } = await client.query('SELECT id, status FROM leads WHERE id = $1 AND archived_at IS NULL FOR UPDATE', [q.lead_id]);
+      if (lr[0] && lr[0].status !== 'won') {
+        await client.query("UPDATE leads SET status = 'won', deal_value = $1, lost_reason = NULL, updated_at = now() WHERE id = $2", [Number(q.grand_total_omr || 0), q.lead_id]);
+        await client.query('INSERT INTO lead_stage_history (lead_id, from_status, to_status, changed_by) VALUES ($1, $2, $3, $4)', [q.lead_id, lr[0].status, 'won', changedBy]);
+        leadWon = true;
+      }
+    }
+    await client.query('COMMIT');
+    const out = await getQuotationById(numId);
+    return { quotation: out, leadWon };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
