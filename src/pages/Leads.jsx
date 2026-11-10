@@ -354,6 +354,12 @@ export default function Leads({
             <CalendarClock className="w-3 h-3" />{followUpLabel(lead)}{lead.followUpNote ? <span className="font-normal truncate max-w-[120px]">· {lead.followUpNote}</span> : null}
           </div>
         )}
+        {(() => {
+          if (lead.status === 'won' || lead.status === 'lost') return null;
+          const quietDays = Math.floor((Date.now() - new Date(lead.updatedAt || lead.date || Date.now()).getTime()) / DAY_MS);
+          if (quietDays < 7) return null;
+          return <span className={`mp-quiet ${quietDays >= 14 ? 'cold' : ''}`} title={`No update for ${quietDays} days`}>{quietDays >= 14 ? `Going cold · ${quietDays}d` : `Quiet ${quietDays}d`}</span>;
+        })()}
         {detail && <p className="mt-1.5 text-[12px] text-slate-600 line-clamp-2" title={detail}>{detail}</p>}
 
         {lead.status === 'lost' && lead.lostReason && (

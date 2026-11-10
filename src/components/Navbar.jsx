@@ -4,6 +4,7 @@ import BrandLogo from './BrandLogo';
 import BrandWordmark from './BrandWordmark';
 import InstallPromptButton from './pwa/InstallPromptButton.jsx';
 import HeaderToggles from './ui/HeaderToggles.jsx';
+import MomentumChip from './ui/MomentumChip.jsx';
 import { 
   Search, 
   RefreshCw, 
@@ -96,7 +97,7 @@ export default function Navbar({
       <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         
         {/* Desktop Search Input (hidden on mobile) */}
-        <div className="relative hidden lg:block w-44 xl:w-72">
+        <div className="relative hidden lg:block w-40 xl:w-56 2xl:w-72">
           <Search 
             className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" 
           />
@@ -133,6 +134,9 @@ export default function Navbar({
           )}
         </button>
 
+        {/* Today's progress + streak */}
+        <MomentumChip currentUser={currentUser} />
+
         {/* PWA Install Button (Header) */}
         <InstallPromptButton variant="header" />
 
@@ -155,7 +159,7 @@ export default function Navbar({
 
         {/* Commercial Pipeline Snapshot Pill (Large screens only) */}
         <div 
-          className="hidden xl:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs border bg-red-500/[0.04] border-red-500/20"
+          className="hidden 2xl:flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs border bg-red-500/[0.04] border-red-500/20"
         >
           <span className="font-medium text-red-600">
             Pipeline:

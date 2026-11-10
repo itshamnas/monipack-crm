@@ -80,7 +80,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
   const pending = summary?.totals?.pending_approval || 0;
   const linksOff = (summary?.salesmen || []).filter((s) => s.assigned > 0 && !s.linkEnabled).length;
 
-  const todo = [
+  const todoBase = [
     { n: pending, icon: ShieldCheck, text: 'customers waiting for your approval', sub: 'New customers or possible duplicates sent by salesmen', go: () => onOpenCustomers({ status: 'pending_approval' }), show: canManageCustomers },
     { n: taskDue, icon: ListChecks, text: 'of your tasks are due today or overdue', sub: 'Open your task list', go: () => onNavigate('tasks'), show: true },
     { n: stats.followUps, icon: CalendarClock, text: 'follow-ups due today or overdue', sub: 'Open the pipeline showing only these', go: () => { try { sessionStorage.setItem('mp_followups', '1'); } catch { /* ignore */ } onNavigate('leads'); }, show: true },
@@ -89,7 +89,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
     { n: stats.quotesWaiting, icon: FileText, text: 'quotations sent 7+ days ago, no answer yet', sub: 'Call the customer', go: () => onNavigate('quotations'), show: true },
     { n: missingCr, icon: FileWarning, text: 'customers without CR paper', sub: 'Ask the salesman to upload it', go: () => onOpenCustomers({ missing: 'cr_paper' }), show: Boolean(summary) },
     { n: linksOff, icon: Link2, text: 'salesmen with customers but their link is off', sub: 'Switch on and send the link', go: () => onNavigate('settings-links'), show: canManageCustomers },
-  ].filter((t) => t.show && t.n > 0);
+  ];
 
   // One row per salesman: customer data + leads + quotations
   const rows = useMemo(() => {
@@ -116,6 +116,23 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
   }, [summary, leads, quotations]);
 
   const t = summary?.totals;
+
+  // Coaching nudge: salesmen with open leads who have gone quiet for 3+ days
+  const quietReps = rows.filter((r) => r.openLeads > 0 && (!r.last || Date.now() - new Date(r.last).getTime() > 3 * 86400000)).length;
+  const todo = [...todoBase,
+    { n: quietReps, icon: Users, text: 'salesmen with open leads but no update for 3+ days', sub: 'A quick call keeps the team moving', go: () => onNavigate('leads'), show: true },
+  ].filter((x) => x.show && x.n > 0);
+
+  // Team today (shown in the header line)
+  const teamToday = useMemo(() => {
+    const start = new Date(); start.setHours(0, 0, 0, 0); const s0 = start.getTime();
+    let added = 0; let won = 0;
+    leads.forEach((l) => {
+      if (new Date(l.createdAt || l.date || 0).getTime() >= s0) added++;
+      if (l.status === 'won' && new Date(l.updatedAt || 0).getTime() >= s0) won++;
+    });
+    return { added, won };
+  }, [leads]);
 
   // Charts (all from real data)
   const funnel = useMemo(() => {
@@ -286,6 +303,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
               <p className="mpd-sub">
                 {conv.total.toLocaleString()} enquiries in {periodLabel} · enquiry to won <span className="mpd-hl">{conv.overall.toFixed(2)}%</span>
                 {todo.length ? <> · <b>{todo.length}</b> thing{todo.length === 1 ? '' : 's'} need{todo.length === 1 ? 's' : ''} you</> : ' · nothing waiting'}
+                {(teamToday.added > 0 || teamToday.won > 0) && <> · today <b>{teamToday.added}</b> new{teamToday.won ? <>, <b>{teamToday.won}</b> won</> : null}</>}
               </p>
             </div>
             <div className="flex gap-2 overflow-x-auto max-w-full mpd-chips">
