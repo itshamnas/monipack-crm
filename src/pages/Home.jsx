@@ -5,9 +5,9 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { openPrintable, chipsHtml, tableHtml } from '../utils/pdfReport.js';
 import {
   AlertTriangle, CheckCircle2, ChevronRight, ContactRound, FileText, Link2, Plus, Upload, Phone, Clock, ShieldCheck, FileWarning,
-  Users, Filter, TrendingUp, Trophy, PieChart, CalendarClock, Target, ListChecks,
+  Users, Filter, TrendingUp, Trophy, PieChart, CalendarClock, Target, ListChecks, Building2, Store, Truck,
 } from 'lucide-react';
-import { avatarStyle } from '../components/ui/BranchPicker.jsx';
+import Avatar from '../components/ui/Avatar.jsx';
 
 /**
  * Super admin / manager home page: what needs attention today, then one row per salesman.
@@ -16,7 +16,6 @@ import { avatarStyle } from '../components/ui/BranchPicker.jsx';
 
 const DAY = 24 * 60 * 60 * 1000;
 const card = 'bg-white rounded-[20px] border border-slate-200/90 shadow-[0_1px_2px_rgba(16,24,40,0.04),0_1px_3px_rgba(16,24,40,0.06)]';
-const initials = (s = '') => s.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase();
 const STAGE_FALLBACK = ['#64748B', '#2563EB', '#7C3AED', '#D97706', '#0E9F6E', '#D0121B'];
 const omr = (n) => `OMR ${Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 })}`;
 const ago = (d) => {
@@ -38,7 +37,7 @@ function Bar({ value }) {
   );
 }
 
-export default function Home({ authFetch, leads = [], quotations = [], pipelineStages = [], currentUser, onNavigate, onOpenCustomers, onNewLead, canManageCustomers, taskDue = 0 }) {
+export default function Home({ authFetch, leads = [], quotations = [], pipelineStages = [], currentUser, onNavigate, onOpenCustomers, onNewLead, canManageCustomers, taskDue = 0, branches = [] }) {
   const [summary, setSummary] = useState(null);
 
   useEffect(() => {
@@ -97,7 +96,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
   const rows = useMemo(() => {
     const map = new Map();
     (summary?.salesmen || []).forEach((s) => map.set(String(s.salesmanId), {
-      id: String(s.salesmanId), name: s.name, type: s.type, customers: s.assigned, percent: s.percent ?? 0,
+      id: String(s.salesmanId), name: s.name, type: s.type, photoUrl: s.photoUrl, branchName: s.branchName, customers: s.assigned, percent: s.percent ?? 0,
       openLeads: 0, won: 0, quotes: 0, last: s.lastActivity,
     }));
     leads.forEach((l) => {
@@ -118,6 +117,25 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
   }, [summary, leads, quotations]);
 
   const t = summary?.totals;
+
+  // Retail (shops) vs B2B (route / wholesale): by the lead's branch, else by the salesman's type
+  const split = useMemo(() => {
+    const byBranch = new Map(branches.map((b) => [String(b.name || '').trim().toLowerCase(), b.type]));
+    const bySm = new Map((summary?.salesmen || []).map((s) => [String(s.salesmanId), s.branchType || (s.type === 'route_b2b' ? 'b2b' : s.type === 'branch' ? 'retail' : null)]));
+    const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+    const z = () => ({ open: 0, pipeline: 0, wonMonth: 0, won: 0, closed: 0 });
+    const seg = { retail: z(), b2b: z() };
+    let unknown = 0;
+    leads.forEach((l) => {
+      const k = byBranch.get(String(l.branch || '').trim().toLowerCase()) || (l.salesmanId ? bySm.get(String(l.salesmanId)) : null);
+      if (!seg[k]) { unknown++; return; }
+      const g = seg[k];
+      if (open(l)) { g.open++; g.pipeline += Number(l.dealValue || 0); }
+      if (l.status === 'won') { g.won++; g.closed++; if (new Date(l.updatedAt || l.date) >= monthStart) g.wonMonth += Number(l.dealValue || 0); }
+      if (l.status === 'lost') g.closed++;
+    });
+    return { seg, unknown, any: seg.retail.open + seg.retail.closed + seg.b2b.open + seg.b2b.closed > 0 };
+  }, [branches, summary, leads]);
 
   // Coaching nudge: salesmen with open leads who have gone quiet for 3+ days
   const quietReps = rows.filter((r) => r.openLeads > 0 && (!r.last || Date.now() - new Date(r.last).getTime() > 3 * 86400000)).length;
@@ -480,6 +498,30 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
             </section>
           </div>
 
+          {/* Retail vs B2B */}
+          {(split.any || branches.some((b) => b.type)) && (
+            <section className="mpd-card" aria-labelledby="seg-h">
+              <div className="mpd-card-h"><div className="flex-1"><h2 id="seg-h">Retail vs B2B</h2><p>Shops compared with route and wholesale{split.unknown ? ` · ${split.unknown} leads have no branch yet` : ''}</p></div><Building2 className="w-4 h-4 mpd-dim" /></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-4 pb-4 pt-1">
+                {[['retail', 'Retail', 'Shops', Store, '#10B981'], ['b2b', 'B2B', 'Route / wholesale', Truck, '#3D5AF0']].map(([k, label, sub, Icon, c]) => {
+                  const g = split.seg[k];
+                  const rate = g.closed ? Math.round((g.won / g.closed) * 100) : null;
+                  return (
+                    <div key={k} className="rounded-xl p-3.5" style={{ border: '1px solid var(--d-line)', background: 'rgba(255,255,255,.04)' }}>
+                      <div className="flex items-center gap-2"><span className="grid place-items-center rounded-lg" style={{ width: 30, height: 30, background: `${c}1A`, color: c }}><Icon className="w-4 h-4" /></span><span><b className="block text-[13.5px] font-semibold">{label}</b><span className="text-[10.5px] mpd-dim">{sub}</span></span></div>
+                      <div className="grid grid-cols-3 gap-2 mt-3">
+                        <div><b className="block text-[18px] font-medium tabular-nums"><CountUp value={g.open} /></b><span className="text-[10.5px] mpd-mute">open leads</span></div>
+                        <div><b className="block text-[18px] font-medium tabular-nums"><CountUp value={Math.round(g.pipeline)} /></b><span className="text-[10.5px] mpd-mute">OMR open</span></div>
+                        <div><b className="block text-[18px] font-medium tabular-nums">{rate === null ? '—' : `${rate}%`}</b><span className="text-[10.5px] mpd-mute">win rate</span></div>
+                      </div>
+                      <p className="text-[11px] mpd-mute mt-2">Won this month: <b className="tabular-nums">OMR {g.wonMonth.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b></p>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
           {/* Cohorts */}
           <section className="mpd-card" aria-labelledby="coh-h">
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 p-4 pb-1">
@@ -526,7 +568,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
               {rows.length === 0 && <li className="px-4 py-6 text-center text-[12.5px] mpd-mute">No salesman activity yet.</li>}
               {rows.map((r) => (
                 <li key={r.id} className="px-4 py-3 flex items-center gap-3" style={{ borderTop: '1px solid var(--d-line)' }}>
-                  <span className="mpd-av" style={avatarStyle(r.name)}>{initials(r.name)}</span>
+                  <Avatar name={r.name} photoUrl={r.photoUrl} size={34} />
                   <span className="flex-1 min-w-0">
                     <span className="flex items-baseline justify-between gap-2"><b className="text-[13px] font-semibold truncate">{r.name}</b><span className="text-[10.5px] mpd-dim shrink-0">{ago(r.last)}</span></span>
                     <span className="block text-[11px] mpd-mute">{r.customers} customers · {r.openLeads} open · {r.quotes} quotes</span>
@@ -546,7 +588,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
                     const tg = targetBy[r.id]; const tp = tg?.targetOmr > 0 ? Math.round((tg.wonOmr / tg.targetOmr) * 100) : null;
                     return (
                       <tr key={r.id}>
-                        <td><span className="flex items-center gap-2.5"><span className="mpd-av" style={avatarStyle(r.name)}>{initials(r.name)}</span><span><b className="font-semibold">{r.name}</b>{r.type && <span className="block text-[10.5px] mpd-dim">{r.type === 'branch' ? 'Branch' : 'Route / B2B'}</span>}</span></span></td>
+                        <td><span className="flex items-center gap-2.5"><Avatar name={r.name} photoUrl={r.photoUrl} size={32} /><span><b className="font-semibold">{r.name}</b>{(r.type || r.branchName) && <span className="block text-[10.5px] mpd-dim">{[r.branchName, r.type === 'branch' ? 'Retail' : r.type ? 'B2B' : ''].filter(Boolean).join(' · ')}</span>}</span></span></td>
                         <td className="tabular-nums">{r.customers}</td>
                         <td>{r.customers ? <span className="mpd-pbar"><span className="mpd-track"><i style={{ width: `${Math.max(2, r.percent)}%`, background: r.percent === 100 ? 'linear-gradient(90deg,#10B981,#6EE7B7)' : undefined }} /></span><b>{r.percent}%</b></span> : <span className="mpd-dim">—</span>}</td>
                         <td>{r.openLeads ? <span className="mpd-tag">{r.openLeads}</span> : <span className="mpd-dim">0</span>}</td>

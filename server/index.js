@@ -28,6 +28,7 @@ import {
 import { registerCustomerRoutes } from './customers/routes.js';
 import { registerCleanupRoutes } from './admin/cleanup.js';
 import { registerTaskRoutes } from './tasks/tasks.js';
+import { registerPhotoRoutes } from './profile/photos.js';
 import { registerTwoFactorRoutes, twoFactorRequired, issueChallenge } from './auth/twoFactor.js';
 import { registerBackupRoutes, startBackupSchedule } from './backup/daily.js';
 import { recordMiddleware, registerVaultRoutes } from './audit/vault.js';
@@ -258,6 +259,8 @@ if (rateLimitCleanupInterval.unref) {
 const PASSWORD_CHANGE_ALLOWED = new Set(['/api/auth/me', '/api/auth/change-password']);
 
 // Build the session user from a DB row (never includes the password hash)
+const superAdminOnly = (req, res, next) => (req.user?.role === 'super_admin' ? next() : res.status(403).json({ error: 'Only the super admin can do this.' }));
+
 function buildSessionUser(u) {
   const user = {
     id: String(u.id),
@@ -268,6 +271,7 @@ function buildSessionUser(u) {
     salesmanId: u.salesman_id != null ? String(u.salesman_id) : null,
     mustChangePassword: Boolean(u.must_change_password),
     twoFactorEnabled: Boolean(u.totp_enabled),
+    photoUrl: u.photo_key ? `/api/photos/${u.photo_key}` : null,
   };
   user.permissions = permissionsFor(user);
   user.canExport = user.permissions.includes('leads.export');
@@ -1222,10 +1226,11 @@ app.delete('/api/settings/stages/:id', authMiddleware, requirePermission('settin
 }));
 
 // Branches & Salesmen Management (Super Admin Only)
-app.post('/api/settings/branches', authMiddleware, requirePermission('settings.manage'), asyncHandler(async (req, res) => {
-  const { name, city, phone, salesman, isHeadquarters } = req.body;
+app.post('/api/settings/branches', authMiddleware, requirePermission('settings.manage'), superAdminOnly, asyncHandler(async (req, res) => {
+  const { name, city, phone, salesman, isHeadquarters, type } = req.body;
   if (!name) return res.status(400).json({ error: 'Branch name is required.' });
-  const branch = await db.addBranch({ name, city, phone, salesman, isHeadquarters });
+  if (!['retail', 'b2b'].includes(type)) return res.status(400).json({ error: 'Choose Retail or B2B for the branch.' });
+  const branch = await db.addBranch({ name, city, phone, salesman, isHeadquarters, type });
   await db.addActivity({
     type: 'settings',
     description: `New branch created: "${name}" (Salesman: ${salesman || 'Unassigned'}) by Administrator`,
@@ -1233,7 +1238,8 @@ app.post('/api/settings/branches', authMiddleware, requirePermission('settings.m
   res.status(201).json(branch);
 }));
 
-app.patch('/api/settings/branches/:id', authMiddleware, requirePermission('settings.manage'), asyncHandler(async (req, res) => {
+app.patch('/api/settings/branches/:id', authMiddleware, requirePermission('settings.manage'), superAdminOnly, asyncHandler(async (req, res) => {
+  if (req.body.type !== undefined && !['retail', 'b2b'].includes(req.body.type)) return res.status(400).json({ error: 'Choose Retail or B2B for the branch.' });
   const updated = await db.updateBranch(req.params.id, req.body);
   if (!updated) return res.status(404).json({ error: 'Branch not found' });
   await db.addActivity({
@@ -1243,7 +1249,7 @@ app.patch('/api/settings/branches/:id', authMiddleware, requirePermission('setti
   res.json(updated);
 }));
 
-app.delete('/api/settings/branches/:id', authMiddleware, requirePermission('settings.manage'), asyncHandler(async (req, res) => {
+app.delete('/api/settings/branches/:id', authMiddleware, requirePermission('settings.manage'), superAdminOnly, asyncHandler(async (req, res) => {
   const ok = await db.deleteBranch(req.params.id);
   if (!ok) return res.status(404).json({ error: 'Branch not found' });
   await db.addActivity({
@@ -1252,6 +1258,9 @@ app.delete('/api/settings/branches/:id', authMiddleware, requirePermission('sett
   });
   res.json({ message: 'Branch deleted successfully' });
 }));
+
+// ---- Profile photos ----
+registerPhotoRoutes(app, { authMiddleware, asyncHandler, photoJsonParser: (req, res, next) => next() });
 
 // ---- Customer Data Collection (salesman links + admin) ----
 registerCustomerRoutes(app, { authMiddleware, requirePermission, asyncHandler, largeJsonParser, JWT_SECRET, db });

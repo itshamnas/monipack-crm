@@ -34,3 +34,8 @@
   html.dark .mp-subtabs button { color: #8B95C3; }
   html.dark .mp-subtabs button[aria-current="page"] { color: #E8ECFF; }
 }
+
+/* Retail / B2B segmented filter */
+.mp-seg { display: inline-flex; gap: 4px; }
+.mp-seg .mp-fchip { min-width: 0; }
+.mp-branch-editor { margin-top: -0.5rem; }

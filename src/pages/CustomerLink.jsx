@@ -4,6 +4,8 @@ import { getApiUrl } from '../api/config.js';
 import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
 import SlidingTabs from '../components/ui/SlidingTabs.jsx';
 import { prepareUpload } from '../utils/fileUpload.js';
+import Avatar from '../components/ui/Avatar.jsx';
+import PhotoPicker from '../components/ui/PhotoPicker.jsx';
 
 /**
  * Public page a salesman opens from his personal link: /c/<name>-<token>
@@ -40,6 +42,12 @@ export default function CustomerLink() {
   const [openLead, setOpenLead] = useState(null);
   const [myTasks, setMyTasks] = useState([]);
   const [openTask, setOpenTask] = useState(null);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  const saveMyPhoto = async (dataUrl) => {
+    const r = await api('/photo', { method: 'PUT', body: JSON.stringify({ photo: dataUrl }) });
+    if (!r.ok) throw new Error(r.body.error || 'Could not save the photo.');
+    setInfo((i) => ({ ...i, photoUrl: r.body.photoUrl || null }));
+  };
 
   const api = useCallback(async (path, options = {}) => {
     const res = await fetch(getApiUrl(`/api/link/${token}${path}`), {
@@ -172,10 +180,20 @@ export default function CustomerLink() {
 
   return (
     <div className="min-h-screen bg-[#F5F6F8] font-sans text-slate-900 pb-28">
+      {photoOpen && (
+        <PhotoPicker name={info?.salesmanName || ''} photoUrl={info?.photoUrl} title="My photo"
+          onSave={saveMyPhoto} onRemove={() => saveMyPhoto(null)} onClose={() => setPhotoOpen(false)} />
+      )}
       <header className="sticky top-0 z-20 bg-[#F5F6F8]/95 backdrop-blur px-5 pt-5 pb-3 space-y-3">
         <div className="flex items-center justify-between">
           <Brand />
-          <span className="text-xs font-semibold text-slate-500">{info?.salesmanType === 'branch' ? 'Branch' : 'Route / B2B'}</span>
+          <span className="flex items-center gap-2.5">
+            <span className="text-xs font-semibold text-slate-500">{info?.salesmanType === 'branch' ? 'Branch' : 'Route / B2B'}</span>
+            <button type="button" onClick={() => setPhotoOpen(true)} className="relative rounded-full" aria-label="Change my photo" title="Change my photo">
+              <Avatar name={info?.salesmanName || ''} photoUrl={info?.photoUrl} size={40} />
+              {!info?.photoUrl && <span className="absolute -right-0.5 -bottom-0.5 w-4 h-4 rounded-full bg-[#2F5BEA] text-white text-[11px] leading-4 text-center font-bold border-2 border-white" aria-hidden="true">+</span>}
+            </button>
+          </span>
         </div>
         <div className="bg-slate-900 text-white rounded-3xl p-4">
           <div className="flex items-center justify-between gap-2">

@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { ROLE_LABELS, roleLabel } from '../auth/roles.js';
+import Avatar from '../components/ui/Avatar.jsx';
+import BranchTypeBadge from '../components/ui/BranchTypeBadge.jsx';
+import PhotoPicker from '../components/ui/PhotoPicker.jsx';
+import { sendPhoto } from '../utils/photo.js';
 import { 
   Settings as SettingsIcon, 
   Users, 
@@ -31,6 +35,12 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
   const [activeSubTab, setActiveSubTab] = useState(page || 'categories'); // 'categories', 'branches', 'stages', 'users', 'company', 'audit'
   const [settings, setSettings] = useState(null);
   const [usersList, setUsersList] = useState([]);
+  const [photoFor, setPhotoFor] = useState(null); // super admin changing someone's photo
+  const saveUserPhoto = async (u, dataUrl) => {
+    const photoUrl = await sendPhoto(authFetch, `/api/users/${u.id}/photo`, dataUrl);
+    setUsersList((list) => list.map((x) => (x.id === u.id ? { ...x, photoUrl } : x)));
+    showToast?.(dataUrl ? `Photo updated for ${u.name}.` : `Photo removed for ${u.name}.`);
+  };
   const [auditLogs, setAuditLogs] = useState([]);
   const [categories, setCategories] = useState([]);
   const [pipelineStages, setPipelineStages] = useState([]);
@@ -56,6 +66,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
     city: '',
     phone: '+968 ',
     salesman: '',
+    type: '',
     isHeadquarters: false,
   });
 
@@ -239,6 +250,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
   const handleAddBranch = async (e) => {
     e.preventDefault();
     if (!newBranch.name.trim()) return;
+    if (!newBranch.type) { showToast('Choose Retail or B2B for this branch.', 'error'); return; }
 
     try {
       const res = await authFetch('/api/settings/branches', {
@@ -250,7 +262,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
       if (res.ok) {
         showToast(`Branch "${newBranch.name}" created!`);
         setIsAddBranchOpen(false);
-        setNewBranch({ name: '', city: '', phone: '+968 ', salesman: '', isHeadquarters: false });
+        setNewBranch({ name: '', city: '', phone: '+968 ', salesman: '', type: '', isHeadquarters: false });
         await loadData();
         if (onRefreshConfig) onRefreshConfig();
       } else {
@@ -567,10 +579,10 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs flex items-center justify-between">
             <div>
               <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                Oman Regional Branches & Sales Reps
+                Manage branches (super admin only)
               </h3>
               <p className="text-[11px] text-slate-500">
-                Configure regional distribution centers and the designated sales representative.
+                Retail branches are shops. B2B branches are routes and wholesale. A salesman's type follows his branch.
               </p>
             </div>
 
@@ -579,7 +591,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
               className="flex items-center gap-1.5 px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-lg shadow-sm transition active:scale-95"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>Add Branch / Salesman</span>
+              <span>Add branch</span>
             </button>
           </div>
 
@@ -598,11 +610,14 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                       </h4>
                       <p className="text-[11px] text-slate-500 mt-0.5">{b.city || 'Oman'}</p>
                     </div>
-                    {b.isHeadquarters && (
-                      <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">
-                        HQ
-                      </span>
-                    )}
+                    <span className="flex items-center gap-1">
+                      <BranchTypeBadge type={b.type} />
+                      {b.isHeadquarters && (
+                        <span className="text-[9px] font-extrabold uppercase px-2 py-0.5 rounded bg-red-100 text-red-800 border border-red-200">
+                          HQ
+                        </span>
+                      )}
+                    </span>
                   </div>
 
                   <div className="mt-3 pt-3 border-t border-slate-100 space-y-1.5 text-xs text-slate-600">
@@ -735,9 +750,13 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                   {usersList.map((u) => (
                     <tr key={u.id} className="hover:bg-slate-50/70 transition">
                       <td className="py-3 px-4 font-bold text-slate-900 flex items-center gap-2">
-                        <div className="w-7 h-7 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center text-xs font-bold">
-                          {u.name.slice(0, 2).toUpperCase()}
-                        </div>
+                        {currentUser?.role === 'super_admin' ? (
+                          <button type="button" onClick={() => setPhotoFor(u)} className="rounded-full hover:ring-2 hover:ring-blue-400/50 transition" title={`Change photo for ${u.name}`} aria-label={`Change photo for ${u.name}`}>
+                            <Avatar name={u.name} photoUrl={u.photoUrl} size={30} />
+                          </button>
+                        ) : (
+                          <Avatar name={u.name} photoUrl={u.photoUrl} size={30} />
+                        )}
                         {u.name}
                       </td>
                       <td className="py-3 px-4 font-mono text-slate-600">{u.email}</td>
@@ -1132,7 +1151,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
         <div className="fixed inset-0 z-50 mp-overlay bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-              <h3 className="text-sm font-bold">Add Oman Branch & Salesman</h3>
+              <h3 className="text-sm font-bold">Add branch</h3>
               <button aria-label="Close" onClick={() => setIsAddBranchOpen(false)} className="text-slate-400 hover:text-white"><X className="w-4 h-4" aria-hidden="true" /></button>
             </div>
 
@@ -1147,6 +1166,26 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                   onChange={(e) => setNewBranch({ ...newBranch, name: e.target.value })}
                   className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:border-red-500"
                 />
+              </div>
+
+              <div>
+                <span className="block text-xs font-semibold text-slate-700 mb-1">Branch type *</span>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Branch type">
+                  {[['retail', 'Retail', 'Shop / showroom'], ['b2b', 'B2B', 'Route / wholesale']].map(([v, l, d]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      role="radio"
+                      aria-checked={newBranch.type === v}
+                      onClick={() => setNewBranch({ ...newBranch, type: v })}
+                      className={`text-left rounded-lg border p-2.5 transition ${newBranch.type === v ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-500/20' : 'border-slate-300 hover:border-slate-400'}`}
+                    >
+                      <b className="block text-xs text-slate-900">{l}</b>
+                      <small className="text-[10.5px] text-slate-500">{d}</small>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10.5px] text-slate-500 mt-1">Salesmen in this branch become {newBranch.type === 'b2b' ? 'B2B' : newBranch.type === 'retail' ? 'Retail' : 'this type'} salesmen.</p>
               </div>
 
               <div>
@@ -1210,7 +1249,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
         <div className="fixed inset-0 z-50 mp-overlay bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="px-6 py-4 bg-slate-900 text-white flex items-center justify-between">
-              <h3 className="text-sm font-bold">Edit Branch & Salesman</h3>
+              <h3 className="text-sm font-bold">Edit branch</h3>
               <button aria-label="Close" onClick={() => setEditingBranch(null)} className="text-slate-400 hover:text-white"><X className="w-4 h-4" aria-hidden="true" /></button>
             </div>
 
@@ -1224,6 +1263,26 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                   onChange={(e) => setEditingBranch({ ...editingBranch, name: e.target.value })}
                   className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:border-red-500"
                 />
+              </div>
+
+              <div>
+                <span className="block text-xs font-semibold text-slate-700 mb-1">Branch type *</span>
+                <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Branch type">
+                  {[['retail', 'Retail', 'Shop / showroom'], ['b2b', 'B2B', 'Route / wholesale']].map(([v, l, d]) => (
+                    <button
+                      key={v}
+                      type="button"
+                      role="radio"
+                      aria-checked={editingBranch.type === v}
+                      onClick={() => setEditingBranch({ ...editingBranch, type: v })}
+                      className={`text-left rounded-lg border p-2.5 transition ${editingBranch.type === v ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-500/20' : 'border-slate-300 hover:border-slate-400'}`}
+                    >
+                      <b className="block text-xs text-slate-900">{l}</b>
+                      <small className="text-[10.5px] text-slate-500">{d}</small>
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10.5px] text-slate-500 mt-1">Salesmen in this branch become {editingBranch.type === 'b2b' ? 'B2B' : editingBranch.type === 'retail' ? 'Retail' : 'this type'} salesmen.</p>
               </div>
 
               <div>
@@ -1512,6 +1571,16 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
             </form>
           </div>
         </div>
+      )}
+      {photoFor && (
+        <PhotoPicker
+          name={photoFor.name}
+          photoUrl={photoFor.photoUrl}
+          title={`Photo for ${photoFor.name}`}
+          onSave={(d) => saveUserPhoto(photoFor, d)}
+          onRemove={() => saveUserPhoto(photoFor, null)}
+          onClose={() => setPhotoFor(null)}
+        />
       )}
     </div>
   );

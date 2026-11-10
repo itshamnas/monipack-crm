@@ -43,7 +43,7 @@ export default function BranchPicker({
     for (const b of branches) {
       const hay = `${b.name || ''} ${b.city || ''} ${b.salesman || ''}`.toLowerCase();
       if (t && !hay.includes(t)) continue;
-      const g = b.city || 'Other';
+      const g = b.type === 'b2b' ? 'B2B branches (route / wholesale)' : 'Retail branches (shops)';
       if (!groups.has(g)) groups.set(g, []);
       groups.get(g).push(b);
     }
@@ -140,7 +140,7 @@ export default function BranchPicker({
                       <><span className="mp-bp-av mp-bp-all">ALL</span><span className="mp-bp-txt"><b>{allLabel}</b><small>{branches.length} hubs across Oman</small></span></>
                     ) : (
                       <><span className="mp-bp-av" style={avatarStyle(o.b.salesman || o.b.name)}>{initials(o.b.salesman || o.b.name)}</span>
-                        <span className="mp-bp-txt"><b>{o.b.name}</b><small>{o.b.salesman ? `Rep: ${o.b.salesman}` : o.b.city || ''}</small></span></>
+                        <span className="mp-bp-txt"><b>{o.b.name}</b><small>{[o.b.city, o.b.salesman ? `Rep: ${o.b.salesman}` : ''].filter(Boolean).join(' · ')}</small></span></>
                     )}
                     <Check className="mp-bp-ok" aria-hidden="true" />
                   </button>

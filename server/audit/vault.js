@@ -13,7 +13,7 @@ import { query, getClient } from '../db/pool.js';
  */
 
 const VAULT_TTL = '15m';
-const SECRET_FIELDS = /pass(word)?|pin|token|secret|session|authorization|base64|content|data$|image|file/i;
+const SECRET_FIELDS = /pass(word)?|pin|token|secret|session|authorization|base64|content|data$|image|file|photo/i;
 const ZERO = '0'.repeat(64);
 
 // ---------- what happened, in plain words ----------
@@ -47,6 +47,13 @@ const RULES = [
   ['PATCH', /^\/api\/salesmen\/[^/]+$/, 'salesmen', () => 'Changed a salesman'],
   ['DELETE', /^\/api\/salesmen\/[^/]+$/, 'danger', () => 'Deleted a salesman'],
   ['POST', /^\/api\/salesmen\/[^/]+\/link$/, 'salesmen', (r) => `Salesman link: ${r.body?.action || 'PIN changed'}`],
+  ['PUT', /^\/api\/me\/photo$/, 'staff', () => 'Changed own profile photo'],
+  ['DELETE', /^\/api\/me\/photo$/, 'staff', () => 'Removed own profile photo'],
+  ['PUT', /^\/api\/users\/[^/]+\/photo$/, 'staff', () => "Changed a staff member's photo"],
+  ['DELETE', /^\/api\/users\/[^/]+\/photo$/, 'staff', () => "Removed a staff member's photo"],
+  ['PUT', /^\/api\/salesmen\/[^/]+\/photo$/, 'salesmen', () => "Changed a salesman's photo"],
+  ['DELETE', /^\/api\/salesmen\/[^/]+\/photo$/, 'salesmen', () => "Removed a salesman's photo"],
+  ['PUT', /^\/api\/link\/[^/]+\/photo$/, 'link', () => 'Salesman changed his photo (link)'],
   ['POST', /^\/api\/tasks$/, 'tasks', () => 'Created a task'],
   ['PATCH', /^\/api\/tasks\/[^/]+$/, 'tasks', (r) => (r.body?.status ? `Task marked "${r.body.status}"` : 'Edited a task')],
   ['DELETE', /^\/api\/tasks\/[^/]+$/, 'tasks', () => 'Deleted a task'],

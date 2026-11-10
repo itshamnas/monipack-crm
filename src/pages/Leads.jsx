@@ -115,6 +115,13 @@ export default function Leads({
   const [stageLimits, setStageLimits] = useState({});
   // "Follow-ups due" filter (Home can switch it on before opening the pipeline)
   const [followUpOnly, setFollowUpOnly] = useState(() => { try { const v = sessionStorage.getItem('mp_followups') === '1'; sessionStorage.removeItem('mp_followups'); return v; } catch { return false; } });
+  const [segment, setSegment] = useState('all'); // all | retail | b2b (by the lead's branch)
+  const branchTypeOf = useMemo(() => {
+    const byId = new Map((branches || []).map((b) => [String(b.id), b.type]));
+    const byName = new Map((branches || []).map((b) => [String(b.name || '').trim().toLowerCase(), b.type]));
+    return (l) => (l.branchId && byId.get(String(l.branchId))) || byName.get(String(l.branch || '').trim().toLowerCase()) || null;
+  }, [branches]);
+  const hasTypes = (branches || []).some((b) => b.type);
   const [tableLimit, setTableLimit] = useState(100);
   const [shareModalLead, setShareModalLead] = useState(null);
   const [printSlipLead, setPrintSlipLead] = useState(null);
@@ -208,6 +215,9 @@ export default function Leads({
         }
       }
 
+      // Retail / B2B
+      if (segment !== 'all' && branchTypeOf(l) !== segment) return false;
+
       // Stage (if filtered in table mode)
       if (selectedStage !== 'all' && selectedStage !== 'All Stages') {
         if (l.status !== selectedStage) return false;
@@ -215,7 +225,7 @@ export default function Leads({
 
       return true;
     });
-  }, [leads, branches, searchQuery, selectedCategory, selectedBranch, selectedStage]);
+  }, [leads, branches, searchQuery, selectedCategory, selectedBranch, selectedStage, segment, branchTypeOf]);
   const dueCount = useMemo(() => baseFilteredLeads.filter((l) => ['overdue', 'today'].includes(followUpState(l))).length, [baseFilteredLeads]);
   const filteredLeads = useMemo(
     () => (followUpOnly
@@ -576,6 +586,14 @@ export default function Leads({
           <ChevronDown className="w-3.5 h-3.5 opacity-60" />
         </label>
 
+        {hasTypes && (
+          <span className="mp-seg" role="radiogroup" aria-label="Retail or B2B">
+            {[['all', 'All'], ['retail', 'Retail'], ['b2b', 'B2B']].map(([v, l]) => (
+              <button key={v} type="button" role="radio" aria-checked={segment === v} onClick={() => setSegment(v)} className={`mp-fchip ${segment === v ? 'on' : ''}`}>{l}</button>
+            ))}
+          </span>
+        )}
+
         {viewMode === 'table' && (
           <label className={`mp-fchip ${selectedStage !== 'all' ? 'on' : ''}`}>
             <span className="sr-only">Stage</span>
@@ -602,7 +620,7 @@ export default function Leads({
           </span>
         )}
 
-        {(followUpOnly || searchQuery || (selectedCategory && selectedCategory !== 'All Categories') || (selectedBranch && selectedBranch !== 'all' && selectedBranch !== 'All Oman Branches') || selectedStage !== 'all') && (
+        {(followUpOnly || segment !== 'all' || searchQuery || (selectedCategory && selectedCategory !== 'All Categories') || (selectedBranch && selectedBranch !== 'all' && selectedBranch !== 'All Oman Branches') || selectedStage !== 'all') && (
           <button
             onClick={() => {
               setSearchQuery('');
@@ -610,6 +628,7 @@ export default function Leads({
               setSelectedBranch('all');
               setSelectedStage('all');
               setFollowUpOnly(false);
+              setSegment('all');
             }}
             className="text-xs text-[#CC1A22] hover:text-red-700 font-bold ml-auto cursor-pointer px-2 min-h-[32px]"
           >

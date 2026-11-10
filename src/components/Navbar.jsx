@@ -6,13 +6,14 @@ import InstallPromptButton from './pwa/InstallPromptButton.jsx';
 import HeaderToggles from './ui/HeaderToggles.jsx';
 import MomentumChip from './ui/MomentumChip.jsx';
 import NotificationBell from './ui/NotificationBell.jsx';
+import Avatar from './ui/Avatar.jsx';
+import PhotoPicker from './ui/PhotoPicker.jsx';
 import { 
   Search, 
   RefreshCw, 
   LogOut, 
   ShieldCheck, 
   ShieldAlert, 
-  User, 
   Menu, 
   X 
 } from 'lucide-react';
@@ -31,8 +32,10 @@ export default function Navbar({
   onOpenMobileDrawer,
   authFetch,
   onNavigate,
+  onMyPhoto,
 }) {
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
   const searchRef = useRef(null);
   // Ctrl/Cmd + K jumps to search (like Linear / Slack)
   useEffect(() => {
@@ -48,12 +51,6 @@ export default function Navbar({
   }, []);
   const isSuperAdmin = currentUser?.role === 'super_admin';
   const userName = currentUser?.name || 'monipack user';
-  const userInitials = userName
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .substring(0, 2)
-    .toUpperCase();
 
   return (
     <div 
@@ -177,15 +174,26 @@ export default function Navbar({
         <div 
           className="flex items-center gap-2 sm:gap-3 pl-1 sm:pl-2.5 sm:border-l sm:border-slate-200"
         >
-          {/* User Avatar (On mobile, tap triggers sign out prompt/action) */}
+          {/* User avatar: phones open the menu drawer; bigger screens change the photo */}
           <button
             type="button"
-            onClick={() => (onOpenMobileDrawer && window.innerWidth < 1024 ? onOpenMobileDrawer() : onLogout())}
-            className="w-10 h-10 sm:w-9 sm:h-9 rounded-full bg-red-600 text-white flex items-center justify-center font-bold text-xs shadow-xs hover:ring-2 hover:ring-red-400/50 transition cursor-pointer shrink-0"
-            title={`${userName} • Menu and sign out`}
+            onClick={() => (onOpenMobileDrawer && window.innerWidth < 1024 ? onOpenMobileDrawer() : (onMyPhoto ? setPhotoOpen(true) : onLogout()))}
+            className="rounded-full shrink-0 cursor-pointer hover:ring-2 hover:ring-blue-400/50 transition"
+            title={`${userName} • ${onMyPhoto ? 'Change your photo' : 'Menu'}`}
+            aria-label={onMyPhoto ? 'Change your photo' : 'Open menu'}
           >
-            {userInitials || <User className="w-3.5 h-3.5 text-white" />}
+            <Avatar name={userName} photoUrl={currentUser?.photoUrl} size={36} />
           </button>
+          {photoOpen && (
+            <PhotoPicker
+              name={userName}
+              photoUrl={currentUser?.photoUrl}
+              title="Your photo"
+              onSave={(d) => onMyPhoto(d)}
+              onRemove={() => onMyPhoto(null)}
+              onClose={() => setPhotoOpen(false)}
+            />
+          )}
 
           <div className="hidden sm:flex lg:hidden xl:flex flex-col text-left">
             <span 
