@@ -927,4 +927,23 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     await audit(req, `Salesman ${sm.name} updated (type ${sm.type})`);
     res.json(sm);
   }));
+
+  // ---- Delete a salesman: super admin only, must type the salesman's name to confirm ----
+  const superOnly = (req, res, next) => (req.user?.role === 'super_admin' ? next() : res.status(403).json({ error: 'Only the super admin can delete a salesman.' }));
+  app.get('/api/salesmen/:id/delete-preview', authMiddleware, superOnly, asyncHandler(async (req, res) => {
+    const p = await cdb.salesmanDeletePreview(req.params.id);
+    if (!p) return res.status(404).json({ error: 'Salesman not found.' });
+    res.json(p);
+  }));
+  app.delete('/api/salesmen/:id', authMiddleware, superOnly, asyncHandler(async (req, res) => {
+    const p = await cdb.salesmanDeletePreview(req.params.id);
+    if (!p) return res.status(404).json({ error: 'Salesman not found.' });
+    const typed = String(req.body?.confirmName || '').trim().toLowerCase();
+    if (typed !== String(p.name).trim().toLowerCase()) return res.status(400).json({ error: `Type the salesman's name exactly ("${p.name}") to confirm.` });
+    const out = await cdb.deleteSalesman(req.params.id, { moveToId: req.body?.moveToId || null, byUserId: req.user.id });
+    if (!out) return res.status(404).json({ error: 'Salesman not found.' });
+    if (out.error) return res.status(400).json({ error: out.error });
+    await audit(req, `Salesman deleted: ${out.name}. ${out.customers} customers, ${out.openLeads} open leads, ${out.openTasks} open tasks moved to ${out.movedTo || 'Not assigned'}; ${out.logins} login(s) switched off`);
+    res.json(out);
+  }));
 }

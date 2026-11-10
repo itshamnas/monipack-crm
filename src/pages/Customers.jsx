@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Users, Link2, Copy, RefreshCw, MessageCircle, Power, KeyRound, Upload, Download, Search, CheckCircle2,
-  AlertTriangle, FileText, Printer, ArrowRightLeft, Plus, X, Eye, EyeOff, Archive, Loader2, Lock, Unlock,
+  AlertTriangle, FileText, Printer, ArrowRightLeft, Plus, X, Eye, EyeOff, Archive, Loader2, Lock, Unlock, Trash2,
 } from 'lucide-react';
 import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
 import SlidingTabs from '../components/ui/SlidingTabs.jsx';
@@ -348,7 +348,7 @@ export default function Customers({ authFetch, showToast, canManage, initialFilt
 // ---------------- Pages shown under Settings ----------------
 
 /** Settings → Salesmen & links */
-export function SalesmanLinksPage({ authFetch, showToast }) {
+export function SalesmanLinksPage({ authFetch, showToast, canDelete = false }) {
   const [links, setLinks] = useState([]);
   const [summary, setSummary] = useState(null);
   const load = useCallback(async () => {
@@ -357,7 +357,7 @@ export function SalesmanLinksPage({ authFetch, showToast }) {
     if (s.ok) setSummary(await s.json());
   }, [authFetch]);
   useEffect(() => { load().catch(() => showToast('Could not load salesmen', 'error')); }, [load]);
-  return <LinksTab authFetch={authFetch} showToast={showToast} links={links} summary={summary} onChanged={load} />;
+  return <LinksTab authFetch={authFetch} showToast={showToast} links={links} summary={summary} onChanged={load} canDelete={canDelete} />;
 }
 
 /** Settings → Customer form fields */
@@ -974,8 +974,9 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
 }
 
 // ---------------- Salesman links ----------------
-function LinksTab({ authFetch, showToast, links, summary, onChanged }) {
+function LinksTab({ authFetch, showToast, links, summary, onChanged, canDelete = false }) {
   const [pinFor, setPinFor] = useState(null);
+  const [delFor, setDelFor] = useState(null);
   const [pin, setPin] = useState('');
   const [creating, setCreating] = useState(false);
   const progress = useMemo(() => Object.fromEntries((summary?.salesmen || []).map((s) => [s.salesmanId, s])), [summary]);
@@ -1016,6 +1017,7 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged }) {
           <button type="button" className={`${btn} text-rose-700 hover:bg-rose-50`} onClick={() => call(l, { action: 'disable' }, `Link switched off for ${l.name}.`)}><Power className="w-3.5 h-3.5" /> Off</button>
         </>
       )}
+      {canDelete && <button type="button" className={`${btn} text-slate-500 hover:text-rose-700 hover:bg-rose-50`} onClick={() => setDelFor(l)} aria-label={`Delete ${l.name}`} title="Delete salesman (super admin only)"><Trash2 className="w-3.5 h-3.5" /> Delete</button>}
     </div>
   );
   const typeSelect = (l, idSuffix = '') => (
@@ -1075,6 +1077,11 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged }) {
           </tbody>
         </table>
       </div>
+
+      {delFor && (
+        <DeleteSalesmanModal salesman={delFor} others={links.filter((x) => x.salesmanId !== delFor.salesmanId)} authFetch={authFetch} showToast={showToast}
+          onClose={() => setDelFor(null)} onDone={() => { setDelFor(null); onChanged(); }} />
+      )}
 
       {pinFor && (
         <Modal title={`PIN for ${pinFor.name}`} onClose={() => setPinFor(null)}>
@@ -1284,6 +1291,75 @@ function FieldsTab({ authFetch, showToast, fields, onChanged }) {
 }
 
 // ---------------- Small shared pieces ----------------
+/** Super admin only: delete a salesman after typing his name. His work moves to another salesman or becomes "Not assigned". */
+function DeleteSalesmanModal({ salesman, others, authFetch, showToast, onClose, onDone }) {
+  const [info, setInfo] = useState(null);
+  const [moveTo, setMoveTo] = useState('');
+  const [typed, setTyped] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  useEffect(() => {
+    authFetch(`/api/salesmen/${salesman.salesmanId}/delete-preview`).then(async (r) => {
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'Could not check this salesman');
+      setInfo(d);
+    }).catch((e) => { showToast(e.message, 'error'); onClose(); });
+  }, [salesman.salesmanId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const match = typed.trim().toLowerCase() === String(salesman.name).trim().toLowerCase();
+  const del = async () => {
+    if (!match) { setErr(`Type "${salesman.name}" to confirm.`); return; }
+    setBusy(true); setErr('');
+    try {
+      const r = await authFetch(`/api/salesmen/${salesman.salesmanId}`, { method: 'DELETE', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmName: typed, moveToId: moveTo || null }) });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || 'Could not delete the salesman');
+      showToast(`${d.name} deleted. ${d.customers} customers, ${d.openLeads} open leads and ${d.openTasks} tasks moved to ${d.movedTo || 'Not assigned'}.`);
+      onDone();
+    } catch (e) { setErr(e.message); }
+    setBusy(false);
+  };
+  const work = info ? info.customers + info.openLeads + info.openTasks : 0;
+  return (
+    <Modal title={`Delete ${salesman.name}?`} onClose={onClose}>
+      <div className="p-5 space-y-4">
+        {!info ? <p className="text-sm text-slate-500 flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" /> Checking his work…</p> : (
+          <>
+            <div className="rounded-2xl bg-rose-50 border border-rose-200 p-3.5 text-sm text-rose-800 flex gap-2.5">
+              <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
+              <span>He is removed from every list and <b>his link stops working at once</b>{info.logins ? <>, and <b>{info.logins} staff login{info.logins === 1 ? '' : 's'}</b> linked to him {info.logins === 1 ? 'is' : 'are'} switched off</> : null}. Won and lost deals keep his name as history. This is recorded in the audit vault.</span>
+            </div>
+            <ul className="grid grid-cols-3 gap-2 text-center">
+              {[['Customers', info.customers], ['Open leads', info.openLeads], ['Open tasks', info.openTasks]].map(([l, n]) => (
+                <li key={l} className="rounded-2xl border border-slate-200 p-3"><b className="block text-xl tabular-nums">{n}</b><span className="text-xs text-slate-500">{l}</span></li>
+              ))}
+            </ul>
+            {work > 0 && (
+              <label className="block">
+                <span className="block text-sm font-semibold mb-1.5">Give his customers, open leads and tasks to</span>
+                <select value={moveTo} onChange={(e) => setMoveTo(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-slate-300 bg-white text-sm">
+                  <option value="">Nobody (mark as Not assigned)</option>
+                  {others.map((o) => <option key={o.salesmanId} value={o.salesmanId}>{o.name}</option>)}
+                </select>
+              </label>
+            )}
+            <label className="block">
+              <span className="block text-sm font-semibold mb-1.5">Type <b className="select-all">{salesman.name}</b> to confirm</span>
+              <input value={typed} onChange={(e) => { setTyped(e.target.value); setErr(''); }} autoComplete="off" className="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm" aria-invalid={Boolean(err)} />
+            </label>
+            {err && <p className="text-sm text-rose-700" role="alert">{err}</p>}
+            <div className="flex gap-2 justify-end pt-1">
+              <button type="button" onClick={onClose} className="h-11 px-4 rounded-full text-sm font-semibold hover:bg-slate-100">Cancel</button>
+              <button type="button" onClick={del} disabled={busy} className="h-11 px-5 rounded-full text-sm font-bold text-white bg-rose-600 hover:bg-rose-700 disabled:opacity-60 inline-flex items-center gap-2">
+                {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} Delete salesman
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 function Modal({ title, onClose, children, wide }) {
   return (
     <div className="fixed inset-0 z-50 mp-overlay bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-label={title}>

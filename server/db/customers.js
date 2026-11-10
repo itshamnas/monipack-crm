@@ -829,3 +829,69 @@ export async function mergeCustomers(keepId, mergeIds) {
     client.release();
   }
 }
+
+/** What deleting a salesman would affect (for the confirmation dialog). */
+export async function salesmanDeletePreview(id) {
+  const sid = toId(id);
+  const { rows } = await query(
+    `SELECT s.id, s.name,
+       (SELECT COUNT(*)::int FROM customers c WHERE c.salesman_id = s.id AND c.archived_at IS NULL) AS customers,
+       (SELECT COUNT(*)::int FROM leads l WHERE l.salesman_id = s.id AND l.archived_at IS NULL AND l.status NOT IN ('won','lost')) AS open_leads,
+       (SELECT COUNT(*)::int FROM tasks t WHERE t.assignee_salesman_id = s.id AND t.archived_at IS NULL AND t.status <> 'done') AS open_tasks,
+       (SELECT COUNT(*)::int FROM users u WHERE u.salesman_id = s.id AND u.archived_at IS NULL AND u.is_active) AS logins
+     FROM salesmen s WHERE s.id = $1 AND s.archived_at IS NULL`, [sid]);
+  const r = rows[0];
+  return r ? { id: r.id, name: r.name, customers: r.customers, openLeads: r.open_leads, openTasks: r.open_tasks, logins: r.logins } : null;
+}
+
+/**
+ * Delete a salesman (kept as history, removed from every list).
+ * His customers, open leads and open tasks move to `moveToId`, or become "Not assigned" when none is given.
+ * His link stops working at once and any staff login linked to him is switched off.
+ * Won / lost leads keep his name as history.
+ */
+export async function deleteSalesman(id, { moveToId, byUserId }) {
+  const sid = toId(id); const to = moveToId ? toId(moveToId) : null;
+  const client = await getClient();
+  try {
+    await client.query('BEGIN');
+    const { rows } = await client.query('SELECT id, name FROM salesmen WHERE id = $1 AND archived_at IS NULL FOR UPDATE', [sid]);
+    if (!rows[0]) { await client.query('ROLLBACK'); return null; }
+    let target = null;
+    if (to) {
+      const t = await client.query('SELECT id, name FROM salesmen WHERE id = $1 AND archived_at IS NULL', [to]);
+      target = t.rows[0];
+      if (!target || target.id === sid) { await client.query('ROLLBACK'); return { error: 'Choose another active salesman to receive his work.' }; }
+    }
+    const cust = await client.query('SELECT id FROM customers WHERE salesman_id = $1 AND archived_at IS NULL', [sid]);
+    await client.query('UPDATE customers SET salesman_id = $1, updated_at = now() WHERE salesman_id = $2 AND archived_at IS NULL', [target?.id ?? null, sid]);
+    for (const c of cust.rows) {
+      await client.query('INSERT INTO customer_transfers (customer_id, from_salesman_id, to_salesman_id, by_user_id) VALUES ($1,$2,$3,$4)', [c.id, sid, target?.id ?? null, toId(byUserId)]);
+    }
+    const leads = await client.query(
+      `UPDATE leads SET salesman_id = $1, salesman_name = $2, updated_at = now()
+       WHERE salesman_id = $3 AND archived_at IS NULL AND status NOT IN ('won','lost')`,
+      [target?.id ?? null, target?.name ?? '', sid]
+    );
+    const tasks = await client.query(
+      `UPDATE tasks SET assignee_salesman_id = $1, updated_at = now()
+       WHERE assignee_salesman_id = $2 AND archived_at IS NULL AND status <> 'done'`,
+      [target?.id ?? null, sid]
+    );
+    const logins = await client.query('UPDATE users SET is_active = false, token_version = token_version + 1, updated_at = now() WHERE salesman_id = $1 AND archived_at IS NULL AND is_active', [sid]);
+    await client.query(
+      `UPDATE branches SET default_salesman_id = NULL WHERE default_salesman_id = $1`, [sid]
+    );
+    await client.query(
+      `UPDATE salesmen SET archived_at = now(), is_active = false, link_enabled = false, link_token = NULL, link_pin_hash = NULL,
+         deleted_by_user_id = $2, updated_at = now() WHERE id = $1`, [sid, toId(byUserId)]
+    );
+    await client.query('COMMIT');
+    return { name: rows[0].name, movedTo: target?.name || null, customers: cust.rowCount, openLeads: leads.rowCount, openTasks: tasks.rowCount, logins: logins.rowCount };
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
+  }
+}
