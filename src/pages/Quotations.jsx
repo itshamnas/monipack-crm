@@ -488,6 +488,7 @@ export default function Quotations({
   onUpdateQuotation,
   onDeleteQuotation,
   onRefresh,
+  currentUser,
 }) {
   const [activeView, setActiveView] = useState('list'); // 'list' or 'create'
   const [selectedQuotationForPrint, setSelectedQuotationForPrint] = useState(null);
@@ -529,18 +530,18 @@ export default function Quotations({
     attn: '',
     date: new Date().toISOString().split('T')[0],
     validityDays: 30,
-    salesRep: 'Shamnas Acheerakath',
+    salesRep: currentUser?.name || '',
     enableVat: true,
     vatRate: 5,
     terms: [...DEFAULT_TERMS],
     items: [
       {
         productId: '',
-        item: 'Clear PET Cold Cups 16oz',
-        description: 'Includes matching flat lids (1000 pcs/ctn)',
-        quantity: 10,
-        unit: 'CTN',
-        unitPriceOMR: 14.5,
+        item: '',
+        description: '',
+        quantity: 1,
+        unit: 'PCS',
+        unitPriceOMR: 0,
       },
     ],
   });
@@ -554,7 +555,7 @@ export default function Quotations({
         customerName: prefilledLead.name || '',
         attn: prefilledLead.phone || prefilledLead.mobile || '',
         address: `${prefilledLead.customerLocation || prefilledLead.branch || 'Muscat'}, Sultanate of Oman`,
-        salesRep: prefilledLead.salesman || prev.salesRep || 'Shamnas Acheerakath',
+        salesRep: prefilledLead.salesman || prev.salesRep || currentUser?.name || '',
       }));
       setActiveView('create');
       if (onClearPrefilledLead) onClearPrefilledLead();

@@ -44,7 +44,7 @@ export default function PrintLeadSlip({ lead, branches = [], onClose }) {
        null)
     : null;
   const branchPhone = branchObj?.phone || '+968 79062219';
-  const assignedSalesman = lead.salesman || branchObj?.salesman || 'Shamnas Acheerakath';
+  const assignedSalesman = lead.salesman || branchObj?.salesman || 'Not assigned';
 
   const cleanMobileDigits = (lead.mobile || '').replace(/\D/g, '').replace(/^968/, '');
   const fullPhone = lead.phone || (cleanMobileDigits ? `+968 ${cleanMobileDigits}` : 'Not Specified');

@@ -57,7 +57,7 @@ export default function ShareModal({
          branches.find((b) => b.name === lead.branch) ||
          branches[0])
       : null;
-    const currentAssignedSalesman = lead.salesman || defaultBranchObj?.salesman || 'Shamnas Acheerakath';
+    const currentAssignedSalesman = lead.salesman || defaultBranchObj?.salesman || 'Not assigned';
 
     if (recipientType === 'salesman') {
       const bObj = branches.find((b) => lead.branchId && b.id === lead.branchId) ||
@@ -150,7 +150,7 @@ Customer Care: +968 79062219 | www.monipack.com`;
        branches.find((b) => b.name === lead.branch) ||
        branches[0])
     : null;
-  const currentAssignedSalesman = lead.salesman || defaultBranchObj?.salesman || 'Shamnas Acheerakath';
+  const currentAssignedSalesman = lead.salesman || defaultBranchObj?.salesman || 'Not assigned';
 
   const dealVal = Number(lead.dealValue || 0);
   const dealValFormatted = dealVal > 0

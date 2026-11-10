@@ -119,7 +119,9 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
 
   // Coaching nudge: salesmen with open leads who have gone quiet for 3+ days
   const quietReps = rows.filter((r) => r.openLeads > 0 && (!r.last || Date.now() - new Date(r.last).getTime() > 3 * 86400000)).length;
-  const todo = [...todoBase,
+  const todo = [
+    { n: 1, icon: ShieldCheck, text: 'turn on 2-step login for your super admin account', sub: 'Protects the account that can change everything', go: () => onNavigate('settings'), show: currentUser?.role === 'super_admin' && currentUser?.twoFactorEnabled === false },
+    ...todoBase,
     { n: quietReps, icon: Users, text: 'salesmen with open leads but no update for 3+ days', sub: 'A quick call keeps the team moving', go: () => onNavigate('leads'), show: true },
   ].filter((x) => x.show && x.n > 0);
 

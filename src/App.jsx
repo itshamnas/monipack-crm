@@ -17,6 +17,7 @@ import DataCleanup from './pages/DataCleanup.jsx';
 import SalesTargets from './pages/SalesTargets.jsx';
 import Tasks from './pages/Tasks.jsx';
 import AuditVault from './pages/AuditVault.jsx';
+import SecurityCard from './components/SecurityCard.jsx';
 import Celebration from './components/ui/Celebration.jsx';
 import TodayFocus from './components/TodayFocus.jsx';
 import { recordAction } from './utils/momentum.js';
@@ -84,8 +85,13 @@ export default function App() {
   };
 
   const handleLoginSuccess = (newToken, newUser) => {
+    try { localStorage.setItem('mp_last_active', String(Date.now())); } catch { /* ignore */ }
     saveSession(newToken, newUser);
-    if (!newUser?.mustChangePassword) {
+    let left = null;
+    try { left = sessionStorage.getItem('mp_recovery_left'); sessionStorage.removeItem('mp_recovery_left'); } catch { /* ignore */ }
+    if (left != null) {
+      showToast(`Signed in with a recovery code. ${left} left. Set up 2-step login again on your new phone in Settings.`, Number(left) <= 2 ? 'error' : undefined);
+    } else if (!newUser?.mustChangePassword) {
       showToast(`Welcome back, ${newUser.name}!`);
     }
   };
@@ -104,6 +110,29 @@ export default function App() {
       showToast('Signed out successfully.');
     }
   };
+
+  // Idle sign-out: after 60 minutes with no clicks or typing (shared across tabs), sign out.
+  const IDLE_MS = 60 * 60 * 1000;
+  useEffect(() => {
+    if (!token) return undefined;
+    const KEY = 'mp_last_active';
+    const lastActive = () => { try { return Number(localStorage.getItem(KEY)) || Date.now(); } catch { return Date.now(); } };
+    if (Date.now() - lastActive() > IDLE_MS) { handleLogout(false); showToast('You were signed out after 60 minutes without activity.'); return undefined; }
+    let lastWrite = 0;
+    const touch = () => {
+      const now = Date.now();
+      if (now - lastWrite < 15000) return;
+      lastWrite = now;
+      try { localStorage.setItem(KEY, String(now)); } catch { /* ignore */ }
+    };
+    touch();
+    const events = ['pointerdown', 'keydown', 'wheel', 'touchstart'];
+    events.forEach((e) => window.addEventListener(e, touch, { passive: true }));
+    const timer = setInterval(() => {
+      if (Date.now() - lastActive() > IDLE_MS) { handleLogout(false); showToast('You were signed out after 60 minutes without activity.'); }
+    }, 30000);
+    return () => { events.forEach((e) => window.removeEventListener(e, touch)); clearInterval(timer); };
+  }, [token]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Authenticated Fetch Helper
   // Momentum + celebrations: count each saved action, celebrate real wins. Never blocks or changes a request.
@@ -761,6 +790,7 @@ export default function App() {
             onUpdateQuotation={handleUpdateQuotation}
             onDeleteQuotation={can('quotations.archive') ? handleDeleteQuotation : null}
             onRefresh={fetchData}
+            currentUser={currentUser}
           />
         )}
 
@@ -818,6 +848,9 @@ export default function App() {
           <div className="p-3 sm:p-6 lg:p-8 max-w-5xl mx-auto pb-24 md:pb-8"><DataCleanup authFetch={authFetch} showToast={showToast} onDone={fetchData} /></div>
         )}
 
+        {activeTab === 'settings' && currentUser?.role === 'super_admin' && (
+          <div className="px-3 sm:px-6 lg:px-8 pt-3 sm:pt-6 max-w-7xl mx-auto"><SecurityCard authFetch={authFetch} showToast={showToast} /></div>
+        )}
         {activeTab === 'settings' && can('settings.manage') && (
           <Settings
             authFetch={authFetch}

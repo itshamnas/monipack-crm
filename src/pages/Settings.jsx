@@ -1246,7 +1246,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Shamnas Acheerakath / Ahmed Al Balushi"
+                  placeholder="e.g. Ahmed Al Balushi"
                   value={newBranch.salesman}
                   onChange={(e) => setNewBranch({ ...newBranch, salesman: e.target.value })}
                   className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:border-red-500"

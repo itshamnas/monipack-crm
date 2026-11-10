@@ -227,7 +227,7 @@ export default function PrintQuotation({ quotation, onClose, onUpdateTerms, onUp
 📅 *Date:* ${quotation.date || new Date().toISOString().split('T')[0]} (Valid 30 Days)
 📦 *Total Line Items:* ${items.length} item(s)
 💰 *Grand Total (OMR):* OMR ${grandTotal.toFixed(3)} ${vatText}
-👤 *Sales Representative:* ${quotation.salesRep || 'Shamnas Acheerakath'}
+👤 *Sales Representative:* ${quotation.salesRep || 'Monipack sales team'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 View / Download Official A4 Specification: https://crm.monipack.com
 Commercial Hotline: +968 79062219 | info@monipack.com`;
@@ -252,7 +252,7 @@ Commercial Hotline: +968 79062219 | info@monipack.com`;
 📅 *Date:* ${quotation.date || new Date().toISOString().split('T')[0]} (Valid 30 Days)
 📦 *Total Line Items:* ${items.length} item(s)
 💰 *Grand Total (OMR):* OMR ${grandTotal.toFixed(3)} ${vatText}
-👤 *Sales Representative:* ${quotation.salesRep || 'Shamnas Acheerakath'}
+👤 *Sales Representative:* ${quotation.salesRep || 'Monipack sales team'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
 Commercial Hotline: +968 79062219 | www.monipack.com`;
     try {

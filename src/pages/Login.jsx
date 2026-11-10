@@ -28,6 +28,34 @@ export default function Login({ onLoginSuccess }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [challenge, setChallenge] = useState(null); // 2-step login: password was right, waiting for the app code
+  const [code, setCode] = useState('');
+  const [useRecovery, setUseRecovery] = useState(false);
+
+  const submitCode = async (e) => {
+    e.preventDefault();
+    setError('');
+    const c = code.trim();
+    if (!useRecovery && !/^\d{6}$/.test(c.replace(/\s/g, ''))) { setError('Enter the 6-digit code from your authenticator app.'); return; }
+    if (useRecovery && c.length < 8) { setError('Enter one of your recovery codes, like ABCDE-12345.'); return; }
+    setLoading(true);
+    try {
+      const res = await fetch(getApiUrl('/api/auth/login/2fa'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ challenge, code: c }) });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (data.code === 'CHALLENGE_EXPIRED') { setChallenge(null); setCode(''); }
+        throw new Error(data.error || 'That code did not work.');
+      }
+      if (data.recoveryCodesLeft != null) {
+        try { sessionStorage.setItem('mp_recovery_left', String(data.recoveryCodesLeft)); } catch { /* ignore */ }
+      }
+      onLoginSuccess(data.token, data.user);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -57,6 +85,10 @@ export default function Login({ onLoginSuccess }) {
         throw new Error(data.error || 'Authentication failed');
       }
 
+      if (data.needs2fa) {
+        setChallenge(data.challenge); setCode(''); setUseRecovery(false); setPassword('');
+        return;
+      }
       onLoginSuccess(data.token, data.user);
     } catch (err) {
       setError(err.message || 'Login failed. Please check your credentials.');
@@ -136,8 +168,46 @@ export default function Login({ onLoginSuccess }) {
           <section className="panel" aria-label="Sign in">
             <div className="card">
               <span className="badge"><i /> Confidential Sales Portal</span>
-              <h2>Sign in</h2>
-              <p className="sub">Welcome back! Please sign in to continue.</p>
+              <h2>{challenge ? '2-step login' : 'Sign in'}</h2>
+              <p className="sub">{challenge ? (useRecovery ? 'Enter one of the recovery codes you saved.' : 'Open your authenticator app and enter the 6-digit code for Monipack CRM.') : 'Welcome back! Please sign in to continue.'}</p>
+              {challenge ? (
+                <form onSubmit={submitCode} autoComplete="off">
+                  {error && (
+                    <div className="err" role="alert">
+                      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                      <span>{error}</span>
+                    </div>
+                  )}
+                  <div>
+                    <label htmlFor="login-code">{useRecovery ? 'Recovery code' : '6-digit code'}</label>
+                    <div className="field">
+                      <Lock aria-hidden="true" />
+                      <input
+                        id="login-code"
+                        autoFocus
+                        inputMode={useRecovery ? 'text' : 'numeric'}
+                        autoComplete="one-time-code"
+                        maxLength={useRecovery ? 14 : 7}
+                        placeholder={useRecovery ? 'ABCDE-12345' : '123 456'}
+                        value={code}
+                        onChange={(e) => { setCode(e.target.value); setError(''); }}
+                        style={{ letterSpacing: useRecovery ? '0.08em' : '0.35em', fontSize: 18 }}
+                      />
+                    </div>
+                  </div>
+                  <button className={`btn${loading ? ' busy' : ''}`} type="submit" disabled={loading} aria-busy={loading}>
+                    <span className="lbl">Verify and sign in</span>
+                    <ArrowRight className="arr w-4 h-4" aria-hidden="true" />
+                    <span className="spin" aria-hidden="true" />
+                  </button>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 12.5, marginTop: 4 }}>
+                    <button type="button" onClick={() => { setUseRecovery((v) => !v); setCode(''); setError(''); }} style={{ color: '#3D5AF0', fontWeight: 600 }}>
+                      {useRecovery ? 'Use the app code' : 'Lost your phone? Use a recovery code'}
+                    </button>
+                    <button type="button" onClick={() => { setChallenge(null); setCode(''); setError(''); }} style={{ color: '#64748B' }}>Back</button>
+                  </div>
+                </form>
+              ) : (
               <form onSubmit={handleSubmit} autoComplete="on" noValidate={false}>
                 {error && (
                   <div className="err" role="alert">
@@ -191,6 +261,7 @@ export default function Login({ onLoginSuccess }) {
                   <span className="spin" aria-hidden="true" />
                 </button>
               </form>
+              )}
               <p className="secure"><Lock className="w-3 h-3" aria-hidden="true" /> Authorised personnel only · Encrypted connection</p>
             </div>
           </section>
