@@ -256,7 +256,7 @@ export function parseLeadCsv(csvContent, dbContext = {}) {
         email,
         customerLocation: 'Needs Intake',
         branch: 'Ghala',
-        salesman: 'Shamnas Acheerakath',
+        salesman: '',
         status: 'new',
         dealValue: 0,
         quantity: 'Needs Intake',
@@ -287,7 +287,7 @@ export function parseLeadCsv(csvContent, dbContext = {}) {
     // 4. Salesman Resolution
     let resolvedSalesman = rawSalesman;
     if (!resolvedSalesman) {
-      resolvedSalesman = branchSalesMap[resolvedBranch.toLowerCase()] || 'Shamnas Acheerakath';
+      resolvedSalesman = branchSalesMap[resolvedBranch.toLowerCase()] || '';
     }
 
     // 5. Category Resolution (Defaults to Packaging Products if omitted)

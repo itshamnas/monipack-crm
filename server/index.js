@@ -28,6 +28,8 @@ import {
 import { registerCustomerRoutes } from './customers/routes.js';
 import { registerCleanupRoutes } from './admin/cleanup.js';
 import { registerTaskRoutes } from './tasks/tasks.js';
+import { registerTwoFactorRoutes, twoFactorRequired, issueChallenge } from './auth/twoFactor.js';
+import { registerBackupRoutes, startBackupSchedule } from './backup/daily.js';
 import { recordMiddleware, registerVaultRoutes } from './audit/vault.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -43,6 +45,18 @@ process.on('unhandledRejection', (reason, promise) => {
 
 const app = express();
 app.set('trust proxy', 'loopback');
+
+// Behind the Cloudflare tunnel every request reaches us from this machine (127.0.0.1).
+// Use the visitor's real address Cloudflare sends, but only when the request really came from this machine.
+const LOOPBACK = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
+const VALID_IP = /^(?:\d{1,3}(?:\.\d{1,3}){3}|[0-9a-f:]{2,45})$/i;
+app.use((req, res, next) => {
+  const cf = String(req.headers['cf-connecting-ip'] || '').trim();
+  if (cf && VALID_IP.test(cf) && LOOPBACK.has(req.socket?.remoteAddress)) {
+    Object.defineProperty(req, 'ip', { value: cf, configurable: true });
+  }
+  next();
+});
 const PORT = process.env.PORT || 5000;
 const JWT_SECRET = process.env.JWT_SECRET || '';
 
@@ -251,6 +265,7 @@ function buildSessionUser(u) {
     canExport: u.can_export === true,
     salesmanId: u.salesman_id != null ? String(u.salesman_id) : null,
     mustChangePassword: Boolean(u.must_change_password),
+    twoFactorEnabled: Boolean(u.totp_enabled),
   };
   user.permissions = permissionsFor(user);
   user.canExport = user.permissions.includes('leads.export');
@@ -259,7 +274,7 @@ function buildSessionUser(u) {
 
 // The token carries only the user id and token version; everything else is loaded fresh on each request
 function signToken(u) {
-  return jwt.sign({ id: String(u.id), tv: u.token_version || 0 }, JWT_SECRET, { expiresIn: '24h' });
+  return jwt.sign({ id: String(u.id), tv: u.token_version || 0 }, JWT_SECRET, { expiresIn: '12h' });
 }
 
 const authMiddleware = asyncHandler(async (req, res, next) => {
@@ -364,6 +379,11 @@ app.post('/api/auth/login', checkLoginRateLimit, asyncHandler(async (req, res) =
 
   // Login succeeded: reset failure counter for this IP and email
   recordSuccessfulLogin(clientIp, email);
+
+  // 2-step login: the password was right, now ask for the code from the authenticator app
+  if (twoFactorRequired(user)) {
+    return res.json({ needs2fa: true, challenge: issueChallenge(user, JWT_SECRET), name: user.name });
+  }
   await db.recordLogin(user.id);
 
   const sessionUser = buildSessionUser(user);
@@ -1179,6 +1199,9 @@ registerCustomerRoutes(app, { authMiddleware, requirePermission, asyncHandler, l
 registerCleanupRoutes(app, { authMiddleware, asyncHandler, db });
 registerTaskRoutes(app, { authMiddleware, requirePermission, asyncHandler, db });
 registerVaultRoutes(app, { authMiddleware, asyncHandler, JWT_SECRET });
+registerTwoFactorRoutes(app, { authMiddleware, asyncHandler, db, JWT_SECRET, signToken, buildSessionUser });
+registerBackupRoutes(app, { authMiddleware, asyncHandler });
+startBackupSchedule();
 
 // ---- Central Error Handlers ----
 
