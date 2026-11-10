@@ -170,7 +170,7 @@ Customer Care: +968 79062219 | www.monipack.com`;
     try {
       await navigator.clipboard.writeText(message);
       setCopied(true);
-      if (showToast) showToast('Dispatch brief copied to clipboard! ✓');
+      if (showToast) showToast('Brief copied');
       setTimeout(() => setCopied(false), 2500);
     } catch {
       alert('Brief copied to clipboard.');
@@ -502,7 +502,7 @@ Customer Care: +968 79062219 | www.monipack.com`;
               }`}
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copied ? 'Copied Brief! ✓' : 'Copy Text'}</span>
+              <span>{copied ? 'Copied' : 'Copy Text'}</span>
             </button>
 
             {navigator.share && (

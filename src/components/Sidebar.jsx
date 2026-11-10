@@ -20,7 +20,9 @@ import {
   LogOut,
   ChevronDown,
   ContactRound,
-  ListChecks
+  ListChecks,
+  Inbox,
+  Kanban
 } from 'lucide-react';
 
 /**
@@ -43,15 +45,15 @@ export default function Sidebar({
   taskDue = 0
 }) {
   // Simplified menu: Home · Customers · Leads · Quotations · Settings
-  const ICONS = { home: LayoutDashboard, customers: ContactRound, leads: Users, quotations: FileText, tasks: ListChecks, settings: Settings };
-  const BADGES = { leads: stats?.newLeads || 0, quotations: 0, tasks: taskDue || 0 };
+  const ICONS = { home: LayoutDashboard, inbox: Inbox, leads: Kanban, customers: ContactRound, quotations: FileText, tasks: ListChecks, settings: Settings };
+  const BADGES = { inbox: stats?.newLeads || 0, quotations: 0, tasks: taskDue || 0 };
   const mainItems = navFor(currentUser).map((sec) => ({
     id: sec.pages[0].id,
     pages: sec.pages.map((p) => p.id),
     label: sec.label,
     icon: ICONS[sec.id] || LayoutDashboard,
     badge: BADGES[sec.id],
-    highlight: sec.id === 'leads' || sec.id === 'tasks',
+    highlight: sec.id === 'inbox' || sec.id === 'tasks',
   }));
 
   const handleSelectTab = (tabId) => {

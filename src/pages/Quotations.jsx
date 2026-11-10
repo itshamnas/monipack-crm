@@ -1322,11 +1322,11 @@ export default function Quotations({
                   className="w-full pl-8 pr-7 py-2.5 sm:py-2 text-xs bg-white border border-slate-200 rounded-full focus:outline-none focus:ring-1 focus:ring-red-500 font-medium"
                 />
                 {quoteSearchQuery && (
-                  <button
+                  <button aria-label="Clear search"
                     onClick={() => setQuoteSearchQuery('')}
                     className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold cursor-pointer"
                   >
-                    ✕
+                    <X className="w-4 h-4" aria-hidden="true" />
                   </button>
                 )}
               </div>
