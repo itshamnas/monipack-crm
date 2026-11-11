@@ -511,7 +511,7 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
       <div
         className="quotation-sheet shrink-0 bg-white w-full max-w-[850px] min-h-fit h-auto p-4 sm:p-10 rounded-xl shadow-2xl border border-slate-200 text-slate-900 relative my-2 sm:my-8 print:my-0 print:p-0 print:border-none print:shadow-none print:max-w-none print:min-h-0 print:w-full print:rounded-none"
         onClick={(e) => e.stopPropagation()}
-        style={{ fontFamily: "Inter, Arial, 'Cairo', sans-serif" }}
+        style={{ fontFamily: "var(--mp-font)" }}
       >
         <img className="mp-sheet-wm" src="/brands/watermark.png" alt="" aria-hidden="true" />
         {/* Letterhead */}
@@ -520,7 +520,7 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
             <img src="/brands/monipack-cropped.png" alt="monipack" className="w-20 sm:w-24 h-auto object-contain shrink-0" />
             <div className="text-[11px] leading-snug text-slate-600 min-w-0">
               <div className="text-sm font-extrabold text-slate-900">{company?.companyName || 'Morooj Nizwa International LLC'}</div>
-              {company?.companyNameAr && <div className="text-[12px] font-semibold text-slate-800" dir="rtl" style={{ fontFamily: "'Cairo', Arial, sans-serif", textAlign: 'left' }}>{company.companyNameAr}</div>}
+              {company?.companyNameAr && <div className="text-[12px] font-semibold text-slate-800" dir="rtl" style={{ fontFamily: "var(--mp-font)", textAlign: 'left' }}>{company.companyNameAr}</div>}
               <div>{company?.headquarters || 'Ghala, Muscat, Sultanate of Oman'}{company?.poBox ? ` · ${company.poBox}` : ''}</div>
               <div>{[company?.phone, company?.email, company?.website].filter(Boolean).join(' · ')}</div>
               {(company?.crNumber || company?.vatNumber) && (

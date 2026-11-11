@@ -9,6 +9,8 @@ npm ci --no-audit --no-fund
 npm run build
 set -a; . ./.env; set +a
 npm run migrate
+# Keep the daily local backup script up to date (database + uploaded files)
+install -m 755 deploy/backup-cron.sh /etc/cron.daily/monipack-crm-backup
 systemctl restart monipack-crm
 sleep 3
 curl -fsS http://127.0.0.1:3077/api/health && echo && echo "Updated."

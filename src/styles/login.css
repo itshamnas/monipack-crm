@@ -7,7 +7,7 @@
   }
   .mp-login, .mp-login * { box-sizing: border-box; }
   .mp-login :is(h1, h2, p) { margin: 0; }
-  .mp-login { min-height: 100vh; min-height: 100dvh; font-family: Inter, system-ui, sans-serif; color: var(--ink); background: #f4f5f8; -webkit-font-smoothing: antialiased; }
+  .mp-login { min-height: 100vh; min-height: 100dvh; font-family: var(--mp-font); color: var(--ink); background: #f4f5f8; -webkit-font-smoothing: antialiased; }
 
   /* ---------- frame ---------- */
   .mp-login .stage { min-height: 100vh; min-height: 100dvh; display: grid; place-items: center; padding: 24px; }
@@ -38,7 +38,7 @@
   .mp-login .company .mark::before { /* soft green-red halo */
     content: ''; position: absolute; inset: -14px; border-radius: 50%; z-index: -1; background: radial-gradient(circle, rgba(46, 125, 50, .35), rgba(204, 26, 34, .15) 45%, transparent 70%); animation: mpl-breathe 5s ease-in-out infinite; }
   .mp-login .company b { display: block; font-size: 15px; letter-spacing: .01em; }
-  .mp-login .company small { display: block; font-family: Cairo, sans-serif; font-size: 13px; color: rgba(255,255,255,.62); line-height: 1.1; }
+  .mp-login .company small { display: block; font-family: var(--mp-font); font-size: 13px; color: rgba(255,255,255,.62); line-height: 1.1; }
 
   .mp-login .hero { margin-top: auto; margin-bottom: auto; padding: 28px 0 18px; }
   .mp-login .logo-wrap { position: relative; width: 210px; margin-bottom: 26px; perspective: 800px; }
