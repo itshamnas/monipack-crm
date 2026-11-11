@@ -1,8 +1,18 @@
-import React from 'react';
+import React, { useState } from 'react';
 import BranchTypeBadge from '../components/ui/BranchTypeBadge.jsx';
-import { Building2, Phone, Mail, MapPin, Users, ChevronRight, ShieldCheck, UserCheck } from 'lucide-react';
+import Avatar from '../components/ui/Avatar.jsx';
+import PhotoPicker from '../components/ui/PhotoPicker.jsx';
+import { sendPhoto } from '../utils/photo.js';
+import { Building2, Phone, Mail, MapPin, Users, ChevronRight, ShieldCheck, UserCheck, Camera } from 'lucide-react';
 
-export default function Branches({ branches, leads, onSelectBranch, onNavigate }) {
+export default function Branches({ branches, leads, onSelectBranch, onNavigate, currentUser, authFetch, showToast, onChanged }) {
+  const isSuper = currentUser?.role === 'super_admin';
+  const [photoFor, setPhotoFor] = useState(null); // branch whose salesman photo is being changed
+  const savePhoto = async (b, dataUrl) => {
+    await sendPhoto(authFetch, `/api/salesmen/${b.salesmanId}/photo`, dataUrl);
+    showToast?.(dataUrl ? `Photo saved for ${b.salesman}.` : `Photo removed for ${b.salesman}.`);
+    onChanged?.();
+  };
   return (
     <div className="p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-24 md:pb-8">
       {/* Header */}
@@ -118,10 +128,24 @@ export default function Branches({ branches, leads, onSelectBranch, onNavigate }
                       info@monipack.com
                     </a>
                   </div>
-                  {b.salesman && (
-                    <div className="flex items-center gap-2 pt-1 border-t border-slate-100">
-                      <UserCheck className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                      <span>Sales Rep: <strong className="text-slate-800 font-semibold">{b.salesman}</strong></span>
+                  {b.salesman ? (
+                    <div className="flex items-center gap-3 pt-2.5 border-t border-slate-100">
+                      {isSuper && b.salesmanId ? (
+                        <button type="button" onClick={() => setPhotoFor(b)} className="relative rounded-full shrink-0 hover:ring-2 hover:ring-blue-400/60 transition"
+                          aria-label={`${b.salesmanPhotoUrl ? 'Change' : 'Add'} photo for ${b.salesman}`} title={`${b.salesmanPhotoUrl ? 'Change' : 'Add'} photo`}>
+                          <Avatar name={b.salesman} photoUrl={b.salesmanPhotoUrl} size={44} />
+                          <span className="absolute -bottom-0.5 -right-0.5 w-5 h-5 rounded-full bg-blue-600 text-white grid place-items-center ring-2 ring-white"><Camera className="w-3 h-3" /></span>
+                        </button>
+                      ) : <Avatar name={b.salesman} photoUrl={b.salesmanPhotoUrl} size={44} />}
+                      <span className="min-w-0">
+                        <span className="block text-[11px] text-slate-500">{b.type === 'b2b' ? 'B2B salesman' : 'Sales rep'}</span>
+                        <strong className="block text-[14px] text-slate-900 font-semibold truncate">{b.salesman}</strong>
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 pt-2 border-t border-slate-100 text-amber-800">
+                      <UserCheck className="w-3.5 h-3.5 shrink-0" />
+                      <span>No salesman yet{isSuper ? ': edit the branch below or use Settings → Team setup' : ''}</span>
                     </div>
                   )}
                 </div>
@@ -148,6 +172,10 @@ export default function Branches({ branches, leads, onSelectBranch, onNavigate }
           );
         })}
       </div>
+      {photoFor && (
+        <PhotoPicker name={photoFor.salesman} photoUrl={photoFor.salesmanPhotoUrl} title={`Photo for ${photoFor.salesman}`}
+          onSave={(d) => savePhoto(photoFor, d)} onRemove={() => savePhoto(photoFor, null)} onClose={() => setPhotoFor(null)} />
+      )}
     </div>
   );
 }
