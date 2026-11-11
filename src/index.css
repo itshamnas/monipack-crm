@@ -25,21 +25,31 @@
 
 .font-monipack,
 .font-nadianne {
-  font-family: 'Nadianne', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, sans-serif !important;
+  font-family: 'Nadianne', ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol" !important;
   font-weight: 700;
   letter-spacing: -0.01em;
 }
 
 @layer base {
   body {
-    font-family: 'Outfit', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    /* Notion's font: the device's own interface font (San Francisco, Segoe UI, Roboto…) */
+    font-family: var(--mp-font);
     background-color: var(--app-bg, #F3F4F6);
     color: var(--text-main, #111827);
   }
 }
 
-.font-cairo {
-  font-family: 'Cairo', system-ui, sans-serif;
+.font-cairo, .font-arabic {
+  font-family: var(--mp-font);
+}
+
+:root {
+  --mp-font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
+}
+
+/* Same font on every control and list (browsers don't inherit it into form fields by default) */
+button, input, select, textarea, optgroup, option, ul, ol, li, table, th, td {
+  font-family: inherit;
 }
 
 /* Smooth touch handling and text rendering */

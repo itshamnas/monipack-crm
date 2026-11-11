@@ -77,12 +77,7 @@ RestartSec=3
 WantedBy=multi-user.target
 UNIT
 systemctl daemon-reload; systemctl enable --quiet monipack-crm; systemctl restart monipack-crm
-cat > /etc/cron.daily/monipack-crm-backup <<'CRON'
-#!/bin/sh
-sudo -u postgres pg_dump monipack_crm | gzip > /var/lib/monipack-crm/backups/crm-$(date +%F).sql.gz
-find /var/lib/monipack-crm/backups -name 'crm-*.sql.gz' -mtime +14 -delete
-CRON
-chmod +x /etc/cron.daily/monipack-crm-backup
+install -m 755 "$APP_DIR/deploy/backup-cron.sh" /etc/cron.daily/monipack-crm-backup
 
 say "6/6 Check"
 sleep 3

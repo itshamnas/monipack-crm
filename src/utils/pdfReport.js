@@ -53,7 +53,7 @@ const STYLE = `
   }
   * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   html, body { margin: 0; }
-  body { font-family: Inter, Arial, 'Cairo', sans-serif; color: #0f172a; font-size: 11.5px; line-height: 1.45; }
+  body { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI', Helvetica, 'Apple Color Emoji', Arial, sans-serif, 'Segoe UI Emoji', 'Segoe UI Symbol'; color: #0f172a; font-size: 11.5px; line-height: 1.45; }
   .sheet { max-width: 186mm; margin: 0 auto; padding: 18px 0; }
   table.frame { width: 100%; border-collapse: collapse; }
   table.frame > thead > tr > td, table.frame > tfoot > tr > td, table.frame > tbody > tr > td { padding: 0; border: 0; }
@@ -61,7 +61,7 @@ const STYLE = `
   .lh-left { display: flex; gap: 12px; align-items: flex-start; min-width: 0; }
   .lh-left img { width: 70px; height: auto; }
   .co b { display: block; font-size: 13.5px; }
-  .co .ar { font-family: 'Cairo', Arial, sans-serif; font-weight: 700; font-size: 12px; color: #1e293b; }
+  .co .ar { font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, 'Segoe UI Variable Display', 'Segoe UI', Helvetica, 'Apple Color Emoji', Arial, sans-serif, 'Segoe UI Emoji', 'Segoe UI Symbol'; font-weight: 700; font-size: 12px; color: #1e293b; }
   .co span { display: block; color: #475569; font-size: 10.5px; }
   .co .legal { color: #334155; font-weight: 600; }
   .lh-right { text-align: right; flex-shrink: 0; }
@@ -134,7 +134,7 @@ function footer(c, when) {
 /** Open the tab right away (pop-up blockers allow it only during the click), fill it later. */
 export function openPendingWindow() {
   const w = window.open('', '_blank');
-  if (w) w.document.write('<p style="font-family:Arial;padding:24px;color:#475569">Preparing your PDF…</p>');
+  if (w) w.document.write('<p style="font-family:ui-sans-serif,-apple-system,Segoe UI,Helvetica,Arial,sans-serif;padding:24px;color:#475569">Preparing your PDF…</p>');
   return w;
 }
 

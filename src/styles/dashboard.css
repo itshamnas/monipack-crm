@@ -20,7 +20,7 @@
   --d-green: #34D399;
   --d-amber: #FBBF24;
   --d-violet: #A78BFA;
-  font-family: 'Outfit', 'Inter', system-ui, sans-serif;
+  font-family: var(--mp-font);
   color: var(--d-text);
   position: relative;
   isolation: isolate;
