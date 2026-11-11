@@ -46,8 +46,19 @@ async function setPhoto(table, id, dataUrl) {
   remove(rows[0].photo_key);
   return photoUrl(key);
 }
-export const setUserPhoto = (id, dataUrl) => setPhoto('users', parseInt(id, 10), dataUrl);
-export const setSalesmanPhoto = (id, dataUrl) => setPhoto('salesmen', parseInt(id, 10), dataUrl);
+// One person, one photo: a salesman's record and his login share the same picture (each keeps its own file copy)
+export async function setUserPhoto(id, dataUrl) {
+  const url = await setPhoto('users', parseInt(id, 10), dataUrl);
+  const { rows } = await query('SELECT salesman_id FROM users WHERE id = $1', [parseInt(id, 10)]);
+  if (rows[0]?.salesman_id) await setPhoto('salesmen', rows[0].salesman_id, dataUrl).catch(() => {});
+  return url;
+}
+export async function setSalesmanPhoto(id, dataUrl) {
+  const url = await setPhoto('salesmen', parseInt(id, 10), dataUrl);
+  const { rows } = await query('SELECT id FROM users WHERE salesman_id = $1', [parseInt(id, 10)]);
+  if (rows[0]) await setPhoto('users', rows[0].id, dataUrl).catch(() => {});
+  return url;
+}
 
 export function registerPhotoRoutes(app, { authMiddleware, asyncHandler, photoJsonParser }) {
   const send = (res, err) => res.status(err.status || 500).json({ error: err.status ? err.message : 'Could not save the photo.' });

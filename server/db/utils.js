@@ -101,14 +101,29 @@ export function leadToApi(row) {
 /**
  * Map a branch DB row (with joined salesman name) to the API shape.
  */
+/**
+ * Tidy a phone typed into a form: "+968 +9700 2942" -> "+968 9700 2942", a lone "+968" -> "".
+ * Omani numbers (8 digits, with or without 968) get the +968 prefix; others keep their digits.
+ */
+export function tidyPhone(v) {
+  const t = String(v ?? '').trim();
+  const d = t.replace(/\D/g, '');
+  if (!d || d === '968') return '';
+  const local = d.length === 11 && d.startsWith('968') ? d.slice(3) : d.length === 8 ? d : null;
+  if (local) return `+968 ${local.slice(0, 4)} ${local.slice(4)}`;
+  return `+${d}`.slice(0, 30);
+}
+
 export function branchToApi(row) {
   if (!row) return null;
   return {
     id: String(row.id),
     name: row.name || '',
     city: row.city || '',
-    phone: row.phone || '',
+    phone: tidyPhone(row.phone),
     salesman: row.salesman_name || row.default_salesman_name || '',
+    salesmanId: row.default_salesman_id ? String(row.default_salesman_id) : null,
+    salesmanPhotoUrl: row.salesman_photo_key ? `/api/photos/${row.salesman_photo_key}` : null,
     isHeadquarters: Boolean(row.is_headquarters),
     type: row.type === 'b2b' ? 'b2b' : 'retail',
   };

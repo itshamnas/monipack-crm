@@ -1,5 +1,5 @@
 import { query } from './pool.js';
-import { branchToApi } from './utils.js';
+import { branchToApi, tidyPhone } from './utils.js';
 
 const TYPE = (t) => (t === 'b2b' ? 'b2b' : t === 'retail' ? 'retail' : null);
 const SALESMAN_TYPE = { retail: 'branch', b2b: 'route_b2b' };
@@ -13,9 +13,10 @@ export async function syncSalesmenToBranch(branchId) {
 export { SALESMAN_TYPE };
 
 const BASE_SELECT = `
-  SELECT b.*, s.name AS default_salesman_name
+  SELECT b.*, s.name AS default_salesman_name,
+    COALESCE(s.photo_key, (SELECT u.photo_key FROM users u WHERE u.salesman_id = s.id AND u.photo_key IS NOT NULL LIMIT 1)) AS salesman_photo_key
   FROM branches b
-  LEFT JOIN salesmen s ON b.default_salesman_id = s.id
+  LEFT JOIN salesmen s ON b.default_salesman_id = s.id AND s.archived_at IS NULL
 `;
 
 export async function getBranches() {
@@ -57,7 +58,7 @@ export async function addBranch({ name, city, phone, salesman, isHeadquarters, l
     `INSERT INTO branches (legacy_id, name, city, phone, is_headquarters, default_salesman_id, type)
      VALUES ($1, $2, $3, $4, $5, $6, $7)
      RETURNING *`,
-    [legacyId || null, name.trim(), city || 'Oman', phone || '', isHeadquarters === true, salesmanId, TYPE(type) || 'retail']
+    [legacyId || null, name.trim(), city || 'Oman', tidyPhone(phone), isHeadquarters === true, salesmanId, TYPE(type) || 'retail']
   );
 
   // If salesman found, link back to this branch as home if not already linked
@@ -111,7 +112,7 @@ export async function updateBranch(id, updates) {
     [
       updates.name || null,
       updates.city || null,
-      updates.phone || null,
+      updates.phone !== undefined ? tidyPhone(updates.phone) : null,
       updates.isHeadquarters !== undefined ? updates.isHeadquarters : null,
       salesmanId,
       numId,

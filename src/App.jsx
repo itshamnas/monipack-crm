@@ -868,6 +868,10 @@ export default function App() {
             leads={leads}
             onSelectBranch={(b) => setSelectedBranch(b)}
             onNavigate={setActiveTab}
+            currentUser={currentUser}
+            authFetch={authFetch}
+            showToast={showToast}
+            onChanged={fetchData}
           />
         )}
 
