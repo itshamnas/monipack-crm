@@ -9,11 +9,21 @@ echo
 echo "Monipack CRM: daily backup by email"
 echo "For Gmail: turn on 2-Step Verification, then create an App password at https://myaccount.google.com/apppasswords"
 echo
-read -rp "Send backups TO this email: " TO
-read -rp "Send FROM email account (e.g. yourname@gmail.com): " USER
-read -rp "SMTP server [smtp.gmail.com]: " HOST; HOST=${HOST:-smtp.gmail.com}
-read -rp "SMTP port [465]: " PORT; PORT=${PORT:-465}
-read -rsp "Email app password (hidden): " PASS; echo
+while true; do read -rp "Send backups TO this email: " TO; [[ "$TO" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[a-zA-Z]{2,}$ ]] && break; echo "  Please type one email address."; done
+while true; do read -rp "Send FROM email account (e.g. yourname@gmail.com): " USER; [[ "$USER" =~ ^[^@[:space:]]+@[^@[:space:]]+\.[a-zA-Z]{2,}$ ]] && break; echo "  Please type one email address."; done
+echo "For the next two questions just press Enter unless you use a different email provider."
+while true; do
+  read -rp "SMTP server [smtp.gmail.com]: " HOST; HOST=${HOST:-smtp.gmail.com}
+  [[ "$HOST" =~ ^[A-Za-z0-9.-]+\.[A-Za-z]{2,}$ ]] && break
+  echo "  \"$HOST\" is not a server name. Press Enter alone for smtp.gmail.com."
+done
+while true; do
+  read -rp "SMTP port [465]: " PORT; PORT=${PORT:-465}
+  [[ "$PORT" =~ ^[0-9]{2,5}$ ]] && break
+  echo "  The port is a number. Press Enter alone for 465."
+done
+read -rsp "Email app password (hidden, paste and press Enter): " PASS; echo
+PASS=${PASS// /}   # Google shows app passwords with spaces; they are not part of it
 case "$PASS$TO$USER$HOST" in *"'"*) echo "The ' character is not supported here."; exit 1;; esac
 while true; do
   read -rsp "Choose a backup passphrase, 12+ characters (hidden, WRITE IT DOWN): " P1; echo
