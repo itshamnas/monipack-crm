@@ -4,7 +4,7 @@ import { userToApi } from './utils.js';
 import { normalizeRole } from '../auth/permissions.js';
 
 const USER_COLUMNS = `u.id, u.name, u.email, u.role, u.can_export, u.is_active, u.token_version,
-  u.must_change_password, u.last_login_at, u.salesman_id, u.created_at, u.updated_at, u.photo_key,
+  u.must_change_password, u.last_login_at, u.salesman_id, u.created_at, u.updated_at, u.photo_key, u.phone,
   s.name AS salesman_name`;
 
 const USER_SELECT = `SELECT ${USER_COLUMNS} FROM users u LEFT JOIN salesmen s ON s.id = u.salesman_id`;
@@ -62,17 +62,25 @@ export async function getPublicUserById(id) {
   return rows[0] ? userToApi(rows[0]) : null;
 }
 
+/** Keep digits and a leading +; empty -> null. */
+function cleanPhone(v) {
+  const t = String(v ?? '').trim();
+  if (!t) return null;
+  const d = t.replace(/[^\d+]/g, '');
+  return d.length >= 7 ? d.slice(0, 20) : null;
+}
+
 export async function createUser({
   name, email, password, role, passwordHash: existingHash,
-  canExport, salesmanId, mustChangePassword = false,
+  canExport, salesmanId, mustChangePassword = false, phone,
 }) {
   const hash = existingHash || hashPassword(password);
   const cleanRole = normalizeRole(role) || 'manager';
   const exportFlag = canExport !== undefined ? Boolean(canExport) : cleanRole === 'super_admin';
 
   const { rows } = await query(
-    `INSERT INTO users (name, email, role, can_export, password_hash, salesman_id, must_change_password)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
+    `INSERT INTO users (name, email, role, can_export, password_hash, salesman_id, must_change_password, phone)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
      RETURNING id`,
     [
       name || 'User',
@@ -82,6 +90,7 @@ export async function createUser({
       hash,
       cleanRole === 'salesman' ? toId(salesmanId) : null,
       Boolean(mustChangePassword),
+      cleanPhone(phone),
     ]
   );
   return getPublicUserById(rows[0].id);
@@ -105,6 +114,7 @@ export async function updateUser(id, updates = {}) {
   let salesmanId = updates.salesmanId !== undefined ? toId(updates.salesmanId) : existing.salesman_id;
   if (role !== 'salesman') salesmanId = null;
   const name = updates.name !== undefined && String(updates.name).trim() ? String(updates.name).trim() : existing.name;
+  const phone = updates.phone !== undefined ? cleanPhone(updates.phone) : (existing.phone ?? null);
 
   const accessChanged =
     role !== existing.role ||
@@ -114,9 +124,9 @@ export async function updateUser(id, updates = {}) {
 
   await query(
     `UPDATE users SET name = $1, role = $2, is_active = $3, can_export = $4, salesman_id = $5,
-       token_version = token_version + $6, updated_at = now()
+       token_version = token_version + $6, phone = $8, updated_at = now()
      WHERE id = $7 AND archived_at IS NULL`,
-    [name, role, isActive, canExport, salesmanId, accessChanged ? 1 : 0, numId]
+    [name, role, isActive, canExport, salesmanId, accessChanged ? 1 : 0, numId, phone]
   );
   return getPublicUserById(numId);
 }

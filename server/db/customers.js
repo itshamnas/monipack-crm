@@ -275,6 +275,10 @@ export async function listCustomers(filters = {}) {
     if (filters.salesmanId === 'unassigned') where.push('c.salesman_id IS NULL');
     else { params.push(toId(filters.salesmanId) ?? -1); where.push(`c.salesman_id = $${params.length}`); }
   }
+  if (filters.salesmanType) {
+    params.push(filters.salesmanType);
+    where.push(`c.salesman_id IN (SELECT id FROM salesmen WHERE type = $${params.length})`);
+  }
   if (filters.status && filters.status !== 'all') {
     params.push(filters.status);
     where.push(`c.status = $${params.length}`);
@@ -497,12 +501,16 @@ export async function importCustomers(rows, userId) {
 
 // ---------------- Dashboard ----------------
 
-export async function getSummary() {
-  const [fields, { rows: customers }, links] = await Promise.all([
+export async function getSummary({ salesmanType } = {}) {
+  const [fields, { rows: allCustomers }, allLinks] = await Promise.all([
     getCustomerFields({ includeHidden: false }),
     query(`${CUSTOMER_SELECT} WHERE c.archived_at IS NULL`),
     listLinks(),
   ]);
+  // Department managers: only their department's salesmen and customers
+  const links = salesmanType ? allLinks.filter((l) => l.type === salesmanType) : allLinks;
+  const inDept = new Set(links.map((l) => String(l.salesmanId)));
+  const customers = salesmanType ? allCustomers.filter((c) => inDept.has(String(c.salesman_id))) : allCustomers;
 
   const totals = { total: 0, not_started: 0, in_progress: 0, complete: 0, pending_approval: 0 };
   const per = new Map(links.map((l) => [l.salesmanId, {
@@ -623,7 +631,7 @@ export async function ensureCustomerForLead(leadRow, chosenCustomerId) {
 }
 
 /** Quick search for the "New enquiry" form: existing customers by name or mobile. */
-export async function lookupCustomers(q, { salesmanId } = {}) {
+export async function lookupCustomers(q, { salesmanId, salesmanType } = {}) {
   const text = String(q || '').trim();
   if (text.length < 2) return [];
   const digits = text.replace(/\D/g, '');
@@ -637,6 +645,10 @@ export async function lookupCustomers(q, { salesmanId } = {}) {
   if (salesmanId !== undefined) {
     params.push(toId(salesmanId) ?? -1);
     scope = ` AND c.salesman_id = $${params.length}`;
+  }
+  if (salesmanType) {
+    params.push(salesmanType);
+    scope += ` AND s.type = $${params.length}`;
   }
   const { rows } = await query(
     `SELECT c.id, c.name, c.mobile, c.data, c.salesman_id, s.name AS salesman_name, s.branch_id, b.name AS branch_name,

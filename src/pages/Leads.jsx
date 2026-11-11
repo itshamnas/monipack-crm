@@ -121,7 +121,7 @@ export default function Leads({
     const byName = new Map((branches || []).map((b) => [String(b.name || '').trim().toLowerCase(), b.type]));
     return (l) => (l.branchId && byId.get(String(l.branchId))) || byName.get(String(l.branch || '').trim().toLowerCase()) || null;
   }, [branches]);
-  const hasTypes = (branches || []).some((b) => b.type);
+  const hasTypes = new Set((branches || []).map((b) => b.type).filter(Boolean)).size > 1; // department managers see one type only
   const [tableLimit, setTableLimit] = useState(100);
   const [shareModalLead, setShareModalLead] = useState(null);
   const [printSlipLead, setPrintSlipLead] = useState(null);
@@ -262,7 +262,7 @@ export default function Leads({
 
   // Export to CSV - Authenticated via Backend Export Endpoint
   const handleExportCSV = async (scope = 'filtered') => {
-    if (!currentUser?.canExport) {
+    if (!currentUser?.permissions?.includes('leads.export')) {
       alert('Export Restricted: Only Administrator account has permission to export confidential customer leads.');
       return;
     }
@@ -464,7 +464,7 @@ export default function Leads({
           </div>
 
           {/* Export (admin) */}
-          {currentUser?.canExport ? (
+          {currentUser?.permissions?.includes('leads.export') ? (
             <div className="relative">
               <button
                 onClick={() => setShowExportMenu(!showExportMenu)}

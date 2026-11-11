@@ -9,6 +9,7 @@ const allowed = (user, item) => has(user, item.perm) && (!item.role || user?.rol
 export const NAV_SECTIONS = [
   { id: 'home', label: 'Home', pages: [
     { id: 'dashboard', label: 'Overview' },
+    { id: 'money', label: 'Money', perm: 'reports.view' },
     { id: 'analytics', label: 'Reports' },
   ] },
   { id: 'inbox', label: 'Inbox', pages: [

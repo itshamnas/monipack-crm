@@ -335,13 +335,15 @@ export default function LeadModal({
                 <div className="sm:col-span-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-[12.5px] text-amber-900" role="status">
                   <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="w-4 h-4" /> This number is already in the CRM</p>
                   <ul className="mt-1.5 space-y-1">
-                    {dupes.leads.map((d) => (
+                    {dupes.leads.map((d, i) => (d.hidden ? (
+                      <li key={`lh${i}`}><b>{d.name}</b> · ask customer care before adding it again</li>
+                    ) : (
                       <li key={`l${d.id}`} className="flex flex-wrap items-center gap-x-2">
                         <span><b>{d.name}</b> · lead in <b>{d.status}</b>{d.salesman ? ` · ${d.salesman}` : ' · not assigned'}</span>
                         {onOpenExisting && <button type="button" onClick={() => onOpenExisting(d.id)} className="font-semibold text-blue-700 hover:underline">Open it</button>}
                       </li>
-                    ))}
-                    {dupes.customers.map((d) => <li key={`c${d.id}`}><b>{d.name}</b> · customer{d.salesman ? ` of ${d.salesman}` : ''}</li>)}
+                    )))}
+                    {dupes.customers.map((d, i) => <li key={`c${d.id ?? `h${i}`}`}><b>{d.name}</b> · customer{d.salesman ? ` of ${d.salesman}` : ''}</li>)}
                   </ul>
                   <p className="mt-1.5 text-amber-800">Open the existing lead instead of adding it twice, or save anyway if it is a new requirement.</p>
                 </div>

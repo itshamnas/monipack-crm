@@ -72,7 +72,7 @@ async function downloadBlob(authFetch, url, filename) {
   setTimeout(() => URL.revokeObjectURL(a.href), 2000);
 }
 
-export default function Customers({ authFetch, showToast, canManage, initialFilter, onOpenSettings }) {
+export default function Customers({ authFetch, showToast, canManage, canExport = false, initialFilter, onOpenSettings }) {
   const { tab: initialTab, ...initialListFilter } = initialFilter || {};
   const [importing, setImporting] = useState(initialTab === 'import');
   const [fields, setFields] = useState([]);
@@ -338,7 +338,7 @@ export default function Customers({ authFetch, showToast, canManage, initialFilt
         <ImportTab authFetch={authFetch} showToast={showToast} onDone={() => { setImporting(false); changed(); }} />
       )}
 
-      <CustomerList key={reloadKey} authFetch={authFetch} showToast={showToast} canManage={canManage} initialFilter={initialListFilter}
+      <CustomerList key={reloadKey} authFetch={authFetch} showToast={showToast} canManage={canManage} canExport={canExport} initialFilter={initialListFilter}
         salesmen={salesmen} fields={fields} onOpen={setOpenId} onChanged={changed} />
 
       {openId && (
@@ -389,7 +389,7 @@ const STAGE_CHIPS = [
   ['complete', 'Complete'],
 ];
 
-function CustomerList({ authFetch, showToast, canManage, initialFilter = {}, salesmen, fields, onOpen, onChanged }) {
+function CustomerList({ authFetch, showToast, canManage, canExport = false, initialFilter = {}, salesmen, fields, onOpen, onChanged }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(initialFilter.search || '');
@@ -489,7 +489,7 @@ function CustomerList({ authFetch, showToast, canManage, initialFilter = {}, sal
           <option value="">Missing: any</option>
           {missingCounts.map((m) => <option key={m.key} value={m.key}>Missing {m.label} ({m.count})</option>)}
         </select>
-        <button type="button" className={btnLight} onClick={exportPdf} disabled={!shown.length}><FileText className="w-4 h-4" /> PDF of this list</button>
+        {canExport && <button type="button" className={btnLight} onClick={exportPdf} disabled={!shown.length}><FileText className="w-4 h-4" /> PDF of this list</button>}
         {canManage && (
           <button type="button" className={btnRed} onClick={() => setAdding(true)}><Plus className="w-4 h-4" /> Add customer</button>
         )}
@@ -1002,6 +1002,17 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged, canDelete =
       onChanged();
     } else showToast(body.error || 'Could not change branch', 'error');
   };
+  const savePhone = async (l, v) => {
+    if (v === (l.phone || '')) return;
+    const res = await authFetch(`/api/salesmen/${l.salesmanId}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ phone: v }) });
+    if (res.ok) { showToast(v ? `WhatsApp number saved for ${l.name}.` : `WhatsApp number removed for ${l.name}.`); onChanged(); }
+    else showToast('Could not save the number', 'error');
+  };
+  const phoneInput = (l, idSuffix = '') => (
+    <input id={`ph-${l.salesmanId}${idSuffix}`} type="tel" inputMode="tel" aria-label={`WhatsApp number for ${l.name}`} placeholder="+ WhatsApp number"
+      defaultValue={l.phone || ''} onBlur={(e) => savePhone(l, e.target.value.trim())}
+      className="mt-0.5 w-40 text-[11.5px] font-normal border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1.5 py-0.5 bg-transparent focus:bg-white outline-none" />
+  );
   const savePhoto = async (l, dataUrl) => {
     await sendPhoto(authFetch, `/api/salesmen/${l.salesmanId}/photo`, dataUrl);
     showToast(dataUrl ? `Photo updated for ${l.name}.` : `Photo removed for ${l.name}.`);
@@ -1095,6 +1106,7 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged, canDelete =
               <div className="min-w-0 flex-1">
                 <p className="font-bold truncate">{l.name}</p>
                 {l.branchName && <p className="text-xs text-slate-600 truncate">{l.branchName}</p>}
+                {phoneInput(l, '-m')}
                 <p className="text-xs text-slate-500 mt-0.5">
                   {l.linkEnabled ? <span className="text-emerald-700 font-bold">Link on</span> : 'Link off'} · PIN {l.hasPin ? 'set' : 'none'} · opened {fmt(l.linkLastUsedAt)}
                 </p>
@@ -1114,7 +1126,7 @@ function LinksTab({ authFetch, showToast, links, summary, onChanged, canDelete =
           <tbody className="divide-y divide-slate-100">
             {links.map((l) => (
               <tr key={l.salesmanId}>
-                <td className="px-4 py-3 font-semibold whitespace-nowrap"><span className="inline-flex items-center gap-2.5">{face(l)}{l.name}</span></td>
+                <td className="px-4 py-3 font-semibold whitespace-nowrap"><span className="inline-flex items-center gap-2.5">{face(l)}<span className="flex flex-col">{l.name}{phoneInput(l)}</span></span></td>
                 <td className="px-4 py-3">{branchSelect(l)}</td>
                 <td className="px-4 py-3">
                   {typeSelect(l)}

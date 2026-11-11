@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ROLE_LABELS, roleLabel } from '../auth/roles.js';
+import { ROLE_LABELS, ROLE_HELP, roleLabel } from '../auth/roles.js';
 import Avatar from '../components/ui/Avatar.jsx';
 import BranchTypeBadge from '../components/ui/BranchTypeBadge.jsx';
 import PhotoPicker from '../components/ui/PhotoPicker.jsx';
@@ -759,7 +759,18 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                         )}
                         {u.name}
                       </td>
-                      <td className="py-3 px-4 font-mono text-slate-600">{u.email}</td>
+                      <td className="py-3 px-4 text-slate-600">
+                        <span className="font-mono block">{u.email}</span>
+                        <input
+                          type="tel"
+                          inputMode="tel"
+                          aria-label={`WhatsApp number for ${u.name}`}
+                          placeholder="+ WhatsApp number"
+                          defaultValue={u.phone || ''}
+                          onBlur={(e) => { const v = e.target.value.trim(); if (v !== (u.phone || '')) handleUpdateUser(u, { phone: v }, v ? `WhatsApp number saved for ${u.name}.` : `WhatsApp number removed for ${u.name}.`); }}
+                          className="mt-1 w-40 text-[11px] border border-transparent hover:border-slate-300 focus:border-blue-500 rounded px-1.5 py-0.5 bg-transparent focus:bg-white outline-none"
+                        />
+                      </td>
                       <td className="py-3 px-4">
                         {u.role === 'salesman' || String(u.id) === String(currentUser?.id) ? (
                           <span className="inline-flex flex-col">
@@ -777,9 +788,9 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                             onChange={(e) => handleChangeRole(u, e.target.value)}
                             className="text-[11px] font-semibold border border-slate-300 rounded-lg px-2 py-1 bg-white"
                           >
-                            <option value="super_admin">{ROLE_LABELS.super_admin}</option>
-                            <option value="manager">{ROLE_LABELS.manager}</option>
-                            <option value="customer_care">{ROLE_LABELS.customer_care}</option>
+                            {['super_admin', 'manager', 'b2b_manager', 'retail_manager', 'customer_care'].map((r) => (
+                              <option key={r} value={r}>{ROLE_LABELS[r]}</option>
+                            ))}
                           </select>
                         )}
                       </td>
@@ -794,7 +805,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                         )}
                       </td>
                       <td className="py-3 px-4">
-                        {u.role === 'manager' ? (
+                        {['manager', 'b2b_manager', 'retail_manager'].includes(u.role) ? (
                           <label className="inline-flex items-center gap-1.5 cursor-pointer">
                             <input
                               type="checkbox"
@@ -1446,18 +1457,36 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">Security Role</label>
-                <select
-                  value={newUser.role}
-                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value, salesmanId: '', canExport: false })}
-                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5"
-                >
-                  <option value="customer_care">Customer Care – create &amp; assign enquiries</option>
-                  <option value="salesman">Salesman – only his own leads &amp; quotations</option>
-                  <option value="manager">Manager – all leads, reports, products</option>
-                  <option value="super_admin">Super Admin – everything incl. users &amp; settings</option>
-                </select>
-                <p className="mt-1 text-[10px] text-slate-500">The person must change this temporary password at first login.</p>
+                <span className="block text-xs font-semibold text-slate-700 mb-1">What is this person's job?</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2" role="radiogroup" aria-label="Role">
+                  {['super_admin', 'manager', 'b2b_manager', 'retail_manager', 'customer_care', 'salesman'].map((r) => (
+                    <button
+                      key={r}
+                      type="button"
+                      role="radio"
+                      aria-checked={newUser.role === r}
+                      onClick={() => setNewUser({ ...newUser, role: r, salesmanId: '', canExport: false })}
+                      className={`text-left rounded-lg border p-2.5 transition ${newUser.role === r ? 'border-blue-600 bg-blue-50 ring-2 ring-blue-500/20' : 'border-slate-300 hover:border-slate-400'}`}
+                    >
+                      <b className="block text-xs text-slate-900">{ROLE_LABELS[r]}</b>
+                      <small className="block text-[10.5px] leading-snug text-slate-500 mt-0.5">{ROLE_HELP[r]}</small>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-[10px] text-slate-500">The person must change the temporary password at first login.</p>
+              </div>
+
+              <div>
+                <label htmlFor="new-user-phone" className="block text-xs font-semibold text-slate-700 mb-1">WhatsApp number <span className="font-normal text-slate-500">(for alerts)</span></label>
+                <input
+                  id="new-user-phone"
+                  type="tel"
+                  inputMode="tel"
+                  placeholder="+968 9xxx xxxx"
+                  value={newUser.phone || ''}
+                  onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+                  className="w-full text-xs border border-slate-300 rounded-lg p-2.5 focus:outline-none focus:border-red-500"
+                />
               </div>
 
               {newUser.role === 'salesman' && (
@@ -1480,14 +1509,14 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
                 </div>
               )}
 
-              {newUser.role === 'manager' && (
+              {['manager', 'b2b_manager', 'retail_manager'].includes(newUser.role) && (
                 <label className="flex items-center gap-2 text-xs text-slate-700">
                   <input
                     type="checkbox"
                     checked={newUser.canExport}
                     onChange={(e) => setNewUser({ ...newUser, canExport: e.target.checked })}
                   />
-                  Allow confidential CSV export of leads
+                  Allow exporting (lead CSV, customer lists and PDF reports)
                 </label>
               )}
 

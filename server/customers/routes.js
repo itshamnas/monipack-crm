@@ -17,6 +17,20 @@ import { notify, managers } from '../notify/notify.js';
 import { workbook } from './xlsx.js';
 import { setSalesmanPhoto } from '../profile/photos.js';
 import { query } from '../db/pool.js';
+import { segmentOf } from '../auth/permissions.js';
+import { SALESMAN_TYPE } from '../db/scope.js';
+
+// Department managers only see their department's salesmen and customers
+const deptType = (req) => { const seg = segmentOf(req.user); return seg ? (SALESMAN_TYPE[seg] || 'none') : null; };
+const deptCustomerGuard = async (req, res, next) => {
+  try {
+    const t = deptType(req);
+    if (!t) return next();
+    const c = await cdb.getCustomer(req.params.id);
+    if (!c || c.salesmanType !== t) return res.status(404).json({ error: 'Customer not found.' });
+    next();
+  } catch (e) { next(e); }
+};
 
 const LINK_SESSION_HOURS = 12;
 
@@ -460,11 +474,12 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
   // "New enquiry" form: find an existing customer by name or mobile (salesmen only see their own)
   app.get('/api/customer-lookup', authMiddleware, requirePermission('leads.create', 'customers.view'), asyncHandler(async (req, res) => {
     const scope = req.user.role === 'salesman' ? { salesmanId: req.user.salesmanId ?? -1 } : {};
+    if (deptType(req)) scope.salesmanType = deptType(req);
     res.json(await cdb.lookupCustomers(req.query.q, scope));
   }));
 
   app.get('/api/customers/summary', authMiddleware, requirePermission('customers.view'), asyncHandler(async (req, res) => {
-    const summary = await cdb.getSummary();
+    const summary = await cdb.getSummary({ salesmanType: deptType(req) });
     // The dashboard never needs the secret link itself; only link managers get it (from /api/customer-links).
     summary.salesmen = summary.salesmen.map(({ linkToken, ...rest }) => rest);
     res.json(summary);
@@ -472,7 +487,7 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
 
   app.get('/api/customers', authMiddleware, requirePermission('customers.view'), asyncHandler(async (req, res) => {
     const { salesmanId, status, search, missing } = req.query;
-    let list = await cdb.listCustomers({ salesmanId, status, search });
+    let list = await cdb.listCustomers({ salesmanId, status, search, salesmanType: deptType(req) });
     const fields = await cdb.getCustomerFields({ includeHidden: false });
     list = list.map((c) => {
       const comp = completeness(c, fields, c.salesmanType || 'branch');
@@ -659,7 +674,7 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     };
   }
 
-  app.get('/api/data-centre.xlsx', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
+  app.get('/api/data-centre.xlsx', authMiddleware, requirePermission('customers.manage'), requirePermission('customers.export'), asyncHandler(async (req, res) => {
     const { picked } = await chosenSheets(req);
     if (!picked.length) return res.status(400).json({ error: 'Choose at least one section to download.' });
     const sheets = [contentsSheet(picked, req), ...picked];
@@ -694,7 +709,7 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
     }
   }));
 
-  app.get('/api/customers/export', authMiddleware, requirePermission('customers.manage'), asyncHandler(async (req, res) => {
+  app.get('/api/customers/export', authMiddleware, requirePermission('customers.manage'), requirePermission('customers.export'), asyncHandler(async (req, res) => {
     const [list, fields] = await Promise.all([cdb.listCustomers({}), cdb.getCustomerFields({ includeHidden: false })]);
     const cell = (v) => {
       let s = v === undefined || v === null ? '' : String(v);
@@ -719,7 +734,7 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
 
   app.get('/api/customers/:id', authMiddleware, requirePermission('customers.view'), asyncHandler(async (req, res) => {
     const c = await cdb.getCustomer(req.params.id);
-    if (!c) return res.status(404).json({ error: 'Customer not found.' });
+    if (!c || (deptType(req) && c.salesmanType !== deptType(req))) return res.status(404).json({ error: 'Customer not found.' });
     const comp = completeness(c, await cdb.getCustomerFields({ includeHidden: false }), c.salesmanType || 'branch');
     const activity = await cdb.getCustomerActivity(c.id);
     res.json({ ...c, percent: comp.percent, missing: comp.missing, stage: stageOf(c, comp.percent), ...activity });
@@ -828,7 +843,7 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
   }));
 
   // Original file exactly as uploaded
-  app.get('/api/customers/:id/files/:fileId', authMiddleware, requirePermission('customers.view'), asyncHandler(async (req, res) => {
+  app.get('/api/customers/:id/files/:fileId', authMiddleware, requirePermission('customers.view'), deptCustomerGuard, asyncHandler(async (req, res) => {
     const f = await cdb.getFile(req.params.id, req.params.fileId);
     if (!f) return res.status(404).json({ error: 'File not found.' });
     res.setHeader('Content-Type', f.mime);
@@ -839,7 +854,7 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
 
   // One document as PDF (photos converted, PDFs as uploaded)
   // One document as its standard PDF (company header + number on file). Made at upload; older files are converted now.
-  app.get('/api/customers/:id/files/:fileId/pdf', authMiddleware, requirePermission('customers.view'), asyncHandler(async (req, res) => {
+  app.get('/api/customers/:id/files/:fileId/pdf', authMiddleware, requirePermission('customers.view'), deptCustomerGuard, asyncHandler(async (req, res) => {
     const f = await cdb.getFile(req.params.id, req.params.fileId);
     if (!f) return res.status(404).json({ error: 'File not found.' });
     const row = await cdb.getCustomerRow(req.params.id);
@@ -861,7 +876,7 @@ export function registerCustomerRoutes(app, { authMiddleware, requirePermission,
   }));
 
   // All documents of a customer in one PDF: CR paper, VAT certificate, then photos, each page with its header
-  app.get('/api/customers/:id/documents.pdf', authMiddleware, requirePermission('customers.view'), asyncHandler(async (req, res) => {
+  app.get('/api/customers/:id/documents.pdf', authMiddleware, requirePermission('customers.view'), deptCustomerGuard, asyncHandler(async (req, res) => {
     const row = await cdb.getCustomerRow(req.params.id);
     if (!row) return res.status(404).json({ error: 'Customer not found.' });
     const ORDER = ['cr_certificate', 'vat_certificate', 'shop_front', 'other'];

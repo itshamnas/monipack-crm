@@ -25,6 +25,8 @@ import { recordAction } from './utils/momentum.js';
 import { celebrate } from './utils/celebrate.js';
 import Customers, { SalesmanLinksPage, CustomerFieldsPage } from './pages/Customers.jsx';
 import Home from './pages/Home.jsx';
+import Money from './pages/Money.jsx';
+import WhatsAppTray from './components/ui/WhatsAppTray.jsx';
 import SectionTabs from './components/layout/SectionTabs.jsx';
 import { SETTINGS_SUBPAGES, sectionOf } from './components/layout/navigation.js';
 import ErrorBoundary from './components/ErrorBoundary.jsx';
@@ -151,6 +153,7 @@ export default function App() {
   const leadsRef = useRef([]);
   const userRef = useRef(null);
   const afterWriteRef = useRef(() => {});
+  const [outboxKey, setOutboxKey] = useState(0);
   leadsRef.current = leads;
   userRef.current = currentUser;
   afterWriteRef.current = (url, options, res) => {
@@ -167,6 +170,8 @@ export default function App() {
       }
     }
     if (method === 'PATCH' && /^\/api\/tasks\/[^/]+$/.test(path) && body.status === 'done') celebrate('task');
+    // An assignment may have queued a WhatsApp alert to send
+    if (/^\/api\/(leads(\/[^/]+)?|tasks(\/[^/]+)?)$/.test(path)) setTimeout(() => setOutboxKey((k) => k + 1), 400);
     if (/^\/api\/(leads(\/[^/]+(\/activity)?)?|quotations|tasks(\/[^/]+(\/comments)?)?|customers(\/[^/]+)?)$/.test(path)) {
       const u = userRef.current;
       const r = recordAction(u?.id, u?.role);
@@ -627,6 +632,7 @@ export default function App() {
   // Page Title mapping (with responsive shortTitle for mobile viewports)
   const titles = {
     dashboard: { title: 'Home', shortTitle: 'Home', subtitle: 'What needs attention today' },
+    money: { title: 'Money', shortTitle: 'Money', subtitle: 'Won, lost and open value by person and period' },
     analytics: { title: 'Reports', shortTitle: 'Reports', subtitle: 'Pipeline funnel, categories and branches' },
     customercare: { title: 'Inbox', shortTitle: 'Inbox', subtitle: 'New enquiries to call, understand and assign' },
     leads: { title: 'Pipeline', shortTitle: 'Pipeline', subtitle: 'Deals in progress: quotations, follow-ups, samples, won and lost' },
@@ -655,6 +661,7 @@ export default function App() {
         notifications={
           <>
           <Celebration />
+          <WhatsAppTray authFetch={authFetch} refreshKey={outboxKey} />
           {lostAsk && (
             <LostReasonModal leadName={lostAsk.lead?.name || ''}
               onCancel={() => { lostAsk.resolve(null); setLostAsk(null); }}
@@ -750,6 +757,9 @@ export default function App() {
             <div className="px-4 sm:px-6 lg:px-8 pt-4 sm:pt-6 max-w-[1400px] mx-auto">
               <TodayFocus leads={leads} pipelineStages={pipelineStages} currentUser={currentUser} taskDue={taskDue} onNavigate={setActiveTab} />
             </div>
+          )}
+          {activeTab === 'money' && can('reports.view') && (
+            <Money authFetch={authFetch} currentUser={currentUser} showToast={showToast} />
           )}
           {(activeTab === 'analytics' || (activeTab === 'dashboard' && !can('customers.view'))) && (
           <Dashboard
@@ -863,7 +873,7 @@ export default function App() {
         )}
 
         {activeTab === 'customers' && can('customers.view') && (
-          <Customers key={customerFilter?._k || 'customers'} authFetch={authFetch} showToast={showToast} canManage={can('customers.manage')}
+          <Customers key={customerFilter?._k || 'customers'} authFetch={authFetch} showToast={showToast} canManage={can('customers.manage')} canExport={can('customers.export')}
             initialFilter={customerFilter ? (({ _k, ...f }) => f)(customerFilter) : undefined}
             onOpenSettings={can('customers.manage') ? setActiveTab : undefined} />
         )}
