@@ -58,9 +58,10 @@ export default function SecurityCard({ authFetch, showToast }) {
     setBusy(''); load();
   };
   const printCodes = () => {
-    const w = window.open('', '_blank', 'noopener,width=480,height=640');
+    // (no 'noopener' here: with it the browser returns no window to write into)
+    const w = window.open('', '_blank', 'width=480,height=640');
     if (!w) return;
-    w.document.write(`<title>Monipack CRM recovery codes</title><body style="font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;padding:32px"><h2>Monipack CRM: 2-step recovery codes</h2><p>Each code works once. Keep this paper somewhere safe.</p><pre style="font-size:20px;line-height:1.8">${codes.join('\n')}</pre><p>${new Date().toLocaleString('en-GB')}</p></body>`);
+    w.document.write(`<title>Monipack CRM recovery codes</title><style>@page{size:A4;margin:0}body{margin:0}</style><body style="font-family:ui-sans-serif,-apple-system,BlinkMacSystemFont,Segoe UI,Helvetica,Arial,sans-serif;padding:20mm"><h2>Monipack CRM: 2-step recovery codes</h2><p>Each code works once. Keep this paper somewhere safe.</p><pre style="font-size:20px;line-height:1.8">${codes.join('\n')}</pre><p>${new Date().toLocaleString('en-GB')}</p></body>`);
     w.document.close(); w.print();
   };
 

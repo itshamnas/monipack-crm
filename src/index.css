@@ -85,7 +85,10 @@ html, body {
    ========================================================================== */
 @page {
   size: A4 portrait;
-  margin: 12mm 15mm;
+  margin: 0; /* no browser header/footer (web address, date, page x/y) on printed PDFs */
+}
+@media print {
+  .mp-print-sites { position: fixed; left: 0; right: 0; bottom: 6mm; text-align: center; font-size: 8.5px; color: #64748b; letter-spacing: .02em; }
 }
 
 @media print {

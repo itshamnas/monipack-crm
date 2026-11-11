@@ -42,7 +42,7 @@ export default function WhatsAppTray({ authFetch, refreshKey }) {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="fixed z-[60] right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] lg:bottom-6 inline-flex items-center gap-2 h-11 pl-3 pr-4 rounded-full text-white font-semibold text-[13px] shadow-lg"
+        className="no-print print:hidden fixed z-[60] right-4 bottom-[calc(5.5rem+env(safe-area-inset-bottom))] lg:bottom-6 inline-flex items-center gap-2 h-11 pl-3 pr-4 rounded-full text-white font-semibold text-[13px] shadow-lg"
         style={{ background: '#128C4A' }}
         aria-label={toSend.length ? `${toSend.length} WhatsApp messages to send` : 'WhatsApp alerts that could not be sent'}
       >
