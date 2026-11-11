@@ -28,7 +28,6 @@ export default function QuoteStatus({ quote, onSetStatus }) {
   const [open, setOpen] = useState(false);
   const [ask, setAsk] = useState(null); // 'accepted' | 'rejected'
   const [busy, setBusy] = useState(false);
-  const [won, setWon] = useState(true);
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
   const [err, setErr] = useState('');
@@ -51,7 +50,7 @@ export default function QuoteStatus({ quote, onSetStatus }) {
   const choose = async (s) => {
     setOpen(false);
     if (s === quote.status) return;
-    if (s === 'accepted' || s === 'rejected') { setAsk(s); setWon(Boolean(quote.leadId)); setReason(''); setNote(''); setErr(''); return; }
+    if (s === 'accepted' || s === 'rejected') { setAsk(s); setReason(''); setNote(''); setErr(''); return; }
     setBusy(true); try { await onSetStatus(quote, s, {}); } catch { /* toast shown by parent */ } setBusy(false);
   };
   const confirm = async (e) => {
@@ -59,7 +58,7 @@ export default function QuoteStatus({ quote, onSetStatus }) {
     if (ask === 'rejected' && !reason) { setErr('Choose a reason.'); return; }
     setBusy(true);
     try {
-      await onSetStatus(quote, ask, ask === 'rejected' ? { reason: note ? `${reason}: ${note}` : reason } : { markLeadWon: won });
+      await onSetStatus(quote, ask, ask === 'rejected' ? { reason: note ? `${reason}: ${note}` : reason } : {});
       setAsk(null);
     } catch (ex) { setErr(ex.message || 'Could not save.'); }
     setBusy(false);
@@ -93,12 +92,7 @@ export default function QuoteStatus({ quote, onSetStatus }) {
               </div>
             </div>
             {ask === 'accepted' ? (
-              quote.leadId ? (
-                <label className="flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-[13.5px] cursor-pointer">
-                  <input type="checkbox" checked={won} onChange={(e) => setWon(e.target.checked)} className="mt-0.5" />
-                  <span>Also mark the lead as <b>Won</b> with a deal value of <b>OMR {Number(quote.grandTotalOMR || 0).toFixed(3)}</b></span>
-                </label>
-              ) : <p className="text-[13px] text-slate-500">This quotation is not linked to a lead, so only the quotation is marked.</p>
+              <p className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-3 text-[13.5px]">The lead moves to <b>Won</b> with a deal value of <b>OMR {Number(quote.grandTotalOMR || 0).toFixed(3)}</b>.</p>
             ) : (
               <>
                 <div className="grid gap-1.5">
@@ -109,7 +103,7 @@ export default function QuoteStatus({ quote, onSetStatus }) {
                   ))}
                 </div>
                 <input value={note} onChange={(e) => setNote(e.target.value)} maxLength={150} placeholder="Note (optional)" className="w-full h-11 px-3 rounded-xl border border-slate-300 text-sm" />
-                <p className="text-[12px] text-slate-500">The lead stays open so you can send a new quotation.</p>
+                <p className="text-[12px] text-slate-500">The lead moves to <b>Lost</b> with this reason, unless another quotation for it is still open. To try again with a better price, edit the quotation instead.</p>
               </>
             )}
             {err && <p className="text-sm text-rose-700" role="alert">{err}</p>}

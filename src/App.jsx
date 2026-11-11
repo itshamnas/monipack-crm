@@ -475,11 +475,15 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(quoteData),
       });
+      const created = await res.json().catch(() => ({}));
       if (res.ok) {
-        const created = await res.json();
-        showToast(`Quotation ${created.code} created successfully!`);
+        showToast(created.leadCreated
+          ? `Quotation ${created.code} saved · new lead added to Quotation Follow-Up`
+          : `Quotation ${created.code} saved · lead moved to Quotation Follow-Up`);
         fetchData();
         if (callback) callback(created);
+      } else {
+        showToast(created.error || 'Could not save the quotation', 'error');
       }
     } catch (err) {
       showToast('Failed to create quotation', 'error');
@@ -491,6 +495,7 @@ export default function App() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { showToast(data.error || 'Could not change the quotation status', 'error'); throw new Error(data.error || 'failed'); }
     if (data.leadWon) celebrate('won', 'Deal won', `${quote.customerName} · OMR ${Number(quote.grandTotalOMR || 0).toLocaleString('en-US', { maximumFractionDigits: 3 })}`);
+    else if (data.leadLost) showToast(`Quotation ${quote.code} rejected · lead moved to Lost`);
     else showToast(`Quotation ${quote.code} marked ${status}`);
     fetchData();
   };
@@ -793,6 +798,7 @@ export default function App() {
           <Leads
             leads={leads}
             authFetch={authFetch}
+            quotations={quotations}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             selectedCategory={selectedCategory}
@@ -831,6 +837,8 @@ export default function App() {
             onRefresh={fetchData}
             currentUser={currentUser}
             onSetQuoteStatus={can('quotations.status') ? handleSetQuoteStatus : null}
+            authFetch={authFetch}
+            showToast={showToast}
           />
         )}
 
