@@ -135,7 +135,48 @@ export async function valueReport(user, { period = 'month', offset = 0, from, to
   const scOpen = leadScopeSql(scope, 1, 'l.');
   const { unit, buckets } = bucketsFor(cur, period);
 
-  const [totals, prevTotals, openRow, peopleRows, reasonRows, trendRows] = await Promise.all([
+  // Quotations prepared in the period (by creation date), only those this person may see
+  const qScope = (idx) => {
+    const s = leadScopeSql(scope, idx, 'l.');
+    return s.params.length
+      ? { sql: ` AND q.lead_id IN (SELECT l.id FROM leads l WHERE TRUE${s.sql})`, params: s.params }
+      : { sql: '', params: [] };
+  };
+  const QSTATUS = `CASE WHEN q.status IN ('draft','accepted','rejected') THEN q.status
+                        WHEN q.date IS NOT NULL AND q.date + (COALESCE(q.validity_days, 30) || ' days')::interval < now() THEN 'expired'
+                        ELSE 'sent' END`;
+  const quoteTotals = async (range) => {
+    const s = qScope(3);
+    const { rows } = await query(
+      `SELECT ${QSTATUS} AS st, COUNT(*) AS c, COALESCE(SUM(q.grand_total_omr), 0) AS v
+         FROM quotations q WHERE q.archived_at IS NULL AND q.created_at >= $1 AND q.created_at < $2${s.sql}
+        GROUP BY 1`, [range.from, range.to, ...s.params]);
+    const by = Object.fromEntries(rows.map((r) => [r.st, { count: n(r.c), value: r3(r.v) }]));
+    const z = { count: 0, value: 0 };
+    const all = rows.reduce((a, r) => ({ count: a.count + n(r.c), value: r3(a.value + n(r.v)) }), { count: 0, value: 0 });
+    const decided = (by.accepted?.count || 0) + (by.rejected?.count || 0);
+    return {
+      prepared: all,
+      sent: by.sent || z, draft: by.draft || z, accepted: by.accepted || z, rejected: by.rejected || z, expired: by.expired || z,
+      acceptRate: decided ? Math.round(((by.accepted?.count || 0) / decided) * 1000) / 10 : null,
+    };
+  };
+  const quotePeople = async (range) => {
+    const s = qScope(3);
+    const { rows } = await query(
+      `SELECT COALESCE(u.name, NULLIF(q.sales_rep, ''), 'Not recorded') AS name, u.photo_key, u.role,
+              COUNT(*) AS c, COALESCE(SUM(q.grand_total_omr), 0) AS v,
+              COUNT(*) FILTER (WHERE q.status = 'accepted') AS ac, COALESCE(SUM(q.grand_total_omr) FILTER (WHERE q.status = 'accepted'), 0) AS av
+         FROM quotations q LEFT JOIN users u ON u.id = q.created_by_user_id
+        WHERE q.archived_at IS NULL AND q.created_at >= $1 AND q.created_at < $2${s.sql}
+        GROUP BY 1, 2, 3 ORDER BY 5 DESC`, [range.from, range.to, ...s.params]);
+    return rows.map((r) => ({
+      name: r.name, role: r.role || null, photoUrl: r.photo_key ? `/api/photos/${r.photo_key}` : null,
+      prepared: { count: n(r.c), value: r3(r.v) }, accepted: { count: n(r.ac), value: r3(r.av) },
+    }));
+  };
+
+  const [totals, prevTotals, openRow, peopleRows, reasonRows, trendRows, quotes, prevQuotes, quoteBy] = await Promise.all([
     totalsFor(scope, cur),
     totalsFor(scope, prev),
     // Current open pipeline (right now, not limited to the period)
@@ -176,6 +217,9 @@ export async function valueReport(user, { period = 'month', offset = 0, from, to
        LEFT JOIN LATERAL (SELECT ${LEAD_VALUE} AS val) v ON l.id IS NOT NULL
        GROUP BY b.i ORDER BY b.i`,
       [buckets.map((x) => x.from), buckets.map((x) => x.to), ...leadScopeSql(scope, 3, 'l.').params]),
+    quoteTotals(cur),
+    quoteTotals(prev),
+    quotePeople(cur),
   ]);
 
   const people = peopleRows.rows.map((r) => {
@@ -203,6 +247,9 @@ export async function valueReport(user, { period = 'month', offset = 0, from, to
     totals: { ...totals, open: { count: n(openRow.rows[0].c), value: r3(openRow.rows[0].v) } },
     prevTotals,
     people,
+    quotes,
+    prevQuotes,
+    quoteBy,
     lostReasons: reasonRows.rows.map((r) => ({ reason: r.reason, count: n(r.c), value: r3(r.v) })),
     trend: buckets.map((b, i) => {
       const t = trendRows.rows.find((x) => Number(x.i) === i + 1) || {};
