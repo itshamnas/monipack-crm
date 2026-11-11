@@ -85,6 +85,7 @@ const CATEGORIES = [
 
 export default function Leads({
   leads,
+  authFetch,
   searchQuery,
   setSearchQuery,
   selectedCategory,
@@ -518,6 +519,7 @@ export default function Leads({
                   <button
                     onClick={() => {
                       setShowExportMenu(false);
+                      authFetch?.('/api/reports/export-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label: `Pipeline PDF (${filteredLeads.length} leads)` }) }).catch(() => {});
                       const stageName = (id) => (activeStages.find((st) => st.id === id)?.label || id).replace(/^STEP \d+:\s*/, '');
                       const open = filteredLeads.filter((l) => !['won', 'lost'].includes(l.status));
                       const ok = openPrintable({

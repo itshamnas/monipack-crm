@@ -792,6 +792,7 @@ export default function App() {
         {activeTab === 'leads' && (
           <Leads
             leads={leads}
+            authFetch={authFetch}
             searchQuery={searchQuery}
             setSearchQuery={setSearchQuery}
             selectedCategory={selectedCategory}
