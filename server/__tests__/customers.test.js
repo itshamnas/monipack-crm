@@ -47,9 +47,11 @@ describe('Customer data collection (salesman links)', () => {
   });
 
   describe('permissions', () => {
-    it('customer care cannot see customer data', async () => {
-      expect((await request(app).get('/api/customers').set(auth(t.care))).status).toBe(403);
-      expect((await request(app).get('/api/customers/summary').set(auth(t.care))).status).toBe(403);
+    it('customer care can see customer data but not manage or export it', async () => {
+      expect((await request(app).get('/api/customers').set(auth(t.care))).status).toBe(200);
+      expect((await request(app).get('/api/customers/summary').set(auth(t.care))).status).toBe(200);
+      expect((await request(app).get('/api/customer-links').set(auth(t.care))).status).toBe(403);
+      expect((await request(app).get('/api/customers/export').set(auth(t.care))).status).toBe(403);
     });
     it('manager can view but not manage', async () => {
       expect((await request(app).get('/api/customers/summary').set(auth(t.manager))).status).toBe(200);

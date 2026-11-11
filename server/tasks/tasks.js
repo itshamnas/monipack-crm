@@ -1,11 +1,13 @@
 import { query } from '../db/pool.js';
 import { notify, usersForSalesman } from '../notify/notify.js';
+import { alertTaskAssigned } from '../notify/whatsapp.js';
 
 // Tell the person a task was given to (not when you give it to yourself)
 async function notifyAssignee(actor, task, verb) {
   const a = task?.assignee; if (!a) return;
   const ids = a.kind === 'user' ? [a.id] : await usersForSalesman(a.id);
   const others = ids.filter((id) => String(id) !== String(actor.id));
+  await alertTaskAssigned(task, actor).catch((e) => console.error('[whatsapp]', e.message));
   await notify(others, { kind: 'task', title: `${actor.name} ${verb}: ${task.title}`, body: task.dueAt ? `Due ${new Date(task.dueAt).toLocaleString('en-GB', { timeZone: 'Asia/Muscat', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : '', link: 'tasks' });
 }
 
@@ -198,8 +200,13 @@ export async function assignees(user) {
   }
   const [{ rows: users }, { rows: sms }] = await Promise.all([
     query("SELECT id, name, role, photo_key FROM users WHERE archived_at IS NULL AND is_active = true ORDER BY CASE role WHEN 'super_admin' THEN 0 WHEN 'manager' THEN 1 WHEN 'customer_care' THEN 2 ELSE 3 END, name"),
-    query('SELECT id, name, link_enabled, photo_key FROM salesmen WHERE archived_at IS NULL ORDER BY name'),
+    query('SELECT id, name, type, link_enabled, photo_key FROM salesmen WHERE archived_at IS NULL ORDER BY name'),
   ]);
+  const deptType = { b2b_manager: 'route_b2b', retail_manager: 'branch' }[user.role];
+  if (deptType) {
+    const keep = sms.filter((s) => s.type === deptType);
+    sms.length = 0; sms.push(...keep);
+  }
   return [
     ...users.map((u) => ({ kind: 'user', id: String(u.id), name: u.name, role: u.role, me: String(u.id) === String(user.id), photoUrl: u.photo_key ? `/api/photos/${u.photo_key}` : null })),
     ...sms.map((s) => ({ kind: 'salesman', id: String(s.id), name: s.name, role: 'salesman_link', linkOn: Boolean(s.link_enabled), photoUrl: s.photo_key ? `/api/photos/${s.photo_key}` : null })),

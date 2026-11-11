@@ -71,6 +71,7 @@ const db = {
   // Leads
   getLeads: leads.getLeads,
   getLeadById: leads.getLeadById,
+  getLeadSegment: leads.getLeadSegment,
   createLead: leads.createLead,
   updateLead: leads.updateLead,
   deleteLead: leads.deleteLead,

@@ -1,14 +1,16 @@
 import { query } from './pool.js';
 import { activityToApi } from './utils.js';
+import { leadScopeSql } from './scope.js';
 
 /**
  * @param {{ salesmanId?: string|number }} scope - when set, every figure covers only that salesman's leads
  */
 export async function getAnalytics(scope = {}) {
-  const own = scope.salesmanId !== undefined;
-  const sid = own ? (parseInt(scope.salesmanId, 10) || -1) : null;
-  const leadWhere = own ? 'archived_at IS NULL AND salesman_id = $1' : 'archived_at IS NULL';
-  const p = own ? [sid] : [];
+  const sc = leadScopeSql(scope, 1);
+  const own = sc.params.length > 0; // any limited scope (own leads or one department)
+  const leadWhere = `archived_at IS NULL${sc.sql}`;
+  const p = sc.params;
+  const scopedLeadIds = `SELECT id FROM leads WHERE TRUE${sc.sql}`;
 
   // Lead counts by status
   const { rows: statusCounts } = await query(`
@@ -48,7 +50,7 @@ export async function getAnalytics(scope = {}) {
   // Quotation count
   const { rows: qCount } = await query(
     own
-      ? 'SELECT COUNT(*) AS cnt FROM quotations WHERE archived_at IS NULL AND lead_id IN (SELECT id FROM leads WHERE salesman_id = $1)'
+      ? `SELECT COUNT(*) AS cnt FROM quotations WHERE archived_at IS NULL AND lead_id IN (${scopedLeadIds})`
       : 'SELECT COUNT(*) AS cnt FROM quotations WHERE archived_at IS NULL',
     p
   );
@@ -56,7 +58,7 @@ export async function getAnalytics(scope = {}) {
   // Recent activities from lead_activities
   const { rows: recentRows } = await query(
     own
-      ? 'SELECT * FROM lead_activities WHERE lead_id IN (SELECT id FROM leads WHERE salesman_id = $1) ORDER BY "timestamp" DESC LIMIT 35'
+      ? `SELECT * FROM lead_activities WHERE lead_id IN (${scopedLeadIds}) ORDER BY "timestamp" DESC LIMIT 35`
       : 'SELECT * FROM lead_activities ORDER BY "timestamp" DESC LIMIT 35',
     p
   );

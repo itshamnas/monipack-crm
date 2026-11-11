@@ -1,5 +1,6 @@
 import { query, getClient } from './pool.js';
 import { quotationToApi } from './utils.js';
+import { leadScopeSql } from './scope.js';
 
 /**
  * @param {{ salesmanId?: string|number }} filters - salesmanId limits to quotations of that salesman's leads
@@ -7,10 +8,10 @@ import { quotationToApi } from './utils.js';
 export async function getQuotations(filters = {}) {
   let sql = 'SELECT q.* FROM quotations q WHERE q.archived_at IS NULL';
   const params = [];
-  if (filters.salesmanId !== undefined) {
-    const sid = parseInt(filters.salesmanId, 10);
-    params.push(isNaN(sid) ? -1 : sid);
-    sql += ' AND q.lead_id IN (SELECT id FROM leads WHERE salesman_id = $1)';
+  const sc = leadScopeSql(filters, 1);
+  if (sc.params.length) {
+    params.push(...sc.params);
+    sql += ` AND q.lead_id IN (SELECT id FROM leads WHERE TRUE${sc.sql})`;
   }
   sql += ' ORDER BY q.created_at DESC';
   const { rows } = await query(sql, params);

@@ -208,6 +208,7 @@ export function userToApi(row) {
     salesmanName: row.salesman_name || null,
     lastLoginAt: row.last_login_at ? new Date(row.last_login_at).toISOString() : null,
     photoUrl: row.photo_key ? `/api/photos/${row.photo_key}` : null,
+    phone: row.phone || '',
     createdAt: row.created_at ? new Date(row.created_at).toISOString() : undefined,
     updatedAt: row.updated_at ? new Date(row.updated_at).toISOString() : undefined,
   };
