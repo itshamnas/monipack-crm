@@ -223,7 +223,7 @@ export function registerReportRoutes(app, { authMiddleware, requirePermission, a
   // The PDF is made in the browser; this records who exported what (and refuses people without export rights)
   app.post('/api/reports/export-log', authMiddleware, requirePermission('reports.export'), asyncHandler(async (req, res) => {
     const label = String(req.body?.label || '').slice(0, 120);
-    await audit?.(req, `Exported the money report (PDF): ${label}`);
+    await audit?.(req, `Exported a PDF report: ${label}`);
     res.json({ ok: true });
   }));
 }

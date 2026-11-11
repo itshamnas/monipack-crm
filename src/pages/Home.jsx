@@ -204,6 +204,8 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
   const R = 48, C = 2 * Math.PI * R;
 
   const exportPdf = () => {
+    // recorded in the audit vault
+    authFetch?.('/api/reports/export-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label: 'Home summary PDF' }) }).catch(() => {});
     openPrintable({
       docType: 'Daily report',
       title: 'Sales & customer summary',
