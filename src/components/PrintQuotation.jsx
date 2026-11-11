@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { getCompany } from '../utils/pdfReport.js';
+import { getCompany, siteLine } from '../utils/pdfReport.js';
 import { 
   Printer, 
   X, 
@@ -229,8 +229,8 @@ export default function PrintQuotation({ quotation, onClose, onUpdateTerms, onUp
 💰 *Grand Total (OMR):* OMR ${grandTotal.toFixed(3)} ${vatText}
 👤 *Sales Representative:* ${quotation.salesRep || 'Monipack sales team'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-View / Download Official A4 Specification: https://crm.monipack.com
-Commercial Hotline: +968 79062219 | info@monipack.com`;
+Commercial Hotline: +968 79062219 | info@monipack.com
+${siteLine(company)}`;
 
     const encoded = encodeURIComponent(text);
     const url = target === 'app'
@@ -254,7 +254,8 @@ Commercial Hotline: +968 79062219 | info@monipack.com`;
 💰 *Grand Total (OMR):* OMR ${grandTotal.toFixed(3)} ${vatText}
 👤 *Sales Representative:* ${quotation.salesRep || 'Monipack sales team'}
 ━━━━━━━━━━━━━━━━━━━━━━━━━
-Commercial Hotline: +968 79062219 | www.monipack.com`;
+Commercial Hotline: +968 79062219 | info@monipack.com
+${siteLine(company)}`;
     try {
       await navigator.clipboard.writeText(text);
       setQuoteCopied(true);
@@ -275,9 +276,11 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
     >
       {/* Embedded Print Engine Styles for Absolute Browser Fidelity */}
       <style>{`
+        /* No page margin = the browser prints no web address / date / page header-footer of its own.
+           The white border comes from the sheet's padding, repeated on every page. */
         @page {
           size: A4 portrait;
-          margin: 12mm 15mm;
+          margin: 0;
         }
         @media print {
           /* 1. COMPLETELY HIDE THE APPLICATION ROOT AND NAVIGATION */
@@ -327,7 +330,9 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
             width: 100% !important;
             max-width: 100% !important;
             margin: 0 !important;
-            padding: 0 !important;
+            padding: 12mm 15mm 16mm !important;
+            -webkit-box-decoration-break: clone !important;
+            box-decoration-break: clone !important;
             min-height: auto !important;
             height: auto !important;
             background: #ffffff !important;
@@ -514,6 +519,8 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
         style={{ fontFamily: "var(--mp-font)" }}
       >
         <img className="mp-sheet-wm" src="/brands/watermark.png" alt="" aria-hidden="true" />
+        {/* Company websites at the foot of every printed page */}
+        <div className="mp-print-sites hidden print:block" aria-hidden="true">{siteLine(company)}</div>
         {/* Letterhead */}
         <div className="flex items-start justify-between gap-6 pb-4 border-b-[3px] border-[#CC1A22]">
           <div className="flex items-start gap-4 min-w-0">
@@ -522,7 +529,8 @@ Commercial Hotline: +968 79062219 | www.monipack.com`;
               <div className="text-sm font-extrabold text-slate-900">{company?.companyName || 'Morooj Nizwa International LLC'}</div>
               {company?.companyNameAr && <div className="text-[12px] font-semibold text-slate-800" dir="rtl" style={{ fontFamily: "var(--mp-font)", textAlign: 'left' }}>{company.companyNameAr}</div>}
               <div>{company?.headquarters || 'Ghala, Muscat, Sultanate of Oman'}{company?.poBox ? ` · ${company.poBox}` : ''}</div>
-              <div>{[company?.phone, company?.email, company?.website].filter(Boolean).join(' · ')}</div>
+              <div>{[company?.phone, company?.email].filter(Boolean).join(' · ')}</div>
+              <div>{siteLine(company)}</div>
               {(company?.crNumber || company?.vatNumber) && (
                 <div className="font-semibold text-slate-700">
                   {[company?.crNumber && `CR No. ${company.crNumber}`, company?.vatNumber && `VATIN ${company.vatNumber}`].filter(Boolean).join(' · ')}
