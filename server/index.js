@@ -14,6 +14,8 @@ import {
   permissionsFor,
   hasPermission,
   isOwnScopeOnly,
+  segmentOf,
+  dataScope,
   validatePassword,
 } from './auth/permissions.js';
 import {
@@ -33,6 +35,8 @@ import { registerTwoFactorRoutes, twoFactorRequired, issueChallenge } from './au
 import { registerBackupRoutes, startBackupSchedule } from './backup/daily.js';
 import { recordMiddleware, registerVaultRoutes } from './audit/vault.js';
 import { query as dbQuery } from './db/pool.js';
+import { registerReportRoutes } from './reports/value.js';
+import { registerWhatsAppRoutes, alertLeadAssigned, revokeUserLinks } from './notify/whatsapp.js';
 import { registerNotificationRoutes, notify, usersForSalesman, managers as managerIds } from './notify/notify.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -253,6 +257,18 @@ if (rateLimitCleanupInterval.unref) {
   rateLimitCleanupInterval.unref();
 }
 
+// Read-only share links (/api/view/:token): at most 120 opens per minute per IP
+const viewHits = new Map();
+const viewLimiter = (req, res, next) => {
+  const ip = req.ip || 'unknown';
+  const now = Date.now();
+  const rec = viewHits.get(ip);
+  if (!rec || now > rec.resetAt) viewHits.set(ip, { count: 1, resetAt: now + 60000 });
+  else if (++rec.count > 120) return res.status(429).json({ error: 'Too many requests. Please wait a minute.' });
+  if (viewHits.size > 5000) viewHits.clear();
+  next();
+};
+
 // ---------------- Security & Auth Middleware ----------------
 
 // Requests allowed while a user still has to replace a temporary password
@@ -322,8 +338,8 @@ const requirePermission = (...perms) => (req, res, next) => {
   next();
 };
 
-// Salesmen only ever see leads assigned to their own salesman record
-const leadScope = (req) => (isOwnScopeOnly(req.user) ? { salesmanId: req.user.salesmanId ?? -1 } : {});
+// Salesmen see only their own leads; B2B / Retail managers only their department
+const leadScope = (req) => dataScope(req.user);
 
 // Returns the lead only if this user may see it (otherwise null -> 404, so ids of other leads are not revealed)
 async function loadLeadForUser(req, id) {
@@ -332,8 +348,28 @@ async function loadLeadForUser(req, id) {
   if (isOwnScopeOnly(req.user)) {
     if (!req.user.salesmanId || String(lead.salesmanId ?? '') !== String(req.user.salesmanId)) return null;
   }
+  const seg = segmentOf(req.user);
+  if (seg && (await db.getLeadSegment(lead.id)) !== seg) return null;
   return lead;
 }
+
+// Department of a lead after applying `input` on top of `prev` (both optional)
+async function segmentAfter(input = {}, prev = {}) {
+  const has = (k) => Object.prototype.hasOwnProperty.call(input, k);
+  const bid = has('branchId') ? (parseInt(input.branchId, 10) || null) : (parseInt(prev.branchId, 10) || null);
+  let sid = has('salesmanId') ? (parseInt(input.salesmanId, 10) || null) : null;
+  if (!has('salesmanId')) {
+    if (has('salesman') && String(input.salesman || '').trim()) {
+      const { rows } = await dbQuery('SELECT id FROM salesmen WHERE lower(trim(name)) = lower(trim($1)) AND archived_at IS NULL ORDER BY id LIMIT 1', [String(input.salesman)]);
+      sid = rows[0]?.id || null;
+    } else if (!has('salesman')) sid = parseInt(prev.salesmanId, 10) || null;
+  }
+  const bname = has('branch') ? (input.branch || null) : (prev.branch || null);
+  const { rows } = await dbQuery('SELECT lead_segment($1::int, $2::int, $3::text) AS seg', [bid, sid, bname]);
+  return rows[0]?.seg || null;
+}
+const DEPT_NAME = { b2b: 'B2B', retail: 'Retail' };
+const outsideDept = (seg) => `Choose a ${DEPT_NAME[seg] || ''} branch or salesman. You can only keep enquiries inside your own department.`;
 
 // Users without 'leads.assign' cannot move a lead to another branch or salesman
 const ASSIGNMENT_FIELDS = ['branchId', 'branch', 'salesmanId', 'salesman'];
@@ -553,7 +589,7 @@ app.get('/api/leads/export', authMiddleware, requirePermission('leads.export'), 
 }));
 
 // Leads List
-app.get('/api/leads', authMiddleware, requirePermission('leads.view_all', 'leads.view_own'), asyncHandler(async (req, res) => {
+app.get('/api/leads', authMiddleware, requirePermission('leads.view_all', 'leads.view_dept', 'leads.view_own'), asyncHandler(async (req, res) => {
   const { status, category, branch, search } = req.query;
   const leads = await db.getLeads({ status, category, branch, search, ...leadScope(req) });
   res.json(leads);
@@ -584,20 +620,28 @@ app.get('/api/leads/check-duplicate', authMiddleware, requirePermission('leads.c
   const exclude = parseInt(req.query.excludeId, 10) || 0;
   const [leads, customers] = await Promise.all([
     dbQuery(
-      `SELECT id, name, status, salesman_name, created_at FROM leads
+      `SELECT id, name, status, salesman_name, created_at, salesman_id, lead_segment(branch_id, salesman_id, branch_name) AS seg FROM leads
        WHERE archived_at IS NULL AND id <> $2 AND right(regexp_replace(coalesce(mobile, phone, ''), '\\D', '', 'g'), 8) = $1
        ORDER BY created_at DESC LIMIT 5`, [tail, exclude]),
     dbQuery(
-      `SELECT c.id, c.name, s.name AS salesman FROM customers c LEFT JOIN salesmen s ON s.id = c.salesman_id
+      `SELECT c.id, c.name, s.name AS salesman, s.id AS salesman_id, s.type AS stype FROM customers c LEFT JOIN salesmen s ON s.id = c.salesman_id
        WHERE c.archived_at IS NULL AND right(regexp_replace(coalesce(c.mobile, ''), '\\D', '', 'g'), 8) = $1 LIMIT 5`, [tail]),
   ]);
+  // Outside your own scope you only learn that the number exists elsewhere, not whose it is
+  const scope = dataScope(req.user);
+  const seeLead = (r) => (scope.segment ? r.seg === scope.segment : scope.salesmanId !== undefined ? String(r.salesman_id) === String(scope.salesmanId) : true);
+  const seeCust = (r) => (scope.segment ? r.stype === (scope.segment === 'b2b' ? 'route_b2b' : 'branch') : scope.salesmanId !== undefined ? String(r.salesman_id) === String(scope.salesmanId) : true);
   res.json({
-    leads: leads.rows.map((r) => ({ id: String(r.id), name: r.name, status: r.status, salesman: r.salesman_name || '', date: r.created_at })),
-    customers: customers.rows.map((r) => ({ id: String(r.id), name: r.name, salesman: r.salesman || '' })),
+    leads: leads.rows.map((r) => (seeLead(r)
+      ? { id: String(r.id), name: r.name, status: r.status, salesman: r.salesman_name || '', date: r.created_at }
+      : { id: null, name: 'Already an enquiry in another department', status: r.status, salesman: '', date: r.created_at, hidden: true })),
+    customers: customers.rows.map((r) => (seeCust(r)
+      ? { id: String(r.id), name: r.name, salesman: r.salesman || '' }
+      : { id: null, name: 'Already a customer of another department', salesman: '', hidden: true })),
   });
 }));
 
-app.get('/api/leads/:id', authMiddleware, requirePermission('leads.view_all', 'leads.view_own'), asyncHandler(async (req, res) => {
+app.get('/api/leads/:id', authMiddleware, requirePermission('leads.view_all', 'leads.view_dept', 'leads.view_own'), asyncHandler(async (req, res) => {
   const lead = await loadLeadForUser(req, req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
   res.json(lead);
@@ -619,10 +663,15 @@ app.post('/api/leads', authMiddleware, requirePermission('leads.create'), asyncH
     input.salesman = me?.name || req.user.name;
     if (me?.branchId) input.branchId = me.branchId;
   }
+  const mySeg = segmentOf(req.user);
+  if (mySeg && (await segmentAfter(input)) !== mySeg) {
+    return res.status(400).json({ error: outsideDept(mySeg), code: 'OUTSIDE_DEPARTMENT' });
+  }
   const created = await db.createLead(input);
   if (created?.salesmanId) {
     const ids = (await usersForSalesman(created.salesmanId)).filter((x) => String(x) !== String(req.user.id));
     await notify(ids, { kind: 'lead', title: `New lead for you: ${created.name}`, body: `${created.category || ''}${created.customerLocation ? ` · ${created.customerLocation}` : ''}`, link: 'leads' });
+    if (!isOwnScopeOnly(req.user)) await alertLeadAssigned(created.id, req.user).catch((e) => console.error('[whatsapp]', e.message));
   }
   await db.addActivity({
     leadId: created.id,
@@ -650,15 +699,24 @@ app.patch('/api/leads/:id', authMiddleware, requirePermission('leads.update'), a
   }
   if (req.body.lostReason !== undefined) req.body.lostReason = String(req.body.lostReason || '').trim().slice(0, 255);
 
-  const updated = await db.updateLead(req.params.id, withoutAssignmentFields(req, req.body), { changedBy: req.user.name });
+  const changes = withoutAssignmentFields(req, req.body);
+  const mySeg = segmentOf(req.user);
+  if (mySeg && ASSIGNMENT_FIELDS.some((f) => f in changes) && (await segmentAfter(changes, prev)) !== mySeg) {
+    return res.status(400).json({ error: outsideDept(mySeg), code: 'OUTSIDE_DEPARTMENT' });
+  }
+  const updated = await db.updateLead(req.params.id, changes, { changedBy: req.user.name });
   if (!updated) return res.status(404).json({ error: 'Lead not found' });
 
   if (updated.salesmanId && String(updated.salesmanId) !== String(prev.salesmanId || '')) {
     const ids = (await usersForSalesman(updated.salesmanId)).filter((x) => String(x) !== String(req.user.id));
     await notify(ids, { kind: 'lead', title: `${req.user.name} assigned you a lead: ${updated.name}`, body: updated.category || '', link: 'leads' });
+    await alertLeadAssigned(updated.id, req.user).catch((e) => console.error('[whatsapp]', e.message));
   }
   if (req.body.status === 'won' && prev.status !== 'won') {
-    const ids = (await managerIds()).filter((x) => String(x) !== String(req.user.id));
+    const seg = await db.getLeadSegment(updated.id);
+    const deptRole = seg === 'b2b' ? 'b2b_manager' : seg === 'retail' ? 'retail_manager' : null;
+    const dept = deptRole ? (await dbQuery('SELECT id FROM users WHERE role = $1 AND archived_at IS NULL AND is_active', [deptRole])).rows.map((r) => r.id) : [];
+    const ids = [...new Set([...(await managerIds()), ...dept])].filter((x) => String(x) !== String(req.user.id));
     await notify(ids, { kind: 'won', title: `Deal won: ${updated.name}`, body: `${Number(updated.dealValue || 0) ? `OMR ${Number(updated.dealValue).toLocaleString('en-US', { maximumFractionDigits: 3 })} · ` : ''}by ${req.user.name}`, link: 'leads' });
   }
   if (req.body.status && req.body.status !== prev.status) {
@@ -689,7 +747,8 @@ app.delete('/api/leads/purge-all', authMiddleware, requirePermission('leads.purg
 
 app.delete('/api/leads/:id', authMiddleware, requirePermission('leads.archive'), asyncHandler(async (req, res) => {
   if (req.params.id === 'purge-all') return;
-  const lead = await db.getLeadById(req.params.id);
+  const lead = await loadLeadForUser(req, req.params.id);
+  if (!lead) return res.status(404).json({ error: 'Lead not found' });
   const success = await db.deleteLead(req.params.id);
   if (!success) return res.status(404).json({ error: 'Lead not found' });
   await db.addActivity({
@@ -741,7 +800,7 @@ app.post('/api/leads/bulk-import', authMiddleware, requirePermission('leads.impo
 }));
 
 // One lead's history (notes, calls, stage changes)
-app.get('/api/leads/:id/timeline', authMiddleware, requirePermission('leads.view_all', 'leads.view_own'), asyncHandler(async (req, res) => {
+app.get('/api/leads/:id/timeline', authMiddleware, requirePermission('leads.view_all', 'leads.view_dept', 'leads.view_own'), asyncHandler(async (req, res) => {
   const lead = await loadLeadForUser(req, req.params.id);
   if (!lead) return res.status(404).json({ error: 'Lead not found' });
   res.json(await db.getLeadTimeline(lead.id));
@@ -749,7 +808,13 @@ app.get('/api/leads/:id/timeline', authMiddleware, requirePermission('leads.view
 
 // Monthly sales targets per salesman (view: managers and super admin; edit: settings)
 app.get('/api/sales-targets', authMiddleware, requirePermission('customers.view'), asyncHandler(async (req, res) => {
-  res.json(await db.getTargets(req.query.month));
+  const result = await db.getTargets(req.query.month);
+  const seg = segmentOf(req.user);
+  if (seg && Array.isArray(result?.rows)) {
+    const keep = new Set((await db.getSalesmen()).filter((x) => x.type === (seg === 'b2b' ? 'route_b2b' : 'branch')).map((x) => String(x.id)));
+    result.rows = result.rows.filter((r) => keep.has(String(r.salesmanId)));
+  }
+  res.json(result);
 }));
 app.put('/api/sales-targets', authMiddleware, requirePermission('settings.manage'), asyncHandler(async (req, res) => {
   const { month, targets } = req.body || {};
@@ -873,7 +938,7 @@ app.get('/api/quotations/:id', authMiddleware, requirePermission('quotations.vie
 
 // A salesman may only work on quotations that belong to his own enquiries
 async function canUseQuotation(req, quote) {
-  if (!isOwnScopeOnly(req.user)) return true;
+  if (!isOwnScopeOnly(req.user) && !segmentOf(req.user)) return true;
   if (!quote.leadId) return false;
   return Boolean(await loadLeadForUser(req, quote.leadId));
 }
@@ -883,6 +948,9 @@ app.post('/api/quotations', authMiddleware, requirePermission('quotations.create
     if (!req.body.leadId || !(await loadLeadForUser(req, req.body.leadId))) {
       return res.status(403).json({ error: 'You can only create quotations for your own enquiries.' });
     }
+  }
+  if (segmentOf(req.user) && (!req.body.leadId || !(await loadLeadForUser(req, req.body.leadId)))) {
+    return res.status(403).json({ error: 'Link the quotation to an enquiry in your department.' });
   }
   if (!req.body.customerName || typeof req.body.customerName !== 'string' || !req.body.customerName.trim()) {
     return res.status(400).json({ error: 'Customer or Business Name is required for quotation.' });
@@ -903,7 +971,7 @@ app.post('/api/quotations', authMiddleware, requirePermission('quotations.create
 app.put('/api/quotations/:id', authMiddleware, requirePermission('quotations.update'), asyncHandler(async (req, res) => {
   const existing = await db.getQuotationById(req.params.id);
   if (!existing || !(await canUseQuotation(req, existing))) return res.status(404).json({ error: 'Quotation not found' });
-  if (isOwnScopeOnly(req.user) && req.body.leadId && !(await loadLeadForUser(req, req.body.leadId))) {
+  if ((isOwnScopeOnly(req.user) || segmentOf(req.user)) && req.body.leadId && !(await loadLeadForUser(req, req.body.leadId))) {
     return res.status(403).json({ error: 'You can only link quotations to your own enquiries.' });
   }
   const updated = await db.updateQuotation(req.params.id, req.body, { changedBy: req.user.name });
@@ -1023,7 +1091,9 @@ app.get('/api/users', authMiddleware, requirePermission('users.manage'), asyncHa
 
 // Salesmen list (for linking logins and for assignment)
 app.get('/api/salesmen', authMiddleware, requirePermission('users.manage', 'leads.assign', 'customers.view'), asyncHandler(async (req, res) => {
-  res.json(await db.getSalesmen());
+  const seg = segmentOf(req.user);
+  const list = await db.getSalesmen();
+  res.json(seg ? list.filter((x) => x.type === (seg === 'b2b' ? 'route_b2b' : 'branch')) : list);
 }));
 
 app.post('/api/users', authMiddleware, requirePermission('users.manage'), asyncHandler(async (req, res) => {
@@ -1053,6 +1123,7 @@ app.post('/api/users', authMiddleware, requirePermission('users.manage'), asyncH
       salesmanId,
       canExport: role === 'super_admin' ? true : Boolean(canExport),
       mustChangePassword: true,
+      phone: req.body?.phone,
     });
   } catch (err) {
     if (err.code === '23505') {
@@ -1089,6 +1160,7 @@ app.patch('/api/users/:id', authMiddleware, requirePermission('users.manage'), a
   try {
     updated = await db.updateUser(target.id, {
       name: body.name,
+      phone: body.phone,
       role: nextRole,
       isActive: nextActive,
       canExport: body.canExport,
@@ -1105,6 +1177,7 @@ app.patch('/api/users/:id', authMiddleware, requirePermission('users.manage'), a
   if (updated.canExport !== target.canExport) changes.push(`export ${updated.canExport ? 'allowed' : 'removed'}`);
   if (updated.salesmanId !== target.salesmanId) changes.push('linked salesman changed');
   if (changes.length) await userAudit(req, `User ${updated.email}: ${changes.join(', ')}`);
+  if (updated.role !== target.role || !updated.isActive) await revokeUserLinks(updated.id);
   res.json(updated);
 }));
 
@@ -1119,6 +1192,7 @@ app.delete('/api/users/:id', authMiddleware, requirePermission('users.manage'), 
     return res.status(400).json({ error: 'At least one active Super Admin must remain.' });
   }
   await db.deactivateUser(target.id);
+  await revokeUserLinks(target.id);
   await userAudit(req, `User deactivated: ${target.email}`);
   res.json({ message: 'User deactivated successfully' });
 }));
@@ -1142,12 +1216,14 @@ app.get('/api/config', authMiddleware, asyncHandler(async (req, res) => {
     db.getPipelineStages(),
     db.getBranches(),
   ]);
-  res.json({ categories, pipelineStages, branches });
+  const seg = segmentOf(req.user);
+  res.json({ categories, pipelineStages, branches: seg ? branches.filter((b) => b.type === seg) : branches });
 }));
 
 // Oman Branches List with per-rep lead counts
 app.get('/api/branches', authMiddleware, requirePermission('branches.view'), asyncHandler(async (req, res) => {
-  const branches = await db.getBranches();
+  const seg = segmentOf(req.user);
+  const branches = (await db.getBranches()).filter((b) => !seg || b.type === seg);
   const leads = await db.getLeads(leadScope(req));
 
   const branchesWithCounts = branches.map((b) => {
@@ -1260,6 +1336,8 @@ app.delete('/api/settings/branches/:id', authMiddleware, requirePermission('sett
 }));
 
 // ---- Profile photos ----
+registerWhatsAppRoutes(app, { authMiddleware, requirePermission, asyncHandler, linkLimiter: viewLimiter });
+registerReportRoutes(app, { authMiddleware, requirePermission, asyncHandler, audit: (req, d) => db.addAuditEntry({ type: 'export', userId: req.user.id, userName: req.user.name, description: `${d} by ${req.user.email}` }) });
 registerPhotoRoutes(app, { authMiddleware, asyncHandler, photoJsonParser: (req, res, next) => next() });
 
 // ---- Customer Data Collection (salesman links + admin) ----

@@ -1,6 +1,7 @@
 import pool, { query, getClient } from './pool.js';
 import { normalizeOmanPhone, leadToApi } from './utils.js';
 import { ensureCustomerForLead } from './customers.js';
+import { leadScopeSql } from './scope.js';
 
 /** Match a salesman name (as the screens send it) to the salesmen table. */
 async function resolveSalesmanId(runner, name) {
@@ -22,11 +23,9 @@ export async function getLeads(filters = {}) {
   const params = [];
   let idx = 1;
 
-  // Own-scope (salesman role): only leads assigned to this salesman record
-  if (filters.salesmanId !== undefined) {
-    sql += ` AND salesman_id = $${idx++}`;
-    params.push(toId(filters.salesmanId) ?? -1);
-  }
+  // Own-scope (salesman) or department-scope (B2B / Retail manager)
+  const sc = leadScopeSql(filters, idx);
+  if (sc.params.length) { sql += sc.sql; params.push(...sc.params); idx += sc.params.length; }
 
   if (filters.search && filters.search.trim()) {
     const q = `%${filters.search.trim().toLowerCase()}%`;
@@ -336,4 +335,12 @@ export async function bulkUpsertLeads(items = [], options = {}) {
 
   const { rows: total } = await query('SELECT COUNT(*) AS cnt FROM leads WHERE archived_at IS NULL');
   return { addedCount, updatedCount, skippedCount, totalLeads: parseInt(total[0].cnt) };
+}
+
+/** Department of a lead ('b2b' | 'retail' | null). */
+export async function getLeadSegment(id) {
+  const n = toId(id);
+  if (n === null) return null;
+  const { rows } = await query('SELECT lead_segment(branch_id, salesman_id, branch_name) AS seg FROM leads WHERE id = $1', [n]);
+  return rows[0]?.seg || null;
 }

@@ -30,6 +30,7 @@ const RULES = [
   ['DELETE', /^\/api\/leads\/[^/]+$/, 'leads', () => 'Deleted a lead'],
   ['POST', /^\/api\/leads\/[^/]+\/activity$/, 'leads', () => 'Added a note / activity to a lead'],
   ['POST', /^\/api\/leads\/bulk-import$/, 'leads', () => 'Imported leads'],
+  ['POST', /^\/api\/reports\/export-log$/, 'export', (r) => `Exported the money report (PDF)${r.body?.label ? `: ${String(r.body.label).slice(0, 80)}` : ''}`],
   ['POST', /^\/api\/quotations$/, 'quotations', () => 'Created a quotation'],
   ['PUT', /^\/api\/quotations\/[^/]+$/, 'quotations', () => 'Edited a quotation'],
   ['POST', /^\/api\/quotations\/[^/]+\/status$/, 'quotations', (r) => `Marked a quotation "${r.body?.status || ''}"`],

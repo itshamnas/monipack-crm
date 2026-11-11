@@ -347,7 +347,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
             </div>
             <div className="flex gap-2 overflow-x-auto max-w-full mpd-chips">
               <Seg value={period} onChange={setPeriod} options={[['30', '30 days'], ['90', '90 days'], ['all', 'All time']]} />
-              <button type="button" onClick={exportPdf} className="mpd-btn"><FileText />PDF</button>
+              {currentUser?.permissions?.includes('reports.export') && <button type="button" onClick={exportPdf} className="mpd-btn"><FileText />PDF</button>}
               {canManageCustomers && <button type="button" onClick={() => onOpenCustomers({ tab: 'import' })} className="mpd-btn"><Upload />Import</button>}
               <button type="button" onClick={() => onNavigate('quotations')} className="mpd-btn"><FileText />New quote</button>
               <button type="button" onClick={onNewLead} className="mpd-btn mpd-btn-pri"><Plus />New enquiry</button>
@@ -499,7 +499,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
           </div>
 
           {/* Retail vs B2B */}
-          {(split.any || branches.some((b) => b.type)) && (
+          {new Set(branches.map((b) => b.type).filter(Boolean)).size > 1 && (
             <section className="mpd-card" aria-labelledby="seg-h">
               <div className="mpd-card-h"><div className="flex-1"><h2 id="seg-h">Retail vs B2B</h2><p>Shops compared with route and wholesale{split.unknown ? ` · ${split.unknown} leads have no branch yet` : ''}</p></div><Building2 className="w-4 h-4 mpd-dim" /></div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-4 pb-4 pt-1">
@@ -611,7 +611,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
 }
 
 /** Segmented control with a sliding pill: the leading edge moves first, the trailing edge catches up. */
-function Seg({ options, value, onChange, small }) {
+export function Seg({ options, value, onChange, small }) {
   const box = useRef(null); const btns = useRef({}); const prev = useRef(null);
   const [pos, setPos] = useState(null);
   useLayoutEffect(() => {

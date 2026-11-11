@@ -88,11 +88,12 @@ describe('Roles & permissions (RBAC) - enforced on the server', () => {
     }
   }
 
-  it('manager can archive a lead; customer care and salesman cannot', async () => {
+  it('manager and customer care can archive a lead; salesman cannot', async () => {
     const tmp = await request(app).post('/api/leads').set(auth(t.care)).send({ name: 'Archive Me LLC', mobile: '91110009' });
-    expect((await request(app).delete(`/api/leads/${tmp.body.id}`).set(auth(t.care))).status).toBe(403);
     expect((await request(app).delete(`/api/leads/${tmp.body.id}`).set(auth(t.salesA))).status).toBe(403);
     expect((await request(app).delete(`/api/leads/${tmp.body.id}`).set(auth(t.manager))).status).toBe(200);
+    const tmp2 = await request(app).post('/api/leads').set(auth(t.care)).send({ name: 'Archive Me Too LLC', mobile: '91110010' });
+    expect((await request(app).delete(`/api/leads/${tmp2.body.id}`).set(auth(t.care))).status).toBe(200);
   });
 
   it('salesman sees only his own leads', async () => {
