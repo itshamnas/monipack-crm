@@ -25,7 +25,8 @@ import {
   Tag,
   Package,
   Layers,
-  Share2
+  Share2,
+  Pencil
 } from 'lucide-react';
 import PrintQuotation from '../components/PrintQuotation.jsx';
 import QuoteStatus, { effectiveQuoteStatus, QUOTE_STATUS } from '../components/QuoteStatus.jsx';
@@ -498,6 +499,8 @@ export default function Quotations({
   const [quoteSearchQuery, setQuoteSearchQuery] = useState('');
   const [quoteVatFilter, setQuoteVatFilter] = useState('all'); // 'all', 'with_vat', 'without_vat'
   const [quoteStatusFilter, setQuoteStatusFilter] = useState('all');
+  const [editingQuote, setEditingQuote] = useState(null); // the quotation being edited (null = new)
+  const canEdit = Boolean(onUpdateQuotation && currentUser?.permissions?.includes('quotations.update'));
 
   const filteredQuotations = useMemo(() => {
     if (!quotations) return [];
@@ -550,6 +553,49 @@ export default function Quotations({
     ],
   });
 
+  const blankForm = () => ({
+    leadId: '',
+    customerName: '',
+    address: 'Muscat, Sultanate of Oman',
+    attn: '',
+    date: new Date().toISOString().split('T')[0],
+    validityDays: 30,
+    salesRep: currentUser?.name || '',
+    enableVat: true,
+    vatRate: 5,
+    terms: [...DEFAULT_TERMS],
+    items: [{ productId: '', item: '', description: '', quantity: 1, unit: 'PCS', unitPriceOMR: 0 }],
+  });
+
+  // Open an existing quotation in the form
+  const startEdit = (q) => {
+    setEditingQuote(q);
+    setForm({
+      leadId: q.leadId || '',
+      customerName: q.customerName || '',
+      address: q.address || '',
+      attn: q.attn || '',
+      date: q.date || new Date().toISOString().split('T')[0],
+      validityDays: q.validityDays || 30,
+      salesRep: q.salesRep || '',
+      enableVat: q.enableVat !== false,
+      vatRate: q.vatRate ?? 5,
+      terms: Array.isArray(q.terms) && q.terms.length ? [...q.terms] : [...DEFAULT_TERMS],
+      items: (q.items && q.items.length ? q.items : [{}]).map((it) => ({
+        productId: it.productId || '',
+        item: it.item || '',
+        description: it.description || '',
+        quantity: Number(it.quantity || 1),
+        unit: it.unit || 'PCS',
+        unitPriceOMR: Number(it.unitPriceOMR || 0),
+      })),
+    });
+    setActiveView('create');
+    window.scrollTo?.({ top: 0, behavior: 'smooth' });
+  };
+  const startNew = () => { setEditingQuote(null); setForm(blankForm()); setActiveView('create'); };
+  const backToList = () => { setEditingQuote(null); setForm(blankForm()); setActiveView('list'); };
+
   // Handle prefilled lead if arrived from Leads page or Customer Care
   useEffect(() => {
     if (prefilledLead) {
@@ -561,6 +607,7 @@ export default function Quotations({
         address: `${prefilledLead.customerLocation || prefilledLead.branch || 'Muscat'}, Sultanate of Oman`,
         salesRep: prefilledLead.salesman || prev.salesRep || currentUser?.name || '',
       }));
+      setEditingQuote(null);
       setActiveView('create');
       if (onClearPrefilledLead) onClearPrefilledLead();
     }
@@ -701,8 +748,16 @@ export default function Quotations({
       grandTotalOMR: grandTotal,
     };
 
+    if (editingQuote) {
+      // Save changes to the same quotation (same number); totals are recalculated
+      onUpdateQuotation(editingQuote.id, payload, (updatedQuote) => {
+        backToList();
+        setSelectedQuotationForPrint(updatedQuote);
+      });
+      return;
+    }
     onCreateQuotation(payload, (createdQuote) => {
-      setActiveView('list');
+      backToList();
       setSelectedQuotationForPrint(createdQuote);
     });
   };
@@ -758,7 +813,7 @@ export default function Quotations({
         <div className="flex items-center gap-2">
           {activeView === 'list' ? (
             <button
-              onClick={() => setActiveView('create')}
+              onClick={startNew}
               className="mp-btn mp-btn-red min-h-[40px] w-full sm:w-auto"
             >
               <Plus className="w-4 h-4" />
@@ -766,7 +821,7 @@ export default function Quotations({
             </button>
           ) : (
             <button
-              onClick={() => setActiveView('list')}
+              onClick={backToList}
               className="mp-btn mp-btn-line min-h-[40px]"
             >
               ← Back to quotations
@@ -778,6 +833,15 @@ export default function Quotations({
       {/* CREATE VIEW */}
       {activeView === 'create' && (
         <form onSubmit={handleSubmit} className="bg-white rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] p-6 space-y-6">
+          {editingQuote && (
+            <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-[12.5px] text-blue-900" role="status">
+              <Pencil className="w-4 h-4" aria-hidden="true" />
+              <span>Editing <b>{editingQuote.code}</b>. Saving keeps the same quotation number and recalculates the totals.</span>
+              {['accepted', 'rejected'].includes(editingQuote.status) && (
+                <span className="w-full text-[11.5px] text-amber-800">This quotation is already marked {editingQuote.status}. Only change it if the customer agreed to the new version.</span>
+              )}
+            </div>
+          )}
           <div className="border-b border-slate-200 pb-4">
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
               Customer & Document Details
@@ -1280,7 +1344,7 @@ export default function Quotations({
           <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
             <button
               type="button"
-              onClick={() => setActiveView('list')}
+              onClick={backToList}
               className="px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-lg transition cursor-pointer"
             >
               Cancel
@@ -1290,7 +1354,7 @@ export default function Quotations({
               className="flex items-center gap-2 px-6 py-2.5 bg-gradient-to-r from-[#9E0A22] to-[#C8102E] hover:brightness-110 text-white text-xs font-bold rounded-full shadow-md shadow-red-900/30 transition active:scale-95 cursor-pointer"
             >
               <Check className="w-4 h-4" />
-              <span>Save & Preview Quotation</span>
+              <span>{editingQuote ? 'Save changes & preview' : 'Save & Preview Quotation'}</span>
             </button>
           </div>
         </form>
@@ -1406,6 +1470,17 @@ export default function Quotations({
                       <Printer className="w-3.5 h-3.5 text-red-400" />
                       <span>Print MNI Spec</span>
                     </button>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => startEdit(q)}
+                        className="w-11 h-11 flex items-center justify-center bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-full border border-blue-200 transition active:scale-95 cursor-pointer"
+                        title={`Edit ${q.code}`}
+                        aria-label={`Edit ${q.code}`}
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => setSelectedQuotationForPrint(q)}
@@ -1486,6 +1561,16 @@ export default function Quotations({
                             <Printer className="w-3.5 h-3.5" />
                             <span>Print MNI Spec</span>
                           </button>
+                          {canEdit && (
+                            <button
+                              onClick={() => startEdit(q)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold rounded-lg border border-blue-200 text-[11px] transition active:scale-95 cursor-pointer"
+                              title={`Edit ${q.code}`}
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                              <span>Edit</span>
+                            </button>
+                          )}
                           <button
                             onClick={() => setSelectedQuotationForPrint(q)}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-lg border border-emerald-200 text-[11px] transition active:scale-95 cursor-pointer"
