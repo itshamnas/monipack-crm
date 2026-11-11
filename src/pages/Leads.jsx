@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { QUOTE_STATUS, effectiveQuoteStatus } from '../components/QuoteStatus.jsx';
 import { createPortal } from 'react-dom';
+import Sheet from '../components/ui/Sheet.jsx';
+import MoreMenu from '../components/ui/MoreMenu.jsx';
 import { 
   Users, 
   Kanban, 
@@ -28,6 +30,10 @@ import {
   UserCheck,
   ArrowRight,
   ChevronDown,
+  Search,
+  SlidersHorizontal,
+  Columns3,
+  LayoutList,
   FileSpreadsheet,
   Share2,
   Printer,
@@ -173,6 +179,7 @@ export default function Leads({
   // Mobile Focus Mode states
   const [mobileFocusStage, setMobileFocusStage] = useState('new');
   const [mobileViewStyle, setMobileViewStyle] = useState('focus'); // 'focus' or 'columns'
+  const [filterOpen, setFilterOpen] = useState(false);
 
   const getNextStage = (currentStatus) => {
     const currentIndex = activeStages.findIndex((s) => s.id === currentStatus);
@@ -249,6 +256,17 @@ export default function Leads({
     return m;
   }, [filteredLeads]);
   const stageGroup = (id) => byStage[id] || { leads: [], total: 0 };
+  // Phones: open on the first stage that has leads (not an empty first column), until the person picks a stage
+  const pickedStage = React.useRef(false);
+  useEffect(() => {
+    if (pickedStage.current || stageGroup(mobileFocusStage).leads.length) return;
+    const first = activeStages.find((st) => stageGroup(st.id).leads.length);
+    if (first) setMobileFocusStage(first.id);
+  }, [byStage]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { // keep the chosen stage chip in view in the sideways row
+    const el = typeof document !== 'undefined' && document.querySelector(`[data-stage-chip="${mobileFocusStage}"]`);
+    if (el && el.scrollIntoView) el.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+  }, [mobileFocusStage]);
   const openTotalOMR = useMemo(() => filteredLeads.reduce((t, l) => (['won', 'lost'].includes(l.status) ? t : t + (Number(l.dealValue) || 0)), 0), [filteredLeads]);
   const scrollToStage = (id) => {
     const el = document.getElementById(`mp-col-${id}`);
@@ -458,6 +476,34 @@ export default function Leads({
     );
   };
 
+  const exportLeadsPdf = () => {
+    authFetch?.('/api/reports/export-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label: `Pipeline PDF (${filteredLeads.length} leads)` }) }).catch(() => {});
+                      const stageName = (id) => (activeStages.find((st) => st.id === id)?.label || id).replace(/^STEP \d+:\s*/, '');
+                      const open = filteredLeads.filter((l) => !['won', 'lost'].includes(l.status));
+                      const ok = openPrintable({
+                        docType: 'Leads report',
+                        meta: [['Records', filteredLeads.length]],
+                        title: 'Leads',
+                        subtitle: [selectedCategory, selectedBranch, searchQuery && `Search “${searchQuery}”`].filter((x) => x && !/^All/.test(x)).join(' · ') || 'All leads',
+                        bodyHtml: chipsHtml([
+                          ['Leads', filteredLeads.length],
+                          ['Open', open.length],
+                          ['Open pipeline (OMR)', open.reduce((t, l) => t + Number(l.dealValue || 0), 0).toFixed(3)],
+                          ['Won (OMR)', filteredLeads.filter((l) => l.status === 'won').reduce((t, l) => t + Number(l.dealValue || 0), 0).toFixed(3)],
+                        ]) + tableHtml(
+                          [{ label: 'Date' }, { label: 'Customer' }, { label: 'Mobile' }, { label: 'Product' }, { label: 'Quantity' }, { label: 'Salesman' }, { label: 'Stage' }, { label: 'OMR', num: true }],
+                          filteredLeads.map((l) => [new Date(l.date).toLocaleDateString(), l.name, l.mobile ? `${l.countryCode || ''} ${l.mobile}` : l.phone, l.category,
+                            /Needs Intake/.test(l.quantity || '') ? '' : l.quantity, l.salesman, stageName(l.status), l.dealValue ? Number(l.dealValue).toFixed(3) : ''])
+                        ),
+                      });
+if (!ok && showToast) showToast('Allow pop-ups to download the PDF', 'error');
+  };
+  const canExportLeads = currentUser?.permissions?.includes('leads.export');
+  const branchOn = selectedBranch && selectedBranch !== 'all' && selectedBranch !== 'All Oman Branches';
+  const catOn = selectedCategory && selectedCategory !== 'All Categories';
+  const filterCount = (followUpOnly ? 1 : 0) + (segment !== 'all' ? 1 : 0) + (catOn ? 1 : 0) + (branchOn ? 1 : 0) + (selectedStage !== 'all' ? 1 : 0);
+  const resetFilters = () => { setSelectedCategory('All Categories'); setSelectedBranch('all'); setSelectedStage('all'); setFollowUpOnly(false); setSegment('all'); };
+
   return (
     <div className="p-3 sm:p-6 lg:p-8 space-y-4 max-w-[1600px] mx-auto pb-24 md:pb-8">
       {/* Header */}
@@ -471,7 +517,7 @@ export default function Leads({
           <p className="hidden sm:block text-xs text-slate-500 mt-1">From first enquiry to confirmed order: drag cards between stages.</p>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap w-full sm:w-auto">
+        <div className="hidden lg:flex items-center gap-2 flex-wrap">
           {/* View switch */}
           <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200" role="tablist" aria-label="Pipeline view">
             {[['kanban', Kanban, 'Board'], ['table', TableIcon, 'Table']].map(([v, Icon, label]) => (
@@ -540,29 +586,7 @@ export default function Leads({
                   </button>
 
                   <button
-                    onClick={() => {
-                      setShowExportMenu(false);
-                      authFetch?.('/api/reports/export-log', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ label: `Pipeline PDF (${filteredLeads.length} leads)` }) }).catch(() => {});
-                      const stageName = (id) => (activeStages.find((st) => st.id === id)?.label || id).replace(/^STEP \d+:\s*/, '');
-                      const open = filteredLeads.filter((l) => !['won', 'lost'].includes(l.status));
-                      const ok = openPrintable({
-                        docType: 'Leads report',
-                        meta: [['Records', filteredLeads.length]],
-                        title: 'Leads',
-                        subtitle: [selectedCategory, selectedBranch, searchQuery && `Search “${searchQuery}”`].filter((x) => x && !/^All/.test(x)).join(' · ') || 'All leads',
-                        bodyHtml: chipsHtml([
-                          ['Leads', filteredLeads.length],
-                          ['Open', open.length],
-                          ['Open pipeline (OMR)', open.reduce((t, l) => t + Number(l.dealValue || 0), 0).toFixed(3)],
-                          ['Won (OMR)', filteredLeads.filter((l) => l.status === 'won').reduce((t, l) => t + Number(l.dealValue || 0), 0).toFixed(3)],
-                        ]) + tableHtml(
-                          [{ label: 'Date' }, { label: 'Customer' }, { label: 'Mobile' }, { label: 'Product' }, { label: 'Quantity' }, { label: 'Salesman' }, { label: 'Stage' }, { label: 'OMR', num: true }],
-                          filteredLeads.map((l) => [new Date(l.date).toLocaleDateString(), l.name, l.mobile ? `${l.countryCode || ''} ${l.mobile}` : l.phone, l.category,
-                            /Needs Intake/.test(l.quantity || '') ? '' : l.quantity, l.salesman, stageName(l.status), l.dealValue ? Number(l.dealValue).toFixed(3) : ''])
-                        ),
-                      });
-                      if (!ok && showToast) showToast('Allow pop-ups to download the PDF', 'error');
-                    }}
+                    onClick={() => { setShowExportMenu(false); exportLeadsPdf(); }}
                     className="w-full text-left px-3 py-2 hover:bg-slate-50 text-xs flex items-center justify-between text-slate-700 border-t border-slate-100 transition cursor-pointer"
                   >
                     <div>
@@ -595,8 +619,72 @@ export default function Leads({
         </div>
       </div>
 
-      {/* Toolbar: filters */}
-      <div className="flex flex-wrap items-center gap-2">
+      {/* Phones & tablets: search + Filter + ⋯ in one row (the red + in the bottom bar adds a lead) */}
+      <div className="lg:hidden space-y-2.5">
+        <div className="mp-ptool">
+          <div className="mp-psearch">
+            <Search className="w-4 h-4" aria-hidden="true" />
+            <label htmlFor="lead-search-p" className="sr-only">Search leads</label>
+            <input id="lead-search-p" type="search" placeholder="Search name or phone" value={searchQuery || ''} onChange={(e) => setSearchQuery(e.target.value)} />
+          </div>
+          <button type="button" className="mp-filter-btn" onClick={() => setFilterOpen(true)} aria-label={`Filters${filterCount ? `, ${filterCount} on` : ''}`}>
+            <SlidersHorizontal className="w-4 h-4" /> Filter{filterCount > 0 && <b>{filterCount}</b>}
+          </button>
+          <MoreMenu label="More pipeline actions" items={[
+            { label: viewMode === 'table' ? 'Show as board' : 'Show as table', icon: viewMode === 'table' ? Kanban : TableIcon, onClick: () => setViewMode(viewMode === 'table' ? 'kanban' : 'table') },
+            viewMode === 'kanban' && { label: mobileViewStyle === 'focus' ? 'Show all columns' : 'Show one stage at a time', icon: mobileViewStyle === 'focus' ? Columns3 : LayoutList, onClick: () => setMobileViewStyle(mobileViewStyle === 'focus' ? 'columns' : 'focus') },
+            canExportLeads && { label: 'PDF report of this view', icon: FileText, onClick: exportLeadsPdf },
+            canExportLeads && { label: `Excel: this view (${filteredLeads.length})`, icon: Download, onClick: () => handleExportCSV('filtered') },
+            canExportLeads && { label: `Excel: all leads (${leads.length})`, icon: Download, onClick: () => handleExportCSV('all') },
+            canImport && { label: 'Import leads from Excel', icon: FileSpreadsheet, onClick: () => setShowImportModal(true) },
+          ].filter(Boolean)} />
+        </div>
+        {(dueCount > 0 || followUpOnly) && (
+          <button type="button" onClick={() => setFollowUpOnly((v) => !v)} aria-pressed={followUpOnly}
+            className={`w-full min-h-[44px] px-4 rounded-xl flex items-center gap-2 text-[14px] font-semibold border ${followUpOnly ? 'bg-amber-500 text-white border-amber-500' : 'bg-amber-50 text-amber-900 border-amber-200'}`}>
+            <CalendarClock className="w-4 h-4" />
+            <span className="flex-1 text-left">{followUpOnly ? 'Showing follow-ups due only' : `${dueCount} follow-up${dueCount === 1 ? '' : 's'} due`}</span>
+            <span className="text-[13px] underline underline-offset-2">{followUpOnly ? 'Show all' : 'Show'}</span>
+          </button>
+        )}
+      </div>
+      <Sheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter leads"
+        footer={<>
+          <button type="button" className="mp-btn-ghost" onClick={resetFilters}>Clear</button>
+          <button type="button" className="mp-btn-wide" onClick={() => setFilterOpen(false)}>Show {filteredLeads.length.toLocaleString()} lead{filteredLeads.length === 1 ? '' : 's'}</button>
+        </>}>
+        <label className="flex items-center gap-3 min-h-[48px] text-[15px] font-medium">
+          <input type="checkbox" className="w-5 h-5" checked={followUpOnly} onChange={(e) => setFollowUpOnly(e.target.checked)} />
+          Follow-ups due only <span className="ml-auto text-[13px] text-amber-700 font-semibold tabular-nums">{dueCount}</span>
+        </label>
+        {hasTypes && (<>
+          <span className="mp-sheet-label">Department</span>
+          <div className="mp-opt" role="radiogroup" aria-label="Retail or B2B">
+            {[['all', 'All'], ['retail', 'Retail'], ['b2b', 'B2B']].map(([v, l]) => (
+              <button key={v} type="button" aria-pressed={segment === v} onClick={() => setSegment(v)}>{l}</button>
+            ))}
+          </div>
+        </>)}
+        <label className="mp-sheet-label" htmlFor="lead-cat-p">Product category</label>
+        <select id="lead-cat-p" value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full h-12 px-3 rounded-xl border border-slate-300 text-[15px] bg-white">
+          {activeCategories.map((c) => (<option key={c} value={c}>{c}</option>))}
+        </select>
+        {viewMode === 'table' && (<>
+          <label className="mp-sheet-label" htmlFor="lead-stage-p">Stage</label>
+          <select id="lead-stage-p" value={selectedStage} onChange={(e) => setSelectedStage(e.target.value)} className="w-full h-12 px-3 rounded-xl border border-slate-300 text-[15px] bg-white">
+            <option value="all">All stages</option>
+            {activeStages.map((st) => (<option key={st.id} value={st.id}>{stageName(st.label)}</option>))}
+          </select>
+        </>)}
+        {branchOn && (
+          <button type="button" onClick={() => setSelectedBranch('all')} className="mt-4 w-full min-h-[48px] rounded-xl border border-slate-200 flex items-center gap-2 px-3 text-[14px]">
+            <MapPin className="w-4 h-4" /> <span className="flex-1 text-left truncate">Branch: <b>{((branches || []).find((b) => String(b.id ?? b.name) === String(selectedBranch))?.name) || selectedBranch}</b></span> <X className="w-4 h-4" /> Remove
+          </button>
+        )}
+      </Sheet>
+
+      {/* Toolbar: filters (PC and landscape tablets) */}
+      <div className="hidden lg:flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => setFollowUpOnly((v) => !v)} className={`mp-fchip ${followUpOnly ? 'on' : ''}`} aria-pressed={followUpOnly}>
           <CalendarClock className="w-3.5 h-3.5" />
           <span>Follow-ups due</span>
@@ -664,7 +752,7 @@ export default function Leads({
 
       {/* Stage strip: every stage at a glance, click to jump */}
       {viewMode === 'kanban' && filteredLeads.length > 0 && (
-        <div>
+        <div className="hidden lg:block">
           <div className="flex h-2.5 rounded-full overflow-hidden gap-0.5" role="list" aria-label="Leads per stage">
             {activeStages.map((st, i) => {
               const n = stageGroup(st.id).leads.length;
@@ -697,17 +785,6 @@ export default function Leads({
           <div className="space-y-3">
             {/* Phones & tablets: stage tabs + one stage at a time */}
             <div className="lg:hidden space-y-2.5">
-              <div className="flex items-center gap-2">
-                <div className="flex p-1 rounded-xl bg-slate-100 border border-slate-200 ml-auto" role="tablist" aria-label="Board layout">
-                  {[['focus', 'One stage'], ['columns', 'All columns']].map(([v, label]) => (
-                    <button key={v} type="button" role="tab" aria-selected={mobileViewStyle === v} onClick={() => setMobileViewStyle(v)}
-                      className={`px-3 min-h-[34px] rounded-lg text-xs font-bold transition cursor-pointer ${mobileViewStyle === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'}`}>
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
               <div className="flex items-center gap-2 overflow-x-auto mp-noscrollbar pb-1 -mx-3 px-3 sm:-mx-6 sm:px-6 snap-x">
                 {activeStages.map((stage, i) => {
                   const n = stageGroup(stage.id).leads.length;
@@ -716,7 +793,8 @@ export default function Leads({
                     <button
                       key={stage.id}
                       type="button"
-                      onClick={() => { setMobileFocusStage(stage.id); setMobileViewStyle('focus'); }}
+                      data-stage-chip={stage.id}
+                      onClick={() => { pickedStage.current = true; setMobileFocusStage(stage.id); setMobileViewStyle('focus'); }}
                       className={`snap-start shrink-0 flex items-center gap-2 pl-2.5 pr-2 min-h-[38px] rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer border ${
                         isSelected ? 'bg-slate-900 text-white border-slate-900 shadow-md' : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
                       }`}

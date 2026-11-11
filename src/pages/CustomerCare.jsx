@@ -22,8 +22,11 @@ import {
   Trash2,
   Share2,
   Printer,
-  X, Package, CheckCircle2
+  X, Package, CheckCircle2,
+  Kanban,
 } from 'lucide-react';
+import Sheet from '../components/ui/Sheet.jsx';
+import MoreMenu from '../components/ui/MoreMenu.jsx';
 import CustomerCareModal from '../components/CustomerCareModal';
 import LeadImportModal from '../components/LeadImportModal';
 import ShareModal from '../components/ShareModal';
@@ -54,6 +57,7 @@ export default function CustomerCare({
   const [shareModalLead, setShareModalLead] = useState(null);
   const [printSlipLead, setPrintSlipLead] = useState(null);
   const [recentIntakeLead, setRecentIntakeLead] = useState(null);
+  const [filterOpen, setFilterOpen] = useState(false);
 
   // Compute metrics
   const newLeadsCount = leads.filter((l) => l.status === 'new').length;
@@ -176,8 +180,65 @@ export default function CustomerCare({
 
   return (
     <div className="p-3 sm:p-6 lg:p-8 space-y-4 sm:space-y-6 max-w-7xl mx-auto pb-24 md:pb-8">
-      {/* Top Banner: Step 1 & 2 Blueprint Guide */}
-      <div className="bg-gradient-to-r from-slate-900 via-slate-800 to-red-950 text-white rounded-3xl p-4 sm:p-6 border border-slate-700 shadow-xl">
+      {/* Phones & tablets: slim title, compact numbers, search + Filter + ⋯, status chips */}
+      <div className="lg:hidden space-y-3">
+        <div className="flex items-baseline gap-2">
+          <h1 className="text-[24px] leading-tight font-extrabold text-slate-900">Inbox</h1>
+          <span className="text-[13px] text-slate-500">Call, understand, assign</span>
+        </div>
+        <div className="grid grid-cols-4 gap-2" role="group" aria-label="Inbox numbers">
+          {[['new', 'To call', newLeadsCount, 'text-[#CC1A22]'], ['contacted', 'Assigned', contactedCount, 'text-emerald-700'], [null, 'Quoted', quoteCount, 'text-amber-700'], [null, 'Won', wonCount, 'text-emerald-800']].map(([mode, label, n, cls]) => {
+            const Tag = mode ? 'button' : 'div';
+            return (
+              <Tag key={label} {...(mode ? { type: 'button', onClick: () => setFilterMode(mode), 'aria-pressed': filterMode === mode } : {})}
+                className={`rounded-2xl border px-2 py-2.5 text-left min-w-0 ${mode && filterMode === mode ? 'bg-white border-slate-900 ring-1 ring-slate-900' : 'bg-white border-slate-200'}`}>
+                <span className="block text-[11px] font-semibold text-slate-500 truncate">{label}</span>
+                <span className={`block text-[20px] leading-tight font-extrabold tabular-nums ${cls}`}>{Number(n || 0).toLocaleString()}</span>
+              </Tag>
+            );
+          })}
+        </div>
+        <div className="mp-ptool">
+          <div className="mp-psearch">
+            <Search className="w-4 h-4" aria-hidden="true" />
+            <label htmlFor="inbox-search-p" className="sr-only">Search the inbox</label>
+            <input id="inbox-search-p" type="search" placeholder="Search phone, name, wilayat" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <button type="button" className="mp-filter-btn" onClick={() => setFilterOpen(true)}>
+            <SlidersHorizontal className="w-4 h-4" /> Filter{(selectedBranch !== 'all') + (selectedCategory !== 'all') > 0 && <b>{(selectedBranch !== 'all') + (selectedCategory !== 'all')}</b>}
+          </button>
+          <MoreMenu label="More inbox actions" items={[
+            canImport && { label: 'Import leads from Excel', icon: FileSpreadsheet, onClick: () => setShowImportModal(true) },
+            onNavigateToPipeline && { label: 'Open the pipeline', icon: Kanban, onClick: onNavigateToPipeline },
+          ].filter(Boolean)} />
+        </div>
+        <div className="mp-chiprow" role="radiogroup" aria-label="Show">
+          {[['new', 'To call', newLeadsCount], ['contacted', 'Assigned', contactedCount], ['all', 'All', null]].map(([v, l, n]) => (
+            <button key={v} type="button" role="radio" aria-checked={filterMode === v} onClick={() => setFilterMode(v)} className={`mp-chip ${filterMode === v ? 'on' : ''}`}>
+              {l}{n !== null && <span className="n">{Number(n || 0).toLocaleString()}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+      <Sheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter the inbox"
+        footer={<>
+          <button type="button" className="mp-btn-ghost" onClick={() => { setSelectedBranch('all'); setSelectedCategory('all'); }}>Clear</button>
+          <button type="button" className="mp-btn-wide" onClick={() => setFilterOpen(false)}>Show results</button>
+        </>}>
+        <label className="mp-sheet-label" htmlFor="inbox-branch-p">Branch or rep</label>
+        <select id="inbox-branch-p" value={selectedBranch} onChange={(e) => setSelectedBranch(e.target.value)} className="w-full h-12 px-3 rounded-xl border border-slate-300 text-[15px] bg-white">
+          <option value="all">All branches and reps</option>
+          {branches.map((b) => <option key={b.id || b.name} value={b.id || b.name}>{b.name}{b.city ? ` (${b.city})` : ''}</option>)}
+        </select>
+        <label className="mp-sheet-label" htmlFor="inbox-cat-p">Product category</label>
+        <select id="inbox-cat-p" value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)} className="w-full h-12 px-3 rounded-xl border border-slate-300 text-[15px] bg-white">
+          <option value="all">All categories</option>
+          {categories.map((c) => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </Sheet>
+
+      {/* Top Banner: Step 1 & 2 Blueprint Guide (PC and landscape tablets) */}
+      <div className="hidden lg:block bg-gradient-to-r from-slate-900 via-slate-800 to-red-950 text-white rounded-3xl p-4 sm:p-6 border border-slate-700 shadow-xl">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 sm:gap-6">
           <div>
             <div className="flex items-center gap-2 mb-2">
@@ -271,7 +332,7 @@ export default function CustomerCare({
       </div>
 
       {/* Toolbar: Filters & Actions */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] flex flex-wrap items-center justify-between gap-3">
+      <div className="hidden lg:flex bg-white p-4 rounded-3xl border border-slate-200/80 shadow-[0_4px_20px_-2px_rgba(15,23,42,0.04)] flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3 flex-1 min-w-[280px]">
           {/* Search Box */}
           <div className="relative flex-1 min-w-[220px]">

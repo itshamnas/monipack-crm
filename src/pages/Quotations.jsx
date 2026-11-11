@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { useAddButton } from '../hooks/useMedia.js';
 import { 
   FileText, 
   Plus, 
@@ -660,6 +661,8 @@ export default function Quotations({
     window.scrollTo?.({ top: 0, behavior: 'smooth' });
   };
   const startNew = () => { setEditingQuote(null); setForm(blankForm()); setActiveView('create'); };
+  const startNewRef = useRef(startNew); startNewRef.current = startNew;
+  useAddButton('quotations', useCallback(() => startNewRef.current(), []));
   const backToList = () => { setEditingQuote(null); setForm(blankForm()); setActiveView('list'); };
 
   // Handle prefilled lead if arrived from Leads page or Customer Care
@@ -878,13 +881,13 @@ export default function Quotations({
 
         <div className="flex items-center gap-2">
           {activeView === 'list' ? (
-            <button
+            <span className="hidden lg:contents"><button
               onClick={startNew}
-              className="mp-btn mp-btn-red min-h-[40px] w-full sm:w-auto"
+              className="mp-btn mp-btn-red min-h-[40px]"
             >
               <Plus className="w-4 h-4" />
               <span>New quotation</span>
-            </button>
+            </button></span>
           ) : (
             <button
               onClick={backToList}

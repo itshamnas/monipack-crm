@@ -1,10 +1,13 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Users, Link2, Copy, RefreshCw, MessageCircle, Power, KeyRound, Upload, Download, Search, CheckCircle2,
-  AlertTriangle, FileText, Printer, ArrowRightLeft, Plus, X, Eye, EyeOff, Archive, Loader2, Lock, Unlock, Trash2,
+  AlertTriangle, FileText, SlidersHorizontal, Printer, ArrowRightLeft, Plus, X, Eye, EyeOff, Archive, Loader2, Lock, Unlock, Trash2, Check, CheckSquare, ChevronRight,
 } from 'lucide-react';
 import CustomerFieldInput, { asList, fieldApplies } from '../components/customers/CustomerFieldInput.jsx';
 import SlidingTabs from '../components/ui/SlidingTabs.jsx';
+import Sheet from '../components/ui/Sheet.jsx';
+import MoreMenu from '../components/ui/MoreMenu.jsx';
+import { useAddButton } from '../hooks/useMedia.js';
 import Avatar from '../components/ui/Avatar.jsx';
 import PhotoPicker from '../components/ui/PhotoPicker.jsx';
 import BranchTypeBadge from '../components/ui/BranchTypeBadge.jsx';
@@ -213,14 +216,14 @@ export default function Customers({ authFetch, showToast, canManage, canExport =
   };
 
   return (
-    <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 pb-24 md:pb-8">
+    <div className={`p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto space-y-4 pb-24 md:pb-8 ${openId ? 'mp-dock-open' : ''}`}>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-[24px] leading-tight font-extrabold text-slate-900">Customer Data Centre</h1>
           <p className="hidden sm:block text-sm text-slate-500 mt-0.5">Every customer with their details, documents, enquiries and quotations. Tap a customer to open it.</p>
         </div>
         {canManage && (
-          <div className="flex gap-2 overflow-x-auto mp-noscrollbar max-w-full -mx-3 px-3 sm:mx-0 sm:px-0 pb-1">
+          <div className="hidden sm:flex sm:flex-wrap sm:justify-end gap-2">
             {onOpenSettings && (
               <button type="button" className={`${btnLight} shrink-0`} onClick={() => onOpenSettings('settings-links')}><Link2 className="w-4 h-4" /> Salesman links</button>
             )}
@@ -339,10 +342,16 @@ export default function Customers({ authFetch, showToast, canManage, canExport =
       )}
 
       <CustomerList key={reloadKey} authFetch={authFetch} showToast={showToast} canManage={canManage} canExport={canExport} initialFilter={initialListFilter}
-        salesmen={salesmen} fields={fields} onOpen={setOpenId} onChanged={changed} />
+        pageActions={canManage ? [
+          onOpenSettings && { label: 'Salesman links', icon: Link2, onClick: () => onOpenSettings('settings-links') },
+          { label: dupOpen ? 'Hide duplicates' : 'Find duplicates', icon: Users, onClick: toggleDups },
+          { label: dlOpen ? 'Hide download data' : 'Download data', icon: Download, onClick: openDownloads },
+          { label: importing ? 'Close import' : 'Import a list', icon: Upload, onClick: () => setImporting((v) => !v) },
+        ].filter(Boolean) : []}
+        salesmen={salesmen} fields={fields} onOpen={setOpenId} onChanged={changed} docked={openId} />
 
       {openId && (
-        <CustomerDetail id={openId} authFetch={authFetch} showToast={showToast} canManage={canManage}
+        <CustomerDetail key={openId} id={openId} authFetch={authFetch} showToast={showToast} canManage={canManage}
           fields={fields} salesmen={salesmen} onClose={() => setOpenId(null)} onChanged={changed} />
       )}
     </div>
@@ -389,7 +398,7 @@ const STAGE_CHIPS = [
   ['complete', 'Complete'],
 ];
 
-function CustomerList({ authFetch, showToast, canManage, canExport = false, initialFilter = {}, salesmen, fields, onOpen, onChanged }) {
+function CustomerList({ authFetch, showToast, canManage, canExport = false, initialFilter = {}, salesmen, fields, onOpen, onChanged, pageActions = [], docked = null }) {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState(initialFilter.search || '');
@@ -399,6 +408,10 @@ function CustomerList({ authFetch, showToast, canManage, canExport = false, init
   const [selected, setSelected] = useState([]);
   const [transferTo, setTransferTo] = useState('');
   const [adding, setAdding] = useState(false);
+  const [selecting, setSelecting] = useState(false); // phones: tick boxes only in select mode
+  const [filterOpen, setFilterOpen] = useState(false);
+  const openAdd = useCallback(() => { if (canManage) setAdding(true); }, [canManage]);
+  useAddButton('customers', openAdd);
   const fieldLabel = useMemo(() => Object.fromEntries(fields.map((f) => [f.key, f.label])), [fields]);
 
   const load = useCallback(async () => {
@@ -430,6 +443,7 @@ function CustomerList({ authFetch, showToast, canManage, canExport = false, init
     return fields.filter((f) => m[f.key]).map((f) => ({ key: f.key, label: f.label, count: m[f.key] }));
   }, [rows, fields]);
 
+  const filterCount = (salesmanId !== 'all' ? 1 : 0) + (missing ? 1 : 0);
   const shown = rows.filter((r) => (stage === 'all' || r.stage === stage) && (!missing || (r.stage !== 'not_started' && r.missing.includes(missing))));
 
   const transfer = async () => {
@@ -465,38 +479,86 @@ function CustomerList({ authFetch, showToast, canManage, canExport = false, init
 
   return (
     <div className="space-y-3">
-      <SlidingTabs ariaLabel="Filter by status" value={stage} onChange={setStage}
-        tabs={STAGE_CHIPS.map(([id, label]) => ({ id, label, count: counts[id] || 0, highlight: id === 'pending_approval' }))} />
+      <div className="hidden sm:block">
+        <SlidingTabs ariaLabel="Filter by status" value={stage} onChange={setStage}
+          tabs={STAGE_CHIPS.map(([id, label]) => ({ id, label, count: counts[id] || 0, highlight: id === 'pending_approval' }))} />
+      </div>
+      {/* Phones: search + Filter + ⋯ on one row, statuses in one sideways-scrolling row */}
+      <div className="sm:hidden space-y-2.5">
+        <div className="mp-ptool">
+          <div className="mp-psearch">
+            <Search className="w-4 h-4" aria-hidden="true" />
+            <label htmlFor="cust-search-p" className="sr-only">Search</label>
+            <input id="cust-search-p" type="search" placeholder="Search name, mobile, CR" value={search} onChange={(e) => setSearch(e.target.value)} />
+          </div>
+          <button type="button" className="mp-filter-btn" onClick={() => setFilterOpen(true)} aria-label={`Filters${filterCount ? `, ${filterCount} on` : ''}`}>
+            <SlidersHorizontal className="w-4 h-4" /> Filter{filterCount > 0 && <b>{filterCount}</b>}
+          </button>
+          <MoreMenu label="More customer actions" items={[
+            canManage && { label: selecting ? 'Stop selecting' : 'Select customers to move', icon: CheckSquare, onClick: () => { setSelecting((v) => !v); setSelected([]); } },
+            canExport && { label: 'PDF of this list', icon: FileText, onClick: exportPdf, hidden: !shown.length },
+            ...pageActions,
+          ].filter(Boolean)} />
+        </div>
+        <div className="mp-chiprow" role="radiogroup" aria-label="Filter by status">
+          {STAGE_CHIPS.map(([id, label]) => (
+            <button key={id} type="button" role="radio" aria-checked={stage === id} onClick={() => setStage(id)} className={`mp-chip ${stage === id ? 'on' : ''}`}>
+              {label} <span className={`n ${id === 'pending_approval' && counts[id] && stage !== id ? '!text-amber-700' : ''}`}>{counts[id] || 0}</span>
+            </button>
+          ))}
+        </div>
+        {selecting && (
+          <p className="text-[13px] text-slate-600 flex items-center justify-between">Tap customers to select them.
+            <button type="button" className="font-semibold text-[#2F5BEA] min-h-[44px] px-2" onClick={() => { setSelecting(false); setSelected([]); }}>Done</button></p>
+        )}
+      </div>
+      <Sheet open={filterOpen} onClose={() => setFilterOpen(false)} title="Filter customers"
+        footer={<>
+          <button type="button" className="mp-btn-ghost" onClick={() => { setSalesmanId('all'); setMissing(''); }}>Clear</button>
+          <button type="button" className="mp-btn-wide" onClick={() => setFilterOpen(false)}>Show {shown.length} customer{shown.length === 1 ? '' : 's'}</button>
+        </>}>
+        <label className="mp-sheet-label" htmlFor="cust-sm-p">Salesman</label>
+        <select id="cust-sm-p" value={salesmanId} onChange={(e) => setSalesmanId(e.target.value)} className="w-full h-12 px-3 rounded-xl border border-slate-300 text-[15px] bg-white">
+          <option value="all">All salesmen</option>
+          <option value="unassigned">No salesman</option>
+          {salesmen.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+        <label className="mp-sheet-label" htmlFor="cust-missing-p">Missing detail</label>
+        <select id="cust-missing-p" value={missing} onChange={(e) => setMissing(e.target.value)} className="w-full h-12 px-3 rounded-xl border border-slate-300 text-[15px] bg-white">
+          <option value="">Any</option>
+          {missingCounts.map((m) => <option key={m.key} value={m.key}>Missing {m.label} ({m.count})</option>)}
+        </select>
+      </Sheet>
 
-      <div className={`${card} p-3 flex flex-wrap items-center gap-2`}>
+      <div className={`${card} p-3 hidden sm:flex sm:flex-wrap sm:items-center gap-2`}>
         <div className="relative flex-1 min-w-[200px]">
           <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
           <label htmlFor="cust-search" className="sr-only">Search</label>
           <input id="cust-search" type="search" placeholder="Search name, mobile, CR or VAT" value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full h-10 pl-9 pr-3 rounded-full border border-slate-300 text-sm" />
+            className="w-full h-11 sm:h-10 pl-9 pr-3 rounded-full border border-slate-300 text-[15px] sm:text-sm" />
         </div>
         <label className="sr-only" htmlFor="cust-sm">Salesman</label>
         <select id="cust-sm" value={salesmanId} onChange={(e) => setSalesmanId(e.target.value)}
-          className="h-10 px-3 rounded-full border border-slate-300 text-sm bg-white">
+          className="w-full sm:w-auto min-w-0 h-11 sm:h-10 px-3 rounded-full border border-slate-300 text-sm bg-white">
           <option value="all">All salesmen</option>
           <option value="unassigned">No salesman</option>
           {salesmen.map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         <label className="sr-only" htmlFor="cust-missing">Missing detail</label>
         <select id="cust-missing" value={missing} onChange={(e) => setMissing(e.target.value)}
-          className="h-10 px-3 rounded-full border border-slate-300 text-sm bg-white">
+          className="w-full sm:w-auto min-w-0 h-11 sm:h-10 px-3 rounded-full border border-slate-300 text-sm bg-white">
           <option value="">Missing: any</option>
           {missingCounts.map((m) => <option key={m.key} value={m.key}>Missing {m.label} ({m.count})</option>)}
         </select>
         {canExport && <button type="button" className={btnLight} onClick={exportPdf} disabled={!shown.length}><FileText className="w-4 h-4" /> PDF of this list</button>}
         {canManage && (
-          <button type="button" className={btnRed} onClick={() => setAdding(true)}><Plus className="w-4 h-4" /> Add customer</button>
+          <span className="hidden lg:contents"><button type="button" className={btnRed} onClick={() => setAdding(true)}><Plus className="w-4 h-4" /> Add customer</button></span>
         )}
       </div>
 
       {canManage && selected.length > 0 && (
-        <div className="flex flex-wrap items-center gap-2 p-3 rounded-2xl bg-slate-900 text-white">
+        <div className="sticky bottom-[calc(5.25rem+env(safe-area-inset-bottom))] lg:bottom-4 z-20 flex flex-wrap items-center gap-2 p-3 rounded-2xl bg-slate-900 text-white shadow-xl">
           <span className="text-sm font-bold">{selected.length} selected</span>
           <label htmlFor="cust-transfer" className="sr-only">Transfer to</label>
           <select id="cust-transfer" value={transferTo} onChange={(e) => setTransferTo(e.target.value)}
@@ -509,7 +571,50 @@ function CustomerList({ authFetch, showToast, canManage, canExport = false, init
         </div>
       )}
 
-      <div className={`${card} overflow-hidden`}>
+      {/* Phones: one card per customer, whole card is the tap target */}
+      <ul className={`${docked ? '' : 'sm:hidden'} space-y-2`} aria-label="Customers">
+        {loading && <li className={`${card} p-6 text-center text-slate-500 text-sm`}><Loader2 className="w-5 h-5 animate-spin inline" /> Loading…</li>}
+        {!loading && shown.length === 0 && <li className={`${card} p-6 text-center text-slate-500 text-sm`}>No customers here.</li>}
+        {!loading && shown.map((c) => {
+          const isSel = selected.includes(c.id);
+          const toggle = () => setSelected((s) => (s.includes(c.id) ? s.filter((x) => x !== c.id) : [...s, c.id]));
+          return (
+            <li key={c.id}>
+              <button type="button" onClick={() => (selecting ? toggle() : onOpen(c.id))} aria-pressed={selecting ? isSel : undefined}
+                aria-current={docked === c.id ? 'true' : undefined}
+                className={`w-full text-left ${card} rounded-2xl px-4 py-3.5 flex items-start gap-3 active:scale-[0.99] transition ${isSel ? 'ring-2 ring-[#CC1A22]/40 border-red-200 bg-red-50/40' : ''} ${docked === c.id ? 'ring-2 ring-[#2F5BEA] border-[#2F5BEA]' : ''}`}>
+                {selecting && (
+                  <span className={`mt-0.5 w-6 h-6 shrink-0 rounded-lg border-2 grid place-items-center ${isSel ? 'bg-[#CC1A22] border-[#CC1A22] text-white' : 'border-slate-300'}`} aria-hidden="true">
+                    {isSel && <Check className="w-4 h-4" />}
+                  </span>
+                )}
+                <span className="flex-1 min-w-0">
+                  <span className="block font-semibold text-[15px] leading-snug text-slate-900 break-words">{c.name}{c.locked && <Lock className="w-3.5 h-3.5 inline ml-1 -mt-0.5 text-slate-400" aria-label="Locked" />}</span>
+                  <span className="block text-[13px] text-slate-500 tabular-nums mt-0.5">
+                    {[c.mobile, c.noCr ? 'No CR' : c.crNumber && `CR ${c.crNumber}`].filter(Boolean).join(' · ') || 'No details yet'}
+                  </span>
+                  <span className="block text-[12.5px] text-slate-600 mt-0.5">{c.salesmanName || 'No salesman'}</span>
+                  {(c.leadCount > 0 || c.quoteCount > 0) && (
+                    <span className="block text-[12px] text-slate-500 mt-0.5">
+                      {c.leadCount} enquir{c.leadCount === 1 ? 'y' : 'ies'}{c.quoteCount ? ` · ${c.quoteCount} quote${c.quoteCount === 1 ? '' : 's'}` : ''}{c.wonValue ? ` · OMR ${c.wonValue.toFixed(3)} won` : ''}
+                    </span>
+                  )}
+                  {c.stage !== 'not_started' && c.missing.length > 0 && (
+                    <span className="block text-[12px] text-rose-700 mt-1 line-clamp-1">Missing: {c.missing.slice(0, 3).map((k) => fieldLabel[k] || k).join(', ')}{c.missing.length > 3 ? '…' : ''}</span>
+                  )}
+                </span>
+                <span className="shrink-0 flex flex-col items-end gap-1.5">
+                  <StatusBadge status={c.stage} />
+                  {c.stage !== 'not_started' && <PercentBar value={c.percent} width="w-16" />}
+                  {!selecting && <ChevronRight className="w-4 h-4 text-slate-300 mt-auto" aria-hidden="true" />}
+                </span>
+              </button>
+            </li>
+          );
+        })}
+      </ul>
+
+      <div className={`${card} overflow-hidden hidden ${docked ? '' : 'sm:block'}`}>
         <table className="w-full text-sm">
           <thead className="bg-slate-50 text-[11px] uppercase tracking-wider text-slate-500">
             <tr>
@@ -651,7 +756,7 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
     return () => { alive = false; urls.forEach((u) => URL.revokeObjectURL(u)); };
   }, [c, authFetch]);
 
-  if (!c) return <Modal title="Customer" onClose={onClose}><p className="text-sm text-slate-500"><Loader2 className="w-4 h-4 animate-spin inline" /> Loading…</p></Modal>;
+  if (!c) return <Modal title="Customer" onClose={onClose} wide side><p className="text-sm text-slate-500"><Loader2 className="w-4 h-4 animate-spin inline" /> Loading…</p></Modal>;
 
   const type = c.salesmanType || 'branch';
   const editFields = fields.filter((f) => f.type !== 'photo' && f.type !== 'document' && !f.isHidden && fieldApplies(f, values));
@@ -763,7 +868,7 @@ function CustomerDetail({ id, authFetch, showToast, canManage, fields, salesmen,
   };
 
   return (
-    <Modal title={c.name} onClose={onClose} wide>
+    <Modal title={c.name} onClose={onClose} wide side>
       <div className="space-y-5">
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={c.stage || c.status} />
@@ -1432,10 +1537,11 @@ function DeleteSalesmanModal({ salesman, others, authFetch, showToast, onClose, 
   );
 }
 
-function Modal({ title, onClose, children, wide }) {
+function Modal({ title, onClose, children, wide, side }) {
+  // side: on PCs and landscape tablets (>= 1024 px) the window docks on the right, so the list stays visible beside it
   return (
-    <div className="fixed inset-0 z-50 mp-overlay bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4" role="dialog" aria-modal="true" aria-label={title}>
-      <div className={`w-full ${wide ? 'sm:max-w-4xl' : 'sm:max-w-md'} max-h-[94vh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl`}>
+    <div className={`fixed inset-0 z-50 mp-overlay bg-slate-900/50 flex items-end sm:items-center justify-center p-0 sm:p-4 ${side ? 'mp-dock' : ''}`} role="dialog" aria-modal={side ? undefined : 'true'} aria-label={title}>
+      <div className={`w-full ${wide ? 'sm:max-w-4xl' : 'sm:max-w-md'} max-h-[94vh] overflow-y-auto bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl mp-dock-box`}>
         <div className="sticky top-0 z-10 bg-white border-b border-slate-100 px-5 py-4 flex items-center justify-between">
           <h2 className="text-lg font-bold truncate pr-3">{title}</h2>
           <button type="button" onClick={onClose} aria-label="Close" className="w-11 h-11 rounded-full flex items-center justify-center hover:bg-slate-100"><X className="w-5 h-5" /></button>
