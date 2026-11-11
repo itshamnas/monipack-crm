@@ -36,6 +36,7 @@ import { registerBackupRoutes, startBackupSchedule } from './backup/daily.js';
 import { recordMiddleware, registerVaultRoutes } from './audit/vault.js';
 import { query as dbQuery } from './db/pool.js';
 import { registerReportRoutes } from './reports/value.js';
+import * as quotePipe from './quotes/pipeline.js';
 import { registerWhatsAppRoutes, alertLeadAssigned, revokeUserLinks } from './notify/whatsapp.js';
 import { registerNotificationRoutes, notify, usersForSalesman, managers as managerIds } from './notify/notify.js';
 
@@ -967,7 +968,11 @@ app.post('/api/quotations', authMiddleware, requirePermission('quotations.create
     type: 'quotation',
     description: `Generated quotation ${quote.code} for OMR ${Number(quote.grandTotalOMR).toFixed(3)} by ${req.user.name}`,
   });
-  res.status(201).json(quote);
+  // Into the pipeline: link or create its lead, follow-up in 2 days
+  let flow = {};
+  try { flow = await quotePipe.afterCreate(quote, req.user); } catch (e) { console.error('[quote pipeline]', e.message); }
+  const fresh = (await db.getQuotationById(quote.id)) || quote;
+  res.status(201).json({ ...fresh, leadCreated: Boolean(flow.leadCreated) });
 }));
 
 app.put('/api/quotations/:id', authMiddleware, requirePermission('quotations.update'), asyncHandler(async (req, res) => {
@@ -982,7 +987,9 @@ app.put('/api/quotations/:id', authMiddleware, requirePermission('quotations.upd
     type: 'quotation',
     description: `Quotation "${updated.code}" updated by ${req.user.name}`,
   });
-  res.json(updated);
+  // Revised after sending → lead to Sample & Negotiation (and make sure it has a lead)
+  try { await quotePipe.afterUpdate(existing, updated, req.user); } catch (e) { console.error('[quote pipeline]', e.message); }
+  res.json((await db.getQuotationById(updated.id)) || updated);
 }));
 
 // Quotation status: draft / sent / accepted / rejected (expired is shown from date + validity)
@@ -993,14 +1000,29 @@ app.post('/api/quotations/:id/status', authMiddleware, requirePermission('quotat
   if (!['draft', 'sent', 'accepted', 'rejected'].includes(status)) return res.status(400).json({ error: 'Unknown quotation status.' });
   const reason = String(req.body?.reason || '').trim();
   if (status === 'rejected' && !reason) return res.status(400).json({ error: 'Say why the customer rejected the quotation.' });
-  const out = await db.setQuotationStatus(existing.id, status, { reason, markLeadWon: Boolean(req.body?.markLeadWon), changedBy: req.user.name });
+  // Accepted → lead Won; Rejected → lead Lost with the same reason (automatic)
+  const out = await db.setQuotationStatus(existing.id, status, { reason, markLeadWon: status === 'accepted', changedBy: req.user.name });
   if (!out) return res.status(404).json({ error: 'Quotation not found' });
-  await db.addActivity({ leadId: existing.leadId || null, type: 'quotation', description: `Quotation "${existing.code}" marked ${status}${reason ? ` (${reason})` : ''} by ${req.user.name}${out.leadWon ? '; lead marked Won' : ''}` });
+  if (status === 'rejected') {
+    try { out.leadLost = await quotePipe.afterRejected(existing, reason, req.user); } catch (e) { console.error('[quote pipeline]', e.message); }
+  }
+  await db.addActivity({ leadId: existing.leadId || null, type: 'quotation', description: `Quotation "${existing.code}" marked ${status}${reason ? ` (${reason})` : ''} by ${req.user.name}${out.leadWon ? '; lead marked Won' : ''}${out.leadLost ? '; lead marked Lost' : ''}` });
   if (status === 'accepted') {
     const ids = (await managerIds()).filter((x) => String(x) !== String(req.user.id));
     await notify(ids, { kind: 'won', title: `Quotation accepted: ${existing.code} · ${existing.customerName}`, body: `OMR ${Number(existing.grandTotalOMR || 0).toLocaleString('en-US', { maximumFractionDigits: 3 })} · by ${req.user.name}`, link: 'quotations' });
   }
   res.json(out);
+}));
+
+// One-time fix: give every old quotation without a lead its lead (super admin)
+app.post('/api/quotation-orphans/link', authMiddleware, superAdminOnly, asyncHandler(async (req, res) => {
+  const r = await quotePipe.linkOrphans(req.user);
+  await userAudit(req, `Linked ${r.linked} old quotations to leads (${r.created} new leads)`);
+  res.json(r);
+}));
+app.get('/api/quotation-orphans', authMiddleware, requirePermission('quotations.view'), asyncHandler(async (req, res) => {
+  const { rows } = await dbQuery('SELECT COUNT(*) AS c FROM quotations WHERE archived_at IS NULL AND lead_id IS NULL');
+  res.json({ count: Number(rows[0].c) });
 }));
 
 app.delete('/api/quotations/:id', authMiddleware, requirePermission('quotations.archive'), asyncHandler(async (req, res) => {
@@ -1401,6 +1423,7 @@ if (fs.existsSync(distPath)) {
 // Bind to 0.0.0.0 so localhost (IPv6 ::1 and IPv4 127.0.0.1) and LAN all work reliably
 let server = null;
 if (process.env.NODE_ENV !== 'test') {
+  quotePipe.startExpiryJob(); // hourly: expired quotations with no answer → "call the customer" task
   server = app.listen(PORT, process.env.HOST || '0.0.0.0', () => {
     console.log(`===============================================`);
     console.log(` Monipack CRM Server ACTIVE on port ${PORT}`);

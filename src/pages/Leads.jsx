@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { QUOTE_STATUS, effectiveQuoteStatus } from '../components/QuoteStatus.jsx';
 import { createPortal } from 'react-dom';
 import { 
   Users, 
@@ -86,6 +87,7 @@ const CATEGORIES = [
 export default function Leads({
   leads,
   authFetch,
+  quotations = [],
   searchQuery,
   setSearchQuery,
   selectedCategory,
@@ -306,7 +308,22 @@ export default function Leads({
     }
   };
 
+  // Latest quotation of each lead (shown on its card)
+  const quoteByLead = useMemo(() => {
+    const m = new Map();
+    (quotations || []).forEach((q) => {
+      if (!q.leadId) return;
+      const k = String(q.leadId);
+      const prev = m.get(k);
+      const newer = !prev || String(q.createdAt || q.date) > String(prev.createdAt || prev.date);
+      m.set(k, { ...(newer ? q : prev), count: (prev?.count || 0) + 1 });
+    });
+    return m;
+  }, [quotations]);
+
   const renderLeadCard = (lead, isMobileFocus = false) => {
+    const quote = quoteByLead.get(String(lead.id));
+    const qs = quote ? effectiveQuoteStatus(quote) : null;
     const nextStage = getNextStage(lead.status);
     const age = ageOf(lead.date);
     const needsIntake = lead.status === 'new' || lead.quantity === 'Needs Intake' || lead.notes?.includes('Needs Intake');
@@ -416,6 +433,12 @@ export default function Leads({
           </div>
           <span className="ml-auto whitespace-nowrap text-[12.5px] font-bold text-slate-900 tabular-nums">OMR {omr3(lead.dealValue)}</span>
         </div>
+        {quote && (
+          <div className={`mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${QUOTE_STATUS[qs]?.cls || ''}`} title={`Latest quotation ${quote.code}`}>
+            <FileText className="w-3 h-3 shrink-0" aria-hidden="true" />
+            <span className="truncate">{quote.code} · {QUOTE_STATUS[qs]?.label}{quote.count > 1 ? ` · ${quote.count} quotes` : ''}</span>
+          </div>
+        )}
 
         {/* 1-tap next stage (phones) */}
         {isMobileFocus && nextStage && (

@@ -479,6 +479,53 @@ function CatalogQuickPickerModal({ isOpen, onClose, products, categories, onAddP
   );
 }
 
+/** Pick the lead (enquiry) this quotation is for. Empty = the CRM finds it by phone or creates one. */
+function LeadPicker({ leads = [], value, onPick, onClear }) {
+  const [q, setQ] = useState('');
+  const [open, setOpen] = useState(false);
+  const picked = value ? leads.find((l) => String(l.id) === String(value)) : null;
+  const matches = useMemo(() => {
+    const t = q.trim().toLowerCase();
+    if (t.length < 2) return [];
+    const d = t.replace(/\D/g, '');
+    return leads.filter((l) => (l.name || '').toLowerCase().includes(t)
+      || (d.length >= 3 && `${l.mobile || ''}${l.phone || ''}`.replace(/\D/g, '').includes(d))).slice(0, 8);
+  }, [q, leads]);
+  if (picked) {
+    return (
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/70 px-3 py-2.5 text-[13px]">
+        <Check className="w-4 h-4 text-emerald-600" aria-hidden="true" />
+        <span className="min-w-0">Lead: <b>{picked.name}</b>{picked.mobile ? ` · ${picked.mobile}` : ''}{picked.salesman ? ` · ${picked.salesman}` : ''}</span>
+        <button type="button" onClick={onClear} className="ml-auto text-[12px] font-semibold text-slate-600 hover:text-slate-900 underline underline-offset-2">Change</button>
+      </div>
+    );
+  }
+  return (
+    <div className="relative">
+      <label htmlFor="q-lead" className="block text-xs font-semibold text-slate-700 mb-1">Lead (enquiry)</label>
+      <div className="relative">
+        <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" aria-hidden="true" />
+        <input id="q-lead" value={q} onChange={(e) => { setQ(e.target.value); setOpen(true); }} onFocus={() => setOpen(true)} onBlur={() => setTimeout(() => setOpen(false), 150)}
+          placeholder="Search lead by customer name or phone" autoComplete="off"
+          className="w-full text-xs border border-slate-300 rounded-lg pl-9 pr-3 py-2.5 focus:outline-none focus:border-red-500" />
+      </div>
+      {open && matches.length > 0 && (
+        <ul className="absolute z-30 mt-1 w-full max-h-64 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-xl" role="listbox">
+          {matches.map((l) => (
+            <li key={l.id}>
+              <button type="button" role="option" aria-selected="false" onMouseDown={(e) => e.preventDefault()} onClick={() => { onPick(l); setQ(''); setOpen(false); }}
+                className="w-full text-left px-3 py-2 hover:bg-slate-50 text-[12.5px]">
+                <b className="font-semibold">{l.name}</b> <span className="text-slate-500">{[l.mobile, l.salesman, l.status].filter(Boolean).join(' · ')}</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="mt-1 text-[10.5px] text-slate-500">Leave empty and the CRM finds the lead by the phone number below, or creates a new lead in Quotation Follow-Up.</p>
+    </div>
+  );
+}
+
 export default function Quotations({
   quotations,
   products,
@@ -492,6 +539,8 @@ export default function Quotations({
   onRefresh,
   currentUser,
   onSetQuoteStatus,
+  authFetch,
+  showToast,
 }) {
   const [activeView, setActiveView] = useState('list'); // 'list' or 'create'
   const [selectedQuotationForPrint, setSelectedQuotationForPrint] = useState(null);
@@ -501,6 +550,23 @@ export default function Quotations({
   const [quoteStatusFilter, setQuoteStatusFilter] = useState('all');
   const [editingQuote, setEditingQuote] = useState(null); // the quotation being edited (null = new)
   const canEdit = Boolean(onUpdateQuotation && currentUser?.permissions?.includes('quotations.update'));
+  // Old quotations with no lead (super admin can link them all at once)
+  const [orphans, setOrphans] = useState(0);
+  const [linking, setLinking] = useState(false);
+  const isSuper = currentUser?.role === 'super_admin';
+  useEffect(() => {
+    if (!isSuper || !authFetch) return;
+    authFetch('/api/quotation-orphans').then((r) => (r.ok ? r.json() : { count: 0 })).then((b) => setOrphans(b.count || 0)).catch(() => {});
+  }, [isSuper, authFetch, quotations]);
+  const linkOrphans = async () => {
+    setLinking(true);
+    try {
+      const r = await authFetch('/api/quotation-orphans/link', { method: 'POST' });
+      const b = await r.json().catch(() => ({}));
+      if (r.ok) { showToast?.(`${b.linked} quotations linked to leads (${b.created} new leads in Quotation Follow-Up).`); setOrphans(0); onRefresh?.(); }
+      else showToast?.(b.error || 'Could not link them', 'error');
+    } finally { setLinking(false); }
+  };
 
   const filteredQuotations = useMemo(() => {
     if (!quotations) return [];
@@ -842,6 +908,19 @@ export default function Quotations({
               )}
             </div>
           )}
+          <LeadPicker
+            leads={leads || []}
+            value={form.leadId}
+            onClear={() => setForm({ ...form, leadId: '' })}
+            onPick={(l) => setForm({
+              ...form,
+              leadId: l.id,
+              customerName: form.customerName || l.name || '',
+              attn: form.attn || [l.countryCode, l.mobile].filter(Boolean).join(' ') || l.phone || '',
+              address: (!form.address || form.address === 'Muscat, Sultanate of Oman') && l.customerLocation ? `${l.customerLocation}, Sultanate of Oman` : form.address,
+              salesRep: form.salesRep || l.salesman || '',
+            })}
+          />
           <div className="border-b border-slate-200 pb-4">
             <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider">
               Customer & Document Details
@@ -1358,6 +1437,13 @@ export default function Quotations({
             </button>
           </div>
         </form>
+      )}
+
+      {activeView === 'list' && isSuper && orphans > 0 && (
+        <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[13px] text-amber-900" role="status">
+          <span className="flex-1 min-w-[220px]"><b>{orphans} quotation{orphans === 1 ? ' is' : 's are'} not in the pipeline</b> because {orphans === 1 ? 'it was' : 'they were'} made without a lead. Link {orphans === 1 ? 'it' : 'them'}: the CRM matches each customer by phone or name, or creates a lead in Quotation Follow-Up.</span>
+          <button type="button" onClick={linkOrphans} disabled={linking} className="mp-btn mp-btn-red min-h-[38px]">{linking ? 'Linking…' : 'Link to leads now'}</button>
+        </div>
       )}
 
       {/* LIST VIEW */}
