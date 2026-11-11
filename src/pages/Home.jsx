@@ -155,11 +155,16 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
     const rowsL = [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6);
     return { n, rows: rowsL.map(([k, v]) => ({ k, v, w: n ? (v / n) * 100 : 0 })) };
   }, [leads]);
+  const canSeeMoney = Boolean(currentUser?.permissions?.includes('reports.view'));
   const quoteRes = useMemo(() => {
     const c = { draft: 0, sent: 0, expired: 0, accepted: 0, rejected: 0 }; let value = 0;
     quotations.forEach((q) => { const s = effectiveQuoteStatus(q); c[s] = (c[s] || 0) + 1; if (s === 'accepted') value += Number(q.grandTotalOMR || 0); });
     const decided = c.accepted + c.rejected;
-    return { c, value, rate: decided ? (c.accepted / decided) * 100 : null };
+    // Quotations prepared this month (by the day they were made)
+    const m0 = new Date(); m0.setDate(1); m0.setHours(0, 0, 0, 0);
+    const month = quotations.filter((q) => new Date(q.createdAt || q.date) >= m0);
+    const monthValue = month.reduce((s, q) => s + Number(q.grandTotalOMR || 0), 0);
+    return { c, value, rate: decided ? (c.accepted / decided) * 100 : null, monthCount: month.length, monthValue };
   }, [quotations]);
 
   // Team today (shown in the header line)
@@ -486,7 +491,7 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
             </section>
             <section className="mpd-card" aria-labelledby="qr-h">
               <div className="mpd-card-h flex-wrap">
-                <div className="flex-1 min-w-[160px]"><h2 id="qr-h">Quotation results</h2><p>{quoteRes.rate === null ? 'Mark quotations accepted or rejected to see your win rate' : <>Win rate <b className="mpd-hl">{quoteRes.rate.toFixed(0)}%</b> · OMR {quoteRes.value.toLocaleString('en-US', { maximumFractionDigits: 0 })} accepted</>}</p></div>
+                <div className="flex-1 min-w-[160px]"><h2 id="qr-h">Quotation results</h2><p className="mb-0.5">This month: <b className="mpd-hl">OMR {quoteRes.monthValue.toLocaleString('en-US', { maximumFractionDigits: 0 })}</b> quoted in {quoteRes.monthCount} quotation{quoteRes.monthCount === 1 ? '' : 's'}{canSeeMoney && <> · <button type="button" className="underline underline-offset-2" onClick={() => onNavigate('money')}>details by person</button></>}</p><p>{quoteRes.rate === null ? 'Mark quotations accepted or rejected to see your win rate' : <>Win rate <b className="mpd-hl">{quoteRes.rate.toFixed(0)}%</b> · OMR {quoteRes.value.toLocaleString('en-US', { maximumFractionDigits: 0 })} accepted</>}</p></div>
                 <button type="button" onClick={() => onNavigate('quotations')} className="mpd-btn" style={{ height: 30 }}>Open quotations <ChevronRight className="w-3.5 h-3.5" /></button>
               </div>
               <div className="grid grid-cols-5 gap-2 px-4 pb-4 pt-1">

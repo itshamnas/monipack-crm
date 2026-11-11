@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, FileDown, TrendingUp, TrendingDown, Trophy, XCircle, Wallet, Percent, Timer, Coins } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileDown, TrendingUp, TrendingDown, Trophy, XCircle, Wallet, Percent, Timer, Coins, FileText, Send, CheckCircle2, Ban } from 'lucide-react';
 import { Seg } from './Home.jsx';
 import Avatar from '../components/ui/Avatar.jsx';
 import { lostReasonLabel } from '../utils/lostReasons.js';
@@ -16,6 +16,7 @@ const short = (v) => {
 };
 /** Big numbers shortened on the cards (full figure on hover) */
 const big = (v) => (Math.abs(Number(v || 0)) >= 100000 ? `OMR ${short(v)}` : omr(v));
+const r3 = (v) => Math.round(Number(v || 0) * 1000) / 1000;
 const pctChange = (cur, prev) => (prev ? Math.round(((cur - prev) / prev) * 100) : cur ? null : 0);
 const cols = (...names) => names.map((label, i) => ({ label, num: i > 0 }));
 const TYPE_LABEL = { route_b2b: 'B2B', branch: 'Retail' };
@@ -171,6 +172,14 @@ export default function Money({ authFetch, currentUser, showToast }) {
           ['New enquiries', String(t.created.count)],
         ]),
         noteHtml(`Compared with ${esc(data.prev.label)}: won ${esc(omr(pt.won.value))} (${pt.won.count}), lost ${esc(omr(pt.lost.value))} (${pt.lost.count}).`),
+        '<h3>Quotations prepared</h3>',
+        chipsHtml([
+          ['Prepared', `${omr(data.quotes.prepared.value)} (${data.quotes.prepared.count})`],
+          ['Accepted', `${omr(data.quotes.accepted.value)} (${data.quotes.accepted.count})`],
+          ['Waiting', `${omr(data.quotes.sent.value + data.quotes.draft.value)} (${data.quotes.sent.count + data.quotes.draft.count})`],
+          ['Rejected / expired', `${omr(data.quotes.rejected.value + data.quotes.expired.value)} (${data.quotes.rejected.count + data.quotes.expired.count})`],
+        ]),
+        data.quoteBy.length ? tableHtml(cols('Prepared by', 'Quotations', 'Total quoted', 'Accepted'), data.quoteBy.map((p) => [p.name, String(p.prepared.count), omr(p.prepared.value), `${omr(p.accepted.value)} · ${p.accepted.count}`])) : '',
         '<h3>Each person</h3>',
         tableHtml(cols('Salesman', 'Won', 'Lost', 'Open now', 'Win rate', 'New'), people.map((p) => [
           `${p.name}${p.type ? ` (${TYPE_LABEL[p.type] || ''})` : ''}`,
@@ -244,6 +253,44 @@ export default function Money({ authFetch, currentUser, showToast }) {
               <Kpi icon={Coins} tone="#B7791F" label="Average won deal" value={omr(t.avgDeal)} delta={<Delta cur={t.avgDeal} prev={pt.avgDeal} />} />
               <Kpi icon={Timer} tone="#64748B" label="Days to win" value={t.avgDaysToClose == null ? '—' : `${t.avgDaysToClose}`} sub="from enquiry to won" />
             </div>
+
+            {data.quotes && (
+              <section className="mpd-card" aria-labelledby="m-quotes">
+                <div className="mpd-card-h"><div><h2 id="m-quotes">Quotations prepared</h2><p>Every quotation made in {data.range.label}, by the date it was created · its total including VAT</p></div></div>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 px-4">
+                  {[
+                    [FileText, '#3D5AF0', 'Prepared', data.quotes.prepared, <Delta key="d" cur={data.quotes.prepared.value} prev={data.prevQuotes.prepared.value} />],
+                    [CheckCircle2, WON, 'Accepted', data.quotes.accepted, data.quotes.acceptRate != null ? <span key="r" className="text-[11px] mpd-mute">{data.quotes.acceptRate}% of decided</span> : null],
+                    [Send, '#B7791F', 'Waiting for answer', { count: data.quotes.sent.count + data.quotes.draft.count, value: r3(data.quotes.sent.value + data.quotes.draft.value) }, null],
+                    [Ban, LOST, 'Rejected or expired', { count: data.quotes.rejected.count + data.quotes.expired.count, value: r3(data.quotes.rejected.value + data.quotes.expired.value) }, null],
+                  ].map(([Icon, tone, label, v, extra]) => (
+                    <div key={label} className="rounded-xl p-3.5 min-w-0" style={{ border: '1px solid var(--d-line)' }}>
+                      <div className="flex items-center gap-2 text-[11.5px] mpd-mute">
+                        <span className="grid place-items-center rounded-lg shrink-0" style={{ width: 24, height: 24, background: `${tone}1A`, color: tone }}><Icon className="w-3.5 h-3.5" aria-hidden="true" /></span>{label}
+                      </div>
+                      <b className="block mt-1.5 text-[19px] font-semibold tabular-nums truncate" title={omr(v.value, 3)}>{big(v.value)}</b>
+                      <div className="flex flex-wrap items-center gap-x-2 text-[11px] mpd-mute"><span>{v.count} quotation{v.count === 1 ? '' : 's'}</span>{extra}</div>
+                    </div>
+                  ))}
+                </div>
+                <div className="overflow-x-auto px-2 pb-3 pt-2">
+                  <table className="w-full text-[12.5px] tabular-nums">
+                    <thead><tr className="mpd-mute text-left"><th className="py-2 px-2 font-medium">Prepared by</th><th className="py-2 px-2 font-medium text-right">Quotations</th><th className="py-2 px-2 font-medium text-right">Total quoted</th><th className="py-2 px-2 font-medium text-right">Accepted</th></tr></thead>
+                    <tbody>
+                      {data.quoteBy.length === 0 && <tr><td colSpan={4} className="py-6 text-center mpd-mute">No quotations made in this period.</td></tr>}
+                      {data.quoteBy.map((p) => (
+                        <tr key={p.name} style={{ borderTop: '1px solid var(--d-line)' }}>
+                          <td className="py-2 px-2"><span className="flex items-center gap-2.5 min-w-[150px]"><Avatar name={p.name} photoUrl={p.photoUrl} size={28} /><b className="font-semibold truncate">{p.name}</b></span></td>
+                          <td className="py-2 px-2 text-right">{p.prepared.count}</td>
+                          <td className="py-2 px-2 text-right font-medium">{omr(p.prepared.value)}</td>
+                          <td className="py-2 px-2 text-right">{omr(p.accepted.value)} <span className="mpd-mute">· {p.accepted.count}</span></td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
 
             <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1.6fr)_minmax(0,1fr)] gap-4">
               <section className="mpd-card" aria-labelledby="m-trend">

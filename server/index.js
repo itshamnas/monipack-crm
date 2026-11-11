@@ -959,6 +959,8 @@ app.post('/api/quotations', authMiddleware, requirePermission('quotations.create
     return res.status(400).json({ error: 'Quotation items must be provided as an array.' });
   }
   const quote = await db.createQuotation(req.body, { changedBy: req.user.name });
+  // Remember who prepared it (for the quotation figures on Home → Money)
+  await dbQuery('UPDATE quotations SET created_by_user_id = $1 WHERE id = $2', [req.user.id, quote.id]).catch(() => {});
   await db.addActivity({
     leadId: quote.leadId,
     leadName: quote.customerName,
