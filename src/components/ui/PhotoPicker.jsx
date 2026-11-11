@@ -97,7 +97,7 @@ export default function PhotoPicker({ name, photoUrl, title = 'Profile photo', o
         <input ref={camRef} type="file" accept="image/*" capture="user" className="hidden" onChange={pick} />
 
         <div className="mt-4 grid grid-cols-2 gap-2">
-          <button type="button" onClick={() => camRef.current?.click()} className="mp-btn mp-btn-line justify-center min-h-[44px] sm:hidden"><Camera className="w-4 h-4" /> Take photo</button>
+          <span className="contents sm:hidden"><button type="button" onClick={() => camRef.current?.click()} className="mp-btn mp-btn-line justify-center min-h-[44px]"><Camera className="w-4 h-4" /> Take photo</button></span>
           <button type="button" onClick={() => fileRef.current?.click()} className="mp-btn mp-btn-line justify-center min-h-[44px] col-span-1 sm:col-span-2"><ImagePlus className="w-4 h-4" /> {img ? 'Choose another' : 'Choose photo'}</button>
         </div>
 

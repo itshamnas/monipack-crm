@@ -97,7 +97,16 @@
 .mpd-kpis { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 12px; }
 @media (max-width: 1180px) { .mpd-kpis { grid-template-columns: repeat(3, minmax(0,1fr)); } }
 @media (min-width: 641px) and (max-width: 1180px) { .mpd-kpi.is-hero { grid-column: span 2; } }
-@media (max-width: 640px) { .mpd-kpis { display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; padding-bottom: 2px; } .mpd-kpis > * { flex: 0 0 72%; scroll-snap-align: start; } }
+/* Phones: every number visible at once: the main one full width, the rest two per row */
+@media (max-width: 640px) {
+  .mpd-kpis { grid-template-columns: repeat(2, minmax(0,1fr)); gap: 8px; }
+  .mpd-kpis > .is-hero { grid-column: 1 / -1; }
+  .mpd-kpis > :last-child:nth-child(even) { grid-column: 1 / -1; }
+  .mpd-kpi { padding: 11px 12px 10px; }
+  .mpd-kpi-v { font-size: 21px; margin-top: 6px; }
+  .mpd-kpis > .is-hero .mpd-kpi-v { font-size: 26px; }
+  .mpd-title { font-size: 27px; }
+}
 .mpd-kpi { text-align: left; padding: 14px 15px 12px; position: relative; overflow: hidden; transition: transform .25s cubic-bezier(.22,1,.36,1), border-color .25s; }
 .mpd-kpi:hover { transform: translateY(-2px); border-color: var(--d-line2); }
 .mpd-kpi.is-hero { background: linear-gradient(160deg, rgba(91,124,250,.38), rgba(40,58,140,.35)); border-color: rgba(140,165,255,.35); }

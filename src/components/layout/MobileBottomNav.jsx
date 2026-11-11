@@ -1,12 +1,31 @@
 import React from 'react';
-import { LayoutDashboard, Inbox, Kanban, Menu, Plus, ListChecks } from 'lucide-react';
+import { LayoutDashboard, Inbox, Kanban, Menu, Plus, ListChecks, FileText } from 'lucide-react';
 import { sectionOf } from './navigation.js';
 
 /**
- * monipack Enterprise CRM - Mobile Bottom Navigation Bar
- * Fixed thumb-zone navigation optimized for mobile viewports (< 768px).
- * Supports iOS Safe Area insets and live unread notification counters.
+ * Bottom bar for phones and upright tablets (< 1024 px).
+ * Always 2 buttons · the red + · 2 buttons, in five equal columns, so the + sits in the exact centre
+ * on every screen width. The four buttons depend on the person's job; everything else is under Menu.
+ *
+ * The + is contextual: on Customers it adds a customer, on Quotations a quotation, on Tasks a task;
+ * anywhere else it adds a new enquiry. (Pages listen for the cancellable "mp:add" event.)
  */
+const ITEMS = {
+  dashboard: { section: 'home', label: 'Home', icon: LayoutDashboard },
+  customercare: { section: 'inbox', label: 'Inbox', icon: Inbox },
+  leads: { section: 'leads', label: 'Pipeline', icon: Kanban },
+  quotations: { section: 'quotations', label: 'Quotes', icon: FileText },
+  tasks: { section: 'tasks', label: 'Tasks', icon: ListChecks, perm: 'tasks.use' },
+};
+
+/** Four destinations per job: the last one is always Menu. */
+export function bottomBarFor(user) {
+  const role = user?.role;
+  if (role === 'customer_care') return ['customercare', 'leads', 'quotations'];
+  if (role === 'salesman') return ['dashboard', 'leads', 'tasks'];
+  return ['dashboard', 'customercare', 'leads'];
+}
+
 export default function MobileBottomNav({
   activeTab,
   onTabChange,
@@ -16,96 +35,57 @@ export default function MobileBottomNav({
   onNewLead,
   taskDue = 0,
 }) {
-  const newLeadsBadge = stats?.newLeads ?? 0;
-
-  // 4 tabs + the + button: Home, Inbox, (+), Pipeline, Tasks. Customers, Quotations and Settings are in Menu.
   const count = (n) => (n > 0 ? (n > 99 ? '99+' : n) : null);
-  const navItems = [
-    { id: 'dashboard', section: 'home', label: 'Home', icon: LayoutDashboard, badge: null },
-    { id: 'customercare', section: 'inbox', label: 'Inbox', icon: Inbox, badge: count(newLeadsBadge), badgeColor: 'bg-[#CC1A22] text-white' },
-    { id: 'leads', section: 'leads', label: 'Pipeline', icon: Kanban, badge: null },
-    ...(currentUser?.permissions?.includes('tasks.use') ? [{ id: 'tasks', section: 'tasks', label: 'Tasks', icon: ListChecks, badge: count(taskDue) }] : []),
-  ];
+  const badges = { customercare: count(stats?.newLeads ?? 0), tasks: count(taskDue) };
+  const allowed = (id) => !ITEMS[id].perm || currentUser?.permissions?.includes(ITEMS[id].perm);
+  const ids = bottomBarFor(currentUser).filter(allowed);
+  // Always three destinations + Menu, so the + stays in the centre column
+  for (const extra of ['dashboard', 'leads', 'quotations', 'customercare']) if (ids.length < 3 && !ids.includes(extra) && allowed(extra)) ids.push(extra);
   const activeSection = sectionOf(activeTab, currentUser)?.id;
+  const tasksHidden = !ids.includes('tasks') && taskDue > 0;
+  const menuActive = !ids.some((id) => ITEMS[id].section === activeSection);
+
+  const add = () => {
+    const ev = new CustomEvent('mp:add', { cancelable: true, detail: { tab: activeTab } });
+    window.dispatchEvent(ev);
+    if (!ev.defaultPrevented) onNewLead?.();
+  };
+  const addLabel = { customers: 'Add customer', quotations: 'New quotation', tasks: 'New task' }[activeTab] || 'New enquiry';
+
+  const Tab = ({ id }) => {
+    const it = ITEMS[id];
+    const Icon = it.icon;
+    const on = activeSection === it.section;
+    return (
+      <button type="button" onClick={() => onTabChange(id)} aria-current={on ? 'page' : undefined}
+        className={`mp-bn-tab ${on ? 'on' : ''}`}>
+        <span className="mp-bn-ic">
+          <Icon key={on ? 'on' : 'off'} className={`w-[22px] h-[22px] ${on ? 'mp-hop' : ''}`} strokeWidth={on ? 2.4 : 1.9} />
+          {badges[id] && <span className="mp-bn-badge">{badges[id]}</span>}
+        </span>
+        <span className="mp-bn-lbl">{it.label}</span>
+      </button>
+    );
+  };
+  const left = ids.slice(0, 2);
+  const right = ids.slice(2, 3);
 
   return (
-    <nav
-      id="monipack-mobile-bottom-nav"
-      aria-label="Mobile Navigation"
-      className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-md border-t border-surface-silver shadow-lg select-none"
-      style={{
-        backgroundColor: 'color-mix(in srgb, var(--color-component-bg, #FFFFFF) 95%, transparent)',
-        borderColor: 'var(--color-surface-silver, #E5E7EB)',
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-      }}
-    >
-      <div className="flex items-center justify-around h-16 px-1 max-w-2xl mx-auto">
-        {navItems.map((item, idx) => {
-          const Icon = item.icon;
-          const isActive = activeSection === item.section;
-
-          const fab = onNewLead && idx === 2 ? (
-            <button key="fab" type="button" onClick={onNewLead} className="mp-fab" aria-label="New enquiry" title="New enquiry">
-              <span><Plus className="w-6 h-6" strokeWidth={2.5} /></span>
-            </button>
-          ) : null;
-          return (
-            <React.Fragment key={item.id}>
-            {fab}
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => onTabChange(item.id)}
-              className={`flex-1 flex flex-col items-center justify-center h-full py-1 relative transition-colors duration-150 active:scale-95 cursor-pointer ${
-                isActive
-                  ? 'text-[#CC1A22] font-semibold'
-                  : 'text-slate-500 hover:text-slate-900 font-medium'
-              }`}
-            >
-              {/* Badge indicator */}
-              {item.badge && (
-                <span
-                  className={`absolute top-1.5 right-[24%] sm:right-[30%] min-w-4 h-4 px-1 rounded-full text-[10px] font-bold flex items-center justify-center leading-none shadow-xs ${
-                    item.badgeColor || 'bg-[#CC1A22] text-white'
-                  }`}
-                >
-                  {item.badge}
-                </span>
-              )}
-
-              <Icon
-                key={isActive ? 'on' : 'off'}
-                className={`w-5 h-5 transition-transform ${
-                  isActive ? 'scale-110 stroke-[2.5] mp-hop' : 'stroke-2'
-                }`}
-                style={isActive ? { color: 'var(--color-primary, #CC1A22)' } : undefined}
-              />
-              <span className="text-[11px] mt-1 leading-none">
-                {item.label}
-              </span>
-
-              {/* Active bottom pip indicator */}
-              {isActive && (
-                <span
-                  className="absolute bottom-1 w-6 h-0.5 rounded-full bg-[#CC1A22] mp-pip"
-                  style={{ backgroundColor: 'var(--color-primary, #CC1A22)' }}
-                />
-              )}
-            </button>
-            </React.Fragment>
-          );
-        })}
-
-        {/* 5th Tab: Menu / Drawer Trigger */}
-        <button
-          type="button"
-          onClick={onOpenDrawer}
-          className="flex-1 flex flex-col items-center justify-center h-full py-1 text-slate-500 hover:text-slate-900 font-semibold transition-colors duration-150 active:scale-95 cursor-pointer"
-        >
-          <Menu className="w-5 h-5 stroke-2" />
-          <span className="text-[11px] mt-1 leading-none">
-            Menu
+    <nav id="monipack-mobile-bottom-nav" aria-label="Main" className="lg:hidden mp-bn no-print">
+      <div className="mp-bn-grid">
+        {left.map((id) => <Tab key={id} id={id} />)}
+        <span className="mp-bn-mid">
+          <button type="button" onClick={add} className="mp-fab" aria-label={addLabel} title={addLabel}>
+            <span><Plus className="w-6 h-6" strokeWidth={2.5} /></span>
+          </button>
+        </span>
+        {right.map((id) => <Tab key={id} id={id} />)}
+        <button type="button" onClick={onOpenDrawer} className={`mp-bn-tab ${menuActive ? 'on' : ''}`} aria-label={tasksHidden ? `Menu, ${taskDue} task${taskDue === 1 ? '' : 's'} due` : 'Menu'}>
+          <span className="mp-bn-ic">
+            <Menu className="w-[22px] h-[22px]" strokeWidth={menuActive ? 2.4 : 1.9} />
+            {tasksHidden && <span className="mp-bn-dot" aria-hidden="true" />}
           </span>
+          <span className="mp-bn-lbl">Menu</span>
         </button>
       </div>
     </nav>

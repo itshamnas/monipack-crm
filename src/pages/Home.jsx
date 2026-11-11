@@ -8,6 +8,7 @@ import {
   Users, Filter, TrendingUp, Trophy, PieChart, CalendarClock, Target, ListChecks, Building2, Store, Truck,
 } from 'lucide-react';
 import Avatar from '../components/ui/Avatar.jsx';
+import MoreMenu from '../components/ui/MoreMenu.jsx';
 
 /**
  * Super admin / manager home page: what needs attention today, then one row per salesman.
@@ -352,12 +353,20 @@ export default function Home({ authFetch, leads = [], quotations = [], pipelineS
                 {(teamToday.added > 0 || teamToday.won > 0) && <> · today <b>{teamToday.added}</b> new{teamToday.won ? <>, <b>{teamToday.won}</b> won</> : null}</>}
               </p>
             </div>
-            <div className="flex gap-2 overflow-x-auto max-w-full mpd-chips">
+            <div className="flex gap-2 max-w-full mpd-chips items-center w-full sm:w-auto">
               <Seg value={period} onChange={setPeriod} options={[['30', '30 days'], ['90', '90 days'], ['all', 'All time']]} />
-              {currentUser?.permissions?.includes('reports.export') && <button type="button" onClick={exportPdf} className="mpd-btn"><FileText />PDF</button>}
-              {canManageCustomers && <button type="button" onClick={() => onOpenCustomers({ tab: 'import' })} className="mpd-btn"><Upload />Import</button>}
-              <button type="button" onClick={() => onNavigate('quotations')} className="mpd-btn"><FileText />New quote</button>
-              <button type="button" onClick={onNewLead} className="mpd-btn mpd-btn-pri"><Plus />New enquiry</button>
+              {/* Phones & tablets: the rarer actions sit under ⋯; the red + in the bottom bar adds an enquiry */}
+              <span className="lg:hidden ml-auto"><MoreMenu label="More home actions" items={[
+                currentUser?.permissions?.includes('reports.export') && { label: 'PDF summary', icon: FileText, onClick: exportPdf },
+                canManageCustomers && { label: 'Import customers', icon: Upload, onClick: () => onOpenCustomers({ tab: 'import' }) },
+                { label: 'New quotation', icon: FileText, onClick: () => onNavigate('quotations') },
+              ].filter(Boolean)} /></span>
+              <span className="hidden lg:contents">
+                {currentUser?.permissions?.includes('reports.export') && <button type="button" onClick={exportPdf} className="mpd-btn"><FileText />PDF</button>}
+                {canManageCustomers && <button type="button" onClick={() => onOpenCustomers({ tab: 'import' })} className="mpd-btn"><Upload />Import</button>}
+                <button type="button" onClick={() => onNavigate('quotations')} className="mpd-btn"><FileText />New quote</button>
+                <button type="button" onClick={onNewLead} className="mpd-btn mpd-btn-pri"><Plus />New enquiry</button>
+              </span>
             </div>
           </div>
 
