@@ -35,6 +35,7 @@ import { registerTwoFactorRoutes, twoFactorRequired, issueChallenge } from './au
 import { registerBackupRoutes, startBackupSchedule } from './backup/daily.js';
 import { recordMiddleware, registerVaultRoutes } from './audit/vault.js';
 import { query as dbQuery } from './db/pool.js';
+import { registerTeamSetupRoutes } from './settings/teamSetup.js';
 import { registerReportRoutes } from './reports/value.js';
 import * as quotePipe from './quotes/pipeline.js';
 import { registerWhatsAppRoutes, alertLeadAssigned, revokeUserLinks } from './notify/whatsapp.js';
@@ -1361,6 +1362,7 @@ app.delete('/api/settings/branches/:id', authMiddleware, requirePermission('sett
 
 // ---- Profile photos ----
 registerWhatsAppRoutes(app, { authMiddleware, requirePermission, asyncHandler, linkLimiter: viewLimiter });
+registerTeamSetupRoutes(app, { authMiddleware, superAdminOnly, asyncHandler, audit: userAudit });
 registerReportRoutes(app, { authMiddleware, requirePermission, asyncHandler, audit: (req, d) => db.addAuditEntry({ type: 'export', userId: req.user.id, userName: req.user.name, description: `${d} by ${req.user.email}` }) });
 registerPhotoRoutes(app, { authMiddleware, asyncHandler, photoJsonParser: (req, res, next) => next() });
 

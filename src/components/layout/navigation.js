@@ -28,6 +28,7 @@ export const NAV_SECTIONS = [
     { id: 'tasks', label: 'Tasks', perm: 'tasks.use' },
   ] },
   { id: 'settings', label: 'Settings', pages: [
+    { id: 'settings-team', group: 'Team', label: 'Team setup', role: 'super_admin' },
     { id: 'settings-links', group: 'Team', label: 'Salesmen & links', perm: 'customers.manage' },
     { id: 'settings-staff', group: 'Team', label: 'Staff logins', perm: 'settings.manage' },
     { id: 'settings-targets', group: 'Team', label: 'Sales targets', perm: 'settings.manage' },
