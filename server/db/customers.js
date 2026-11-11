@@ -205,7 +205,8 @@ export async function setSalesmanLink(id, { action, pin } = {}) {
 }
 
 export async function listLinks() {
-  const { rows } = await query(`SELECT s.*, b.name AS branch_name, b.type AS branch_type
+  const { rows } = await query(`SELECT s.*, b.name AS branch_name, b.type AS branch_type,
+      COALESCE(s.photo_key, (SELECT u.photo_key FROM users u WHERE u.salesman_id = s.id AND u.photo_key IS NOT NULL LIMIT 1)) AS photo_key
     FROM salesmen s LEFT JOIN branches b ON b.id = s.branch_id AND b.archived_at IS NULL
     WHERE s.archived_at IS NULL ORDER BY s.name`);
   return rows.map(linkToApi);
