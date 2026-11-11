@@ -5,6 +5,7 @@ import {
 import { avatarStyle } from '../components/ui/BranchPicker.jsx';
 import { openPrintable, tableHtml, chipsHtml } from '../utils/pdfReport.js';
 import Avatar from '../components/ui/Avatar.jsx';
+import { useAddButton } from '../hooks/useMedia.js';
 
 /**
  * Task manager (Linear / Asana style).
@@ -78,6 +79,7 @@ export default function Tasks({ authFetch, showToast, currentUser, onTasksChange
   const [quickDue, setQuickDue] = useState('');
   const [busy, setBusy] = useState(false);
   const [dragId, setDragId] = useState(null);
+  useAddButton('tasks', useCallback(() => setOpenId('new'), []));
 
   const load = useCallback(async () => {
     try {
@@ -179,8 +181,8 @@ export default function Tasks({ authFetch, showToast, currentUser, onTasksChange
               </button>
             ))}
           </div>
-          <button type="button" onClick={exportPdf} className="mp-btn mp-btn-line min-h-[40px] hidden sm:inline-flex">PDF</button>
-          <button type="button" onClick={() => setOpenId('new')} className="mp-btn mp-btn-red min-h-[40px]"><Plus className="w-4 h-4" /> New task</button>
+          <span className="hidden sm:contents"><button type="button" onClick={exportPdf} className="mp-btn mp-btn-line min-h-[40px]">PDF</button></span>
+          <span className="hidden lg:contents"><button type="button" onClick={() => setOpenId('new')} className="mp-btn mp-btn-red min-h-[40px]"><Plus className="w-4 h-4" /> New task</button></span>
         </div>
       </div>
 
@@ -197,9 +199,9 @@ export default function Tasks({ authFetch, showToast, currentUser, onTasksChange
       {/* Quick add */}
       <form onSubmit={addQuick} className="bg-white rounded-2xl border border-slate-200 shadow-[0_1px_3px_rgba(16,24,40,0.06)] p-2 flex flex-wrap items-center gap-2">
         <span className="w-8 h-8 grid place-items-center rounded-lg bg-red-50 text-[#D0121B] shrink-0"><Plus className="w-4 h-4" /></span>
-        <input value={quickTitle} onChange={(e) => setQuickTitle(e.target.value)} placeholder={canAssign ? 'Add a task and press Enter… e.g. “Call Sohar Wholesale about samples”' : 'Add a task for yourself and press Enter…'}
-          className="flex-1 min-w-[200px] h-10 px-1 text-[14px] bg-transparent outline-none border-0 focus:shadow-none" maxLength={200} aria-label="New task title" />
-        <select value={quickDue} onChange={(e) => setQuickDue(e.target.value)} className="h-9 px-2 rounded-lg border border-slate-200 text-xs bg-white" aria-label="Due">
+        <input value={quickTitle} onChange={(e) => setQuickTitle(e.target.value)} placeholder={canAssign ? 'Quick task… e.g. “Call Sohar Wholesale”' : 'Quick task for yourself…'}
+          className="flex-1 min-w-0 sm:min-w-[200px] h-11 sm:h-10 px-1 text-[15px] sm:text-[14px] bg-transparent outline-none border-0 focus:shadow-none" maxLength={200} aria-label="New task title" />
+        <select value={quickDue} onChange={(e) => setQuickDue(e.target.value)} className={`h-11 sm:h-9 px-2 rounded-lg border border-slate-200 text-sm sm:text-xs bg-white flex-1 sm:flex-none ${quickTitle ? '' : 'hidden sm:block'}`} aria-label="Due">
           <option value="">No due date</option>
           <option value={quick(0)}>Today</option>
           <option value={quick(1, 10)}>Tomorrow</option>
@@ -207,17 +209,17 @@ export default function Tasks({ authFetch, showToast, currentUser, onTasksChange
           <option value={quick(7, 10)}>Next week</option>
         </select>
         {canAssign && (
-          <select value={quickWho} onChange={(e) => setQuickWho(e.target.value)} className="h-9 px-2 rounded-lg border border-slate-200 text-xs bg-white max-w-[200px]" aria-label="Assign to">
+          <select value={quickWho} onChange={(e) => setQuickWho(e.target.value)} className={`h-11 sm:h-9 px-2 rounded-lg border border-slate-200 text-sm sm:text-xs bg-white flex-1 sm:flex-none min-w-0 sm:max-w-[200px] ${quickTitle ? '' : 'hidden sm:block'}`} aria-label="Assign to">
             <option value="">Me</option>
             <PeopleOptions people={people.filter((p) => !p.me)} />
           </select>
         )}
-        <button type="submit" disabled={busy || quickTitle.trim().length < 2} className="mp-btn mp-btn-dark min-h-[36px] text-xs disabled:opacity-40">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}</button>
+        <span className={quickTitle ? 'contents' : 'hidden sm:contents'}><button type="submit" disabled={busy || quickTitle.trim().length < 2} className="mp-btn mp-btn-dark min-h-[44px] sm:min-h-[36px] text-xs disabled:opacity-40">{busy ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}</button></span>
       </form>
 
       {/* Filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <label className="mp-fchip min-w-[220px]">
+        <label className="mp-fchip min-w-0 flex-1 sm:flex-none sm:min-w-[220px] min-h-[44px] sm:min-h-0">
           <Search className="w-3.5 h-3.5" />
           <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search tasks…" className="bg-transparent outline-none border-0 text-[12.5px] w-full focus:shadow-none" aria-label="Search tasks" />
           {q && <button type="button" onClick={() => setQ('')} aria-label="Clear"><X className="w-3.5 h-3.5" /></button>}
