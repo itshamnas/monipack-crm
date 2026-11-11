@@ -4,7 +4,7 @@
    Styling only.
    ========================================================================== */
 :root {
-  --mp-display: 'Outfit', 'Plus Jakarta Sans', Inter, system-ui, sans-serif;
+  --mp-display: var(--mp-font);
   --mp-side-bg: #0C111D;
   --mp-side-2: #141B2B;
   --mp-side-line: #1E2738;
@@ -32,7 +32,7 @@ main h1, main h2, main h3, #monipack-header-region h2, .mp-display { font-family
 .mp-side-logo:hover img { transform: rotate(-4deg) scale(1.06); }
 .mp-side-name { min-width: 0; }
 .mp-side-name b { display: flex; align-items: center; gap: 6px; font-size: 19px; line-height: 1; color: #fff; }
-.mp-side-name b i { font: 800 9px Inter, sans-serif; font-style: normal; letter-spacing: 0.08em; color: #fff; background: #D0121B; padding: 2px 5px; border-radius: 5px; }
+.mp-side-name b i { font: 800 9px var(--mp-font); font-style: normal; letter-spacing: 0.08em; color: #fff; background: #D0121B; padding: 2px 5px; border-radius: 5px; }
 .mp-side-name small { display: block; font-size: 10.5px; color: var(--mp-side-mute); margin-top: 4px; white-space: nowrap; }
 .mp-side-close { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; color: var(--mp-side-ink); background: var(--mp-side-2); border: 1px solid var(--mp-side-line); }
 
@@ -118,7 +118,7 @@ main h1, main h2, main h3, #monipack-header-region h2, .mp-display { font-family
 @keyframes mp-bp-in { from { opacity: 0; transform: translateY(-6px) scale(0.98); } }
 .mp-bp-search { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid #E7E9EF; color: #8A96A8; }
 .mp-bp-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 14px; color: #0B1220; }
-.mp-bp-search kbd, .mp-bp-foot kbd { font: 600 10.5px Inter, sans-serif; padding: 1px 5px; border-radius: 5px; border: 1px solid #E7E9EF; background: #F8F9FB; color: #6B7587; }
+.mp-bp-search kbd, .mp-bp-foot kbd { font: 600 10.5px var(--mp-font); padding: 1px 5px; border-radius: 5px; border: 1px solid #E7E9EF; background: #F8F9FB; color: #6B7587; }
 .mp-bp-list { overflow-y: auto; padding: 6px; overscroll-behavior: contain; }
 .mp-bp-group { display: flex; justify-content: space-between; padding: 10px 10px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: #98A2B3; }
 .mp-bp-opt { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 10px; text-align: left; transition: background 0.1s; }
@@ -147,7 +147,7 @@ main h1, main h2, main h3, #monipack-header-region h2, .mp-display { font-family
 /* ---------- Header: frosted glass ---------- */
 #monipack-header-region { background: color-mix(in srgb, var(--color-component-bg, #fff) 84%, transparent) !important; backdrop-filter: blur(14px) saturate(1.4); -webkit-backdrop-filter: blur(14px) saturate(1.4); }
 #monipack-header-region > div { background: transparent !important; box-shadow: none !important; }
-.mp-kbd { font: 600 10.5px Inter, sans-serif; padding: 1px 6px; border-radius: 6px; border: 1px solid #E2E8F0; background: #fff; color: #6B7587; }
+.mp-kbd { font: 600 10.5px var(--mp-font); padding: 1px 6px; border-radius: 6px; border: 1px solid #E2E8F0; background: #fff; color: #6B7587; }
 html.dark .mp-kbd { background: #0E1522; border-color: #1F2A3C; color: #8A96A8; }
 
 /* ---------- Phone bottom bar: centre "New enquiry" button ---------- */

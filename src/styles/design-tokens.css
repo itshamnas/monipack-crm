@@ -29,9 +29,9 @@
   --color-silver: #E5E7EB;
 
   /* Typography */
-  --font-sans: 'Outfit', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-monipack: 'Nadianne', 'Inter', system-ui, sans-serif;
-  --font-nadianne: 'Nadianne', 'Inter', system-ui, sans-serif;
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
+  --font-monipack: 'Nadianne', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
+  --font-nadianne: 'Nadianne', ui-sans-serif, -apple-system, 'Segoe UI', sans-serif;
 
   /* Dimensions */
   --spacing-sidebar: 250px;
@@ -86,8 +86,8 @@
   /* ==========================================================================
      2. Typography Foundations
      ========================================================================== */
-  --font-sans: 'Outfit', 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-arabic: 'Cairo', system-ui, sans-serif;
+  --font-sans: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
+  --font-arabic: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Display", "Segoe UI", Helvetica, "Apple Color Emoji", Arial, sans-serif, "Segoe UI Emoji", "Segoe UI Symbol";
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
   --font-size-xs: 0.75rem;    /* 12px */
