@@ -27,6 +27,7 @@ import {
   MapPin,
   Edit2,
   KeyRound,
+  Camera,
   X
 } from 'lucide-react';
 
@@ -36,6 +37,7 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
   const [settings, setSettings] = useState(null);
   const [usersList, setUsersList] = useState([]);
   const [photoFor, setPhotoFor] = useState(null); // super admin changing someone's photo
+  const [newUserPhotoOpen, setNewUserPhotoOpen] = useState(false);
   const saveUserPhoto = async (u, dataUrl) => {
     const photoUrl = await sendPhoto(authFetch, `/api/users/${u.id}/photo`, dataUrl);
     setUsersList((list) => list.map((x) => (x.id === u.id ? { ...x, photoUrl } : x)));
@@ -327,13 +329,18 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
       return;
     }
     try {
+      const { photo: _photo, ...userBody } = newUser;
       const res = await authFetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newUser),
+        body: JSON.stringify(userBody),
       });
 
       if (res.ok) {
+        const made = await res.json().catch(() => ({}));
+        if (newUser.photo && made?.id) {
+          try { await sendPhoto(authFetch, `/api/users/${made.id}/photo`, newUser.photo); } catch { showToast('Account created, but the photo could not be saved. Tap their picture to add it.', 'error'); }
+        }
         showToast(`Account for ${newUser.name} created. They must change the password at first login.`);
         setIsAddUserOpen(false);
         setNewUser(emptyNewUser);
@@ -1419,6 +1426,20 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
             </div>
 
             <form onSubmit={handleCreateUser} className="p-6 space-y-4">
+              {/* Photo first: it then shows on every page where this person appears */}
+              <div className="flex items-center gap-3">
+                <button type="button" onClick={() => setNewUserPhotoOpen(true)} className="relative rounded-full hover:ring-2 hover:ring-blue-400/60 transition" aria-label={newUser.photo ? 'Change photo' : 'Add photo'}>
+                  {newUser.photo
+                    ? <img src={newUser.photo} alt="" className="w-14 h-14 rounded-full object-cover" />
+                    : <Avatar name={newUser.name || '?'} size={56} />}
+                  <span className="absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full bg-blue-600 text-white grid place-items-center ring-2 ring-white"><Camera className="w-3.5 h-3.5" /></span>
+                </button>
+                <div className="text-xs text-slate-600">
+                  <b className="block text-slate-800">{newUser.photo ? 'Photo ready' : 'Photo (optional)'}</b>
+                  {newUser.photo ? <button type="button" className="text-rose-600 font-semibold min-h-[32px]" onClick={() => setNewUser({ ...newUser, photo: '' })}>Remove</button>
+                    : 'Shows next to their name everywhere. A salesman login uses his salesman photo if he has one.'}
+                </div>
+              </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">Staff Full Name</label>
                 <input
@@ -1600,6 +1621,10 @@ export default function Settings({ authFetch, showToast, currentUser, onRefreshC
             </form>
           </div>
         </div>
+      )}
+      {newUserPhotoOpen && (
+        <PhotoPicker name={newUser.name || 'New staff'} photoUrl={null} title="Photo for the new account"
+          onSave={(d) => setNewUser((u) => ({ ...u, photo: d }))} onRemove={() => setNewUser((u) => ({ ...u, photo: '' }))} onClose={() => setNewUserPhotoOpen(false)} />
       )}
       {photoFor && (
         <PhotoPicker

@@ -1,6 +1,10 @@
 import React, { useMemo, useState } from 'react';
-import { Download, ClipboardPaste, CheckCircle2, AlertTriangle, Loader2, Copy, Printer, MessageCircle, Users, ArrowRight, RotateCcw } from 'lucide-react';
+import { Download, ClipboardPaste, CheckCircle2, AlertTriangle, Loader2, Copy, Printer, MessageCircle, Users, ArrowRight, RotateCcw, Camera } from 'lucide-react';
 import { openPrintable, tableHtml, noteHtml } from '../utils/pdfReport.js';
+import Avatar from '../components/ui/Avatar.jsx';
+import PhotoPicker from '../components/ui/PhotoPicker.jsx';
+import { sendPhoto } from '../utils/photo.js';
+import { photoOf } from '../utils/people.js';
 
 /**
  * Settings → Team setup (super admin): paste branches, salesmen and staff from Excel, check, then create them all at once.
@@ -65,6 +69,7 @@ export default function TeamSetup({ authFetch, showToast, onDone }) {
   const [check, setCheck] = useState(null); // server preview
   const [done, setDone] = useState(null);   // server result after creating
   const [busy, setBusy] = useState('');
+  const [photoFor, setPhotoFor] = useState(null);
   const rows = useMemo(() => parseTeam(text), [text]);
   const counts = useMemo(() => rows.reduce((m, r) => ({ ...m, [r.job || 'unknown']: (m[r.job || 'unknown'] || 0) + 1 }), {}), [rows]);
 
@@ -139,6 +144,33 @@ export default function TeamSetup({ authFetch, showToast, onDone }) {
                 ))}
               </ul>
             </>
+          )}
+          {done.people?.length > 0 && (
+            <div className="mt-5">
+              <h3 className="text-[15px] font-bold">Add their photos</h3>
+              <p className="text-sm text-slate-600">Tap a face to take or choose a photo. It then shows next to their name on every page.</p>
+              <ul className="mt-3 grid grid-cols-3 sm:grid-cols-5 lg:grid-cols-7 gap-3">
+                {done.people.map((p) => (
+                  <li key={`${p.userId || ''}-${p.salesmanId || ''}`}>
+                    <button type="button" onClick={() => setPhotoFor(p)} className="w-full flex flex-col items-center gap-1.5 p-2 rounded-2xl hover:bg-slate-50 min-h-[44px]"
+                      aria-label={`${photoOf(p.name) ? 'Change' : 'Add'} photo for ${p.name}`}>
+                      <span className="relative">
+                        <Avatar name={p.name} size={56} />
+                        <span className="absolute -bottom-0.5 -right-0.5 w-6 h-6 rounded-full bg-blue-600 text-white grid place-items-center ring-2 ring-white"><Camera className="w-3.5 h-3.5" /></span>
+                      </span>
+                      <span className="text-[12px] font-semibold text-center leading-tight line-clamp-2">{p.name}</span>
+                      <span className="text-[11px] text-slate-500 text-center leading-tight">{p.job}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {photoFor && (
+            <PhotoPicker name={photoFor.name} photoUrl={photoOf(photoFor.name)} title={`Photo for ${photoFor.name}`}
+              onSave={async (d) => { await sendPhoto(authFetch, photoFor.salesmanId ? `/api/salesmen/${photoFor.salesmanId}/photo` : `/api/users/${photoFor.userId}/photo`, d); showToast(`Photo saved for ${photoFor.name}.`); }}
+              onRemove={async () => { await sendPhoto(authFetch, photoFor.salesmanId ? `/api/salesmen/${photoFor.salesmanId}/photo` : `/api/users/${photoFor.userId}/photo`, null); }}
+              onClose={() => setPhotoFor(null)} />
           )}
           <p className="mt-4 text-sm text-slate-600">Next: in <b>Staff logins</b>, tick <b>Can export</b> for any manager who should download reports. In <b>Salesmen &amp; links</b>, switch on the personal link for salesmen without a login.</p>
           <button type="button" className={`${btn} mt-4 bg-white border border-slate-200`} onClick={() => { setDone(null); setText(''); }}><RotateCcw className="w-4 h-4" /> Add more</button>

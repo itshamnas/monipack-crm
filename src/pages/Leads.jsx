@@ -3,6 +3,7 @@ import { QUOTE_STATUS, effectiveQuoteStatus } from '../components/QuoteStatus.js
 import { createPortal } from 'react-dom';
 import Sheet from '../components/ui/Sheet.jsx';
 import MoreMenu from '../components/ui/MoreMenu.jsx';
+import Avatar from '../components/ui/Avatar.jsx';
 import { 
   Users, 
   Kanban, 
@@ -426,7 +427,7 @@ export default function Leads({
         {/* Footer: salesman · quick actions · value */}
         <div className="mt-3 pt-2.5 border-t border-dashed border-slate-200 flex items-center gap-2">
           {lead.salesman ? (
-            <span className="w-6 h-6 rounded-full grid place-items-center text-[9px] font-bold text-white shrink-0" style={avatarStyle(lead.salesman)} title={`Salesman: ${lead.salesman}`}>{initialsOf(lead.salesman)}</span>
+            <Avatar name={lead.salesman} size={24} title={`Salesman: ${lead.salesman}`} />
           ) : (
             <span className="w-6 h-6 rounded-full grid place-items-center shrink-0 border border-dashed border-slate-300 text-slate-300" title="No salesman yet"><UserCheck className="w-3 h-3" /></span>
           )}
@@ -1029,8 +1030,8 @@ if (!ok && showToast) showToast('Allow pop-ups to download the PDF', 'error');
                     <td className="py-3 px-4 text-slate-600 font-medium whitespace-nowrap">
                       <div className="font-bold text-slate-800">{lead.branch || 'Ghala'}</div>
                       {lead.salesman && (
-                        <div className="text-[10px] text-emerald-700 flex items-center gap-1 font-semibold">
-                          <UserCheck className="w-2.5 h-2.5 shrink-0" />
+                        <div className="text-[10px] text-emerald-700 flex items-center gap-1 font-semibold mt-0.5">
+                          <Avatar name={lead.salesman} size={16} />
                           <span>{lead.salesman}</span>
                         </div>
                       )}
@@ -1252,7 +1253,7 @@ if (!ok && showToast) showToast('Allow pop-ups to download the PDF', 'error');
 
                       {lead.salesman && (
                         <div className="mt-2 text-[10px] text-emerald-800 font-semibold bg-emerald-50 px-2 py-1 rounded border border-emerald-100 flex items-center gap-1">
-                          <UserCheck className="w-3 h-3 text-emerald-600" />
+                          <Avatar name={lead.salesman} size={18} />
                           <span>Sales Rep: <strong>{lead.salesman}</strong> ({lead.branch})</span>
                         </div>
                       )}

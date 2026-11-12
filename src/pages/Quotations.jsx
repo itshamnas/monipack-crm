@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAddButton } from '../hooks/useMedia.js';
+import Avatar from '../components/ui/Avatar.jsx';
 import { 
   FileText, 
   Plus, 
@@ -1639,7 +1640,7 @@ export default function Quotations({
                           </div>
                         )}
                       </td>
-                      <td className="py-3 px-4 text-slate-600">{q.salesRep}</td>
+                      <td className="py-3 px-4 text-slate-600">{q.salesRep && <span className="inline-flex items-center gap-2 whitespace-nowrap"><Avatar name={q.salesRep} size={22} />{q.salesRep}</span>}</td>
                       <td className="py-3 px-4 text-center whitespace-nowrap">
                         <div className="flex items-center justify-center gap-1.5">
                           <button

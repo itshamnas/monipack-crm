@@ -27,6 +27,7 @@ import {
 } from 'lucide-react';
 import Sheet from '../components/ui/Sheet.jsx';
 import MoreMenu from '../components/ui/MoreMenu.jsx';
+import Avatar from '../components/ui/Avatar.jsx';
 import CustomerCareModal from '../components/CustomerCareModal';
 import LeadImportModal from '../components/LeadImportModal';
 import ShareModal from '../components/ShareModal';
@@ -662,7 +663,7 @@ export default function CustomerCare({
                 {/* Assigned Salesman if any */}
                 {lead.salesman && (
                   <div className="mt-2.5 flex items-center gap-1.5 text-xs text-emerald-800 bg-emerald-50 px-2 py-1 rounded border border-emerald-100">
-                    <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <Avatar name={lead.salesman} size={20} />
                     <span>Assigned Salesman: <strong>{lead.salesman}</strong> ({lead.branch})</span>
                   </div>
                 )}
