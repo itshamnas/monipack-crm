@@ -1,3 +1,4 @@
+import { refreshPeople } from './people.js';
 /**
  * Read an image file and return a square JPEG data URL (default 320x320, about 30-80 KB).
  * crop: { zoom >= 1, x, y } where x / y move the picture (-1..1) inside the square.
@@ -34,5 +35,6 @@ export async function sendPhoto(fetcher, path, dataUrl) {
     : { method: 'DELETE' });
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(body.error || 'Could not save the photo.');
+  refreshPeople(); // the new face shows everywhere straight away
   return body.photoUrl || null;
 }

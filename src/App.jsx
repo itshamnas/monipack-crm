@@ -35,6 +35,7 @@ import MobileBottomNav from './components/layout/MobileBottomNav.jsx';
 import OfflineBanner from './components/pwa/OfflineBanner.jsx';
 import { getApiUrl } from './api/config.js';
 import { sendPhoto } from './utils/photo.js';
+import { loadPeople, clearPeople } from './utils/people.js';
 
 export default function App() {
   // Authentication State
@@ -117,6 +118,7 @@ export default function App() {
   };
 
   const handleLogout = (showToastNotice = true) => {
+    clearPeople();
     setToken('');
     setCurrentUser(null);
     localStorage.removeItem('monipack_auth_token');
@@ -227,6 +229,7 @@ export default function App() {
   const fetchData = useCallback(async () => {
     if (!token || currentUser?.mustChangePassword) return;
     setLoading(true);
+    loadPeople(authFetch);
     try {
       const [statsRes, leadsRes, prodsRes, quotesRes, branchesRes, configRes] = await Promise.all([
         authFetch('/api/analytics'),

@@ -1,6 +1,8 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Check, ChevronsUpDown, MapPin } from 'lucide-react';
+import { photoOf, usePeopleVersion } from '../../utils/people.js';
+import { getApiUrl } from '../../api/config.js';
 
 /**
  * Searchable branch & sales-rep picker (replaces the long native dropdown).
@@ -10,6 +12,13 @@ import { Search, Check, ChevronsUpDown, MapPin } from 'lucide-react';
 const initials = (s = '') => s.split(/\s+/).filter(Boolean).map((w) => w[0]).slice(0, 2).join('').toUpperCase() || '—';
 const hue = (s = '') => { let h = 0; for (const c of s) h = (h * 31 + c.charCodeAt(0)) % 360; return h; };
 export const avatarStyle = (s) => ({ background: `linear-gradient(135deg, hsl(${hue(s)} 62% 52%), hsl(${(hue(s) + 30) % 360} 58% 38%))` });
+/** The salesman's photo when there is one, else coloured initials */
+const face = (name) => {
+  const url = photoOf(name);
+  return url
+    ? <img className="mp-bp-av object-cover" src={getApiUrl(url)} alt="" aria-hidden="true" />
+    : <span className="mp-bp-av" style={avatarStyle(name || '')}>{initials(name)}</span>;
+};
 const keyOf = (b) => String(b.id ?? b.name);
 
 export default function BranchPicker({
@@ -23,6 +32,7 @@ export default function BranchPicker({
   id,
   disabled = false,
 }) {
+  usePeopleVersion();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState('');
   const [act, setAct] = useState(0);
@@ -106,7 +116,7 @@ export default function BranchPicker({
         onClick={() => setOpen((o) => !o)}
         className={variant === 'dark' ? 'mp-bp-trigger mp-bp-dark' : 'mp-bp-trigger mp-bp-light'}
       >
-        <span className="mp-bp-av" style={isAll ? undefined : avatarStyle(selected?.salesman || selected?.name || '')}>{who}</span>
+        {isAll ? <span className="mp-bp-av">{who}</span> : face(selected?.salesman || selected?.name || '')}
         <span className="mp-bp-txt"><b>{label}</b>{sub && <small>{sub}</small>}</span>
         <ChevronsUpDown className="mp-bp-chev" aria-hidden="true" />
       </button>
@@ -139,7 +149,7 @@ export default function BranchPicker({
                     {o.all ? (
                       <><span className="mp-bp-av mp-bp-all">ALL</span><span className="mp-bp-txt"><b>{allLabel}</b><small>{branches.length} hubs across Oman</small></span></>
                     ) : (
-                      <><span className="mp-bp-av" style={avatarStyle(o.b.salesman || o.b.name)}>{initials(o.b.salesman || o.b.name)}</span>
+                      <>{face(o.b.salesman || o.b.name)}
                         <span className="mp-bp-txt"><b>{o.b.name}</b><small>{[o.b.city, o.b.salesman ? `Rep: ${o.b.salesman}` : ''].filter(Boolean).join(' · ')}</small></span></>
                     )}
                     <Check className="mp-bp-ok" aria-hidden="true" />
