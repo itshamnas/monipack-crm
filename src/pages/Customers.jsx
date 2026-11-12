@@ -593,7 +593,7 @@ function CustomerList({ authFetch, showToast, canManage, canExport = false, init
                   <span className="block text-[13px] text-slate-500 tabular-nums mt-0.5">
                     {[c.mobile, c.noCr ? 'No CR' : c.crNumber && `CR ${c.crNumber}`].filter(Boolean).join(' · ') || 'No details yet'}
                   </span>
-                  <span className="block text-[12.5px] text-slate-600 mt-0.5">{c.salesmanName || 'No salesman'}</span>
+                  <span className="flex items-center gap-1.5 text-[12.5px] text-slate-600 mt-0.5">{c.salesmanName && <Avatar name={c.salesmanName} size={18} />}{c.salesmanName || 'No salesman'}</span>
                   {(c.leadCount > 0 || c.quoteCount > 0) && (
                     <span className="block text-[12px] text-slate-500 mt-0.5">
                       {c.leadCount} enquir{c.leadCount === 1 ? 'y' : 'ies'}{c.quoteCount ? ` · ${c.quoteCount} quote${c.quoteCount === 1 ? '' : 's'}` : ''}{c.wonValue ? ` · OMR ${c.wonValue.toFixed(3)} won` : ''}
@@ -654,7 +654,7 @@ function CustomerList({ authFetch, showToast, canManage, canExport = false, init
                   )}
                   <span className="block md:hidden text-[11px] text-slate-500">{c.salesmanName || 'No salesman'}</span>
                 </td>
-                <td className="px-3 py-3 text-slate-600 whitespace-nowrap hidden md:table-cell">{c.salesmanName || 'No salesman'}</td>
+                <td className="px-3 py-3 text-slate-600 whitespace-nowrap hidden md:table-cell">{c.salesmanName ? <span className="inline-flex items-center gap-2"><Avatar name={c.salesmanName} size={22} />{c.salesmanName}</span> : 'No salesman'}</td>
                 <td className="px-3 py-3 whitespace-nowrap">
                   <StatusBadge status={c.stage} />
                   {c.stage !== 'not_started' && <span className="block mt-1"><PercentBar value={c.percent} width="w-16" /></span>}

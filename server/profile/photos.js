@@ -34,8 +34,12 @@ function store(dataUrl) {
   fs.writeFileSync(path.join(DIR(), key), buf, { mode: 0o640 });
   return key;
 }
-function remove(key) {
-  if (key && NAME_RE.test(key)) { try { fs.unlinkSync(path.join(DIR(), key)); } catch { /* already gone */ } }
+// Delete an old photo file only when nobody uses it any more (a salesman and his login share one file)
+async function remove(key) {
+  if (!key || !NAME_RE.test(key)) return;
+  const { rows } = await query('SELECT 1 FROM users WHERE photo_key = $1 UNION ALL SELECT 1 FROM salesmen WHERE photo_key = $1 LIMIT 1', [key]);
+  if (rows.length) return;
+  try { fs.unlinkSync(path.join(DIR(), key)); } catch { /* already gone */ }
 }
 
 async function setPhoto(table, id, dataUrl) {
@@ -43,22 +47,12 @@ async function setPhoto(table, id, dataUrl) {
   if (!rows[0]) throw Object.assign(new Error('Not found.'), { status: 404 });
   const key = dataUrl ? store(dataUrl) : null;
   await query(`UPDATE ${table} SET photo_key = $1, updated_at = now() WHERE id = $2`, [key, id]);
-  remove(rows[0].photo_key);
+  await remove(rows[0].photo_key);
   return photoUrl(key);
 }
-// One person, one photo: a salesman's record and his login share the same picture (each keeps its own file copy)
-export async function setUserPhoto(id, dataUrl) {
-  const url = await setPhoto('users', parseInt(id, 10), dataUrl);
-  const { rows } = await query('SELECT salesman_id FROM users WHERE id = $1', [parseInt(id, 10)]);
-  if (rows[0]?.salesman_id) await setPhoto('salesmen', rows[0].salesman_id, dataUrl).catch(() => {});
-  return url;
-}
-export async function setSalesmanPhoto(id, dataUrl) {
-  const url = await setPhoto('salesmen', parseInt(id, 10), dataUrl);
-  const { rows } = await query('SELECT id FROM users WHERE salesman_id = $1', [parseInt(id, 10)]);
-  if (rows[0]) await setPhoto('users', rows[0].id, dataUrl).catch(() => {});
-  return url;
-}
+// One person, one photo: database triggers (migration 027) copy the photo between a salesman and his login
+export const setUserPhoto = (id, dataUrl) => setPhoto('users', parseInt(id, 10), dataUrl);
+export const setSalesmanPhoto = (id, dataUrl) => setPhoto('salesmen', parseInt(id, 10), dataUrl);
 
 export function registerPhotoRoutes(app, { authMiddleware, asyncHandler, photoJsonParser }) {
   const send = (res, err) => res.status(err.status || 500).json({ error: err.status ? err.message : 'Could not save the photo.' });
@@ -75,6 +69,16 @@ export function registerPhotoRoutes(app, { authMiddleware, asyncHandler, photoJs
     res.type(name.split('.').pop());
     return res.sendFile(full);
   });
+
+  // Everyone's photo, so a face shows wherever a name shows (names only; no contact details)
+  app.get('/api/people/photos', authMiddleware, asyncHandler(async (req, res) => {
+    const { rows } = await query(`
+      SELECT 'u' AS kind, id, name, salesman_id, photo_key FROM users WHERE photo_key IS NOT NULL
+      UNION ALL
+      SELECT 's' AS kind, id, name, NULL, photo_key FROM salesmen WHERE photo_key IS NOT NULL AND archived_at IS NULL`);
+    res.setHeader('Cache-Control', 'private, no-cache');
+    res.json(rows.map((r) => ({ name: r.name, photoUrl: photoUrl(r.photo_key), userId: r.kind === 'u' ? String(r.id) : null, salesmanId: r.kind === 's' ? String(r.id) : (r.salesman_id ? String(r.salesman_id) : null) })));
+  }));
 
   // My own photo (every signed-in person)
   app.put('/api/me/photo', authMiddleware, photoJsonParser, asyncHandler(async (req, res) => {

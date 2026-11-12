@@ -74,6 +74,7 @@ export async function runTeamSetup(rawRows, { dryRun = true } = {}) {
 
   const client = await pool.connect();
   const logins = [];
+  const people = []; // everyone in the list, so photos can be added straight after
   try {
     await client.query('BEGIN');
     const q = (sql, params) => client.query(sql, params);
@@ -118,17 +119,18 @@ export async function runTeamSetup(rawRows, { dryRun = true } = {}) {
 
     const ensureLogin = async (i, r, role, salesmanId) => {
       const { rows: [u] } = await q('SELECT id FROM users WHERE lower(email) = $1', [r.email]);
-      if (u) { results[i].actions.push(`${r.email} already has a login, not changed`); return; }
+      if (u) { results[i].actions.push(`${r.email} already has a login, not changed`); return u.id; }
       if (salesmanId) {
         const { rows: [has] } = await q('SELECT email FROM users WHERE salesman_id = $1', [salesmanId]);
-        if (has) { results[i].actions.push(`${r.name} already signs in as ${has.email}, not changed`); return; }
+        if (has) { results[i].actions.push(`${r.name} already signs in as ${has.email}, not changed`); return null; }
       }
       const password = tempPassword();
-      await q(`INSERT INTO users (name, email, role, can_export, password_hash, salesman_id, must_change_password, phone)
-               VALUES ($1, $2, $3, false, $4, $5, true, $6)`,
+      const { rows: [nu] } = await q(`INSERT INTO users (name, email, role, can_export, password_hash, salesman_id, must_change_password, phone)
+               VALUES ($1, $2, $3, false, $4, $5, true, $6) RETURNING id`,
         [r.name, r.email, role, bcrypt.hashSync(password, 10), salesmanId || null, r.phone ? r.phone.slice(0, 20) : null]);
       results[i].actions.push(`Login ${r.email} (${JOBS[r.job].label})`);
       logins.push({ name: r.name, email: r.email, job: JOBS[r.job].label, password: dryRun ? '' : password, phone: r.phone });
+      return nu.id;
     };
 
     // Shops first, so salesmen rows can point at a shop added lower down the list
@@ -146,13 +148,16 @@ export async function runTeamSetup(rawRows, { dryRun = true } = {}) {
         if (b.type === 'b2b') { fail(i, `"${b.name}" is a B2B branch. Use the job B2B salesman.`); continue; }
         const sm = await ensureSalesman(i, r, b, 'branch');
         if (r.email) await ensureLogin(i, r, 'salesman', sm.id);
+        people.push({ name: sm.name, job: JOBS[r.job].label, salesmanId: String(sm.id) });
       } else if (r.job === 'b2b_salesman') {
         const b = await ensureBranch(i, { name: r.branch || r.name, city: r.city, phone: r.phone, type: 'b2b' });
         if (!b) continue;
         const sm = await ensureSalesman(i, r, b, 'route_b2b');
         if (r.email) await ensureLogin(i, r, 'salesman', sm.id);
+        people.push({ name: sm.name, job: JOBS[r.job].label, salesmanId: String(sm.id) });
       } else if (JOBS[r.job]?.role && r.job !== 'branch') {
-        await ensureLogin(i, r, JOBS[r.job].role, null);
+        const uid = await ensureLogin(i, r, JOBS[r.job].role, null);
+        if (uid) people.push({ name: r.name, job: JOBS[r.job].label, userId: String(uid) });
       }
     }
     await q(dryRun ? 'ROLLBACK' : 'COMMIT');
@@ -163,7 +168,7 @@ export async function runTeamSetup(rawRows, { dryRun = true } = {}) {
     client.release();
   }
   const problems = results.filter((r) => r.problem).length;
-  return { dryRun, ok: problems === 0, problems, results, logins };
+  return { dryRun, ok: problems === 0, problems, results, logins, people: dryRun ? [] : people };
 }
 
 export function registerTeamSetupRoutes(app, { authMiddleware, superAdminOnly, asyncHandler, audit }) {
