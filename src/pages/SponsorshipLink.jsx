@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Lock, Loader2, CheckCircle2, AlertTriangle, PenLine, MessageSquareWarning, ShieldCheck, Printer, Clock3, X } from 'lucide-react';
 import { getApiUrl } from '../api/config.js';
-import SponsorDocument, { fmtDateTime } from '../components/sponsorship/SponsorDoc.jsx';
+import SponsorDocument, { fmtDateTime, omr } from '../components/sponsorship/SponsorDoc.jsx';
 import SignaturePad from '../components/ui/SignaturePad.jsx';
 
 /**
@@ -122,6 +122,7 @@ function ActionPanel({ data, onDone, onStale }) {
   const [err, setErr] = useState('');
   const sig = useRef(null);
   const ready = agree && typed.trim().length >= 3 && hasSig;
+  const myParty = data.doc.parties.find((p) => data.me.company && p.company === data.me.company);
 
   const send = async (decision) => {
     setBusy(true); setErr('');
@@ -150,6 +151,14 @@ function ActionPanel({ data, onDone, onStale }) {
 
       {mode === 'approve' ? (
         <div className="mt-5 space-y-5">
+          {myParty && (
+            <div className="flex items-center justify-between gap-3 p-4 rounded-2xl bg-slate-50">
+              <span className="text-[14px] text-slate-600">Your share ({myParty.sharePct}%)</span>
+              <b className="text-[18px] tabular-nums">{omr(myParty.amount, data.doc.currency)}</b>
+            </div>
+          )}
+          <button type="button" onClick={() => document.getElementById('sp-terms')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+            className="text-[14px] font-semibold text-[#2F5BEA] underline underline-offset-2 min-h-[40px]">Read the terms and conditions</button>
           <label className="flex items-start gap-3 p-4 rounded-2xl border border-slate-200 cursor-pointer has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50/50">
             <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-0.5 w-6 h-6 accent-emerald-600 shrink-0" />
             <span className="text-[14.5px] leading-snug">I have read this sponsorship confirmation and <b>agree to the terms and conditions</b>. I am authorised to approve it{data.me.company ? ` for ${data.me.company}` : ''}.</span>
