@@ -277,6 +277,30 @@ async function adminView(id) {
   };
 }
 
+/** Every hour: tell the super admins about links waiting 2+ days for an answer (at most once every 2 days each). */
+export async function remindPending() {
+  const { rows } = await query(`
+    SELECT l.id, l.person_name, l.designation, l.opened_at, e.title, e.version
+      FROM sponsorship_links l JOIN sponsorship_events e ON e.id = l.event_id
+     WHERE l.status = 'pending' AND e.status IN ('md_pending','brand_pending')
+       AND l.created_at < now() - interval '2 days'
+       AND (l.reminded_at IS NULL OR l.reminded_at < now() - interval '2 days')
+       AND NOT (l.role = 'brand' AND e.status = 'md_pending')`);
+  if (!rows.length) return 0;
+  const admins = await superAdmins();
+  for (const r of rows) {
+    await notify(admins, { kind: 'sponsorship', title: `Still waiting: ${r.title}`, body: `${r.person_name} (${r.designation}) has ${r.opened_at ? 'opened but not answered' : 'not opened'} the approval link yet.`, link: 'sponsorships' });
+    await query('UPDATE sponsorship_links SET reminded_at = now() WHERE id = $1', [r.id]);
+  }
+  return rows.length;
+}
+let reminderTimer = null;
+export function startSponsorshipReminders() {
+  if (reminderTimer || process.env.NODE_ENV === 'test') return;
+  reminderTimer = setInterval(() => remindPending().catch((e) => console.error('[sponsorship reminders]', e.message)), 60 * 60 * 1000);
+  reminderTimer.unref?.();
+}
+
 const makePin = () => String(crypto.randomInt(0, 1000000)).padStart(6, '0');
 const makeToken = () => crypto.randomBytes(24).toString('base64url'); // 32 characters, different for every person
 
@@ -405,6 +429,23 @@ export function registerSponsorshipRoutes(app, { authMiddleware, superAdminOnly,
     if (!e) return res.status(404).json({ error: 'Event not found.' });
     await dropImage(e.poster_key); await dropImage(e.banner_key);
     res.json({ ok: true });
+  }));
+
+  // Copy an event (for a similar event): details, split, materials and terms; no links, no responses
+  app.post('/api/sponsorships/:id(\\d+)/duplicate', ...admin, asyncHandler(async (req, res) => {
+    const id = parseInt(req.params.id, 10);
+    const full = await loadEvent(id);
+    if (!full) return res.status(404).json({ error: 'Event not found.' });
+    const d = docOf(full);
+    const v = readEventBody({ ...d, title: `${d.title} (copy)`.slice(0, 200), parties: d.parties.map(({ id: _x, ...p }) => p) });
+    const newId = await tx(async (c) => {
+      const { rows: [e] } = await c.query('INSERT INTO sponsorship_events (title, created_by) VALUES ($1, $2) RETURNING id', [v.title, req.user.id]);
+      await writeEvent(c, e.id, v);
+      await activity(c, e.id, actor(req), `Copied from "${d.title}"`);
+      await afterContentChange(c, e.id, actor(req));
+      return e.id;
+    });
+    res.status(201).json(await adminView(newId));
   }));
 
   // Personal links (the PIN is shown once; make a new one any time)
