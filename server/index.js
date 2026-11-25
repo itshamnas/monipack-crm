@@ -35,7 +35,7 @@ import { registerTwoFactorRoutes, twoFactorRequired, issueChallenge } from './au
 import { registerBackupRoutes, startBackupSchedule } from './backup/daily.js';
 import { recordMiddleware, registerVaultRoutes } from './audit/vault.js';
 import { query as dbQuery } from './db/pool.js';
-import { registerSponsorshipRoutes } from './sponsorships/index.js';
+import { registerSponsorshipRoutes, startSponsorshipReminders } from './sponsorships/index.js';
 import { registerTeamSetupRoutes } from './settings/teamSetup.js';
 import { registerReportRoutes } from './reports/value.js';
 import * as quotePipe from './quotes/pipeline.js';
@@ -1429,6 +1429,7 @@ if (fs.existsSync(distPath)) {
 let server = null;
 if (process.env.NODE_ENV !== 'test') {
   quotePipe.startExpiryJob(); // hourly: expired quotations with no answer → "call the customer" task
+  startSponsorshipReminders(); // hourly: sponsorship links waiting 2+ days → bell reminder
   server = app.listen(PORT, process.env.HOST || '0.0.0.0', () => {
     console.log(`===============================================`);
     console.log(` Monipack CRM Server ACTIVE on port ${PORT}`);

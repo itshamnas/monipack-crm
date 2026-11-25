@@ -380,7 +380,7 @@ function printCertificate(ev) {
 }
 
 // ---------------------------------------------------------------- detail
-function Detail({ id, authFetch, showToast, onBack, onEdit }) {
+function Detail({ id, authFetch, showToast, onBack, onEdit, onOpen }) {
   const [ev, setEv] = useState(null);
   const [pin, setPin] = useState(null);
   const [preview, setPreview] = useState(false);
@@ -410,6 +410,11 @@ function Detail({ id, authFetch, showToast, onBack, onEdit }) {
     const d = await r.json().catch(() => ({}));
     if (r.ok) { showToast('Draft deleted.'); onBack(true); } else showToast(d.error || 'Could not delete', 'error');
   };
+  const duplicate = async () => {
+    const r = await authFetch(`/api/sponsorships/${ev.id}/duplicate`, { method: 'POST' });
+    const d = await r.json().catch(() => ({}));
+    if (r.ok) { showToast('Copy made. Change the name, date and brands, then make the links.'); onOpen(d.id); } else showToast(d.error || 'Could not copy', 'error');
+  };
   const steps = [
     ['Prepared', true],
     ['MD approval', mdApproved],
@@ -430,6 +435,7 @@ function Detail({ id, authFetch, showToast, onBack, onEdit }) {
         <button type="button" onClick={() => setPreview((v) => !v)} className={`${btn} bg-white border border-slate-200`}><Eye className="w-4 h-4" /> {preview ? 'Hide preview' : 'Preview what they see'}</button>
         {hasAnyDecision && <button type="button" onClick={() => { if (!printCertificate(ev)) showToast('Allow pop-ups to print', 'error'); }} className={`${btn} bg-white border border-slate-200`}><Printer className="w-4 h-4" /> Approval certificate (PDF)</button>}
         {ev.status !== 'cancelled' && ev.status !== 'approved' && <button type="button" onClick={cancel} className={`${btn} bg-white border border-rose-200 text-rose-700`}><Ban className="w-4 h-4" /> Cancel event</button>}
+        <button type="button" onClick={duplicate} className={`${btn} bg-white border border-slate-200`}><Copy className="w-4 h-4" /> Make a copy</button>
         {!hasAnyDecision && <button type="button" onClick={remove} className={`${btn} bg-white border border-rose-200 text-rose-700`}><Trash2 className="w-4 h-4" /> Delete draft</button>}
       </div>
 
@@ -523,7 +529,7 @@ export default function Sponsorships({ authFetch, showToast }) {
       onSaved={(d) => { load(); setView({ mode: 'detail', id: d.id }); }} />;
   }
   if (view.mode === 'detail') {
-    return <Detail id={view.id} authFetch={authFetch} showToast={showToast}
+    return <Detail key={view.id} id={view.id} authFetch={authFetch} showToast={showToast} onOpen={(nid) => { load(); setView({ mode: 'detail', id: nid }); }}
       onBack={() => { load(); setView({ mode: 'list' }); }}
       onEdit={(ev) => setView({ mode: 'edit', initial: { ...ev, materials: ev.materials.map(({ id: _i, ...m }) => m) } })} />;
   }
