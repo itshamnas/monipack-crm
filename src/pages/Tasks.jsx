@@ -6,6 +6,7 @@ import { avatarStyle } from '../components/ui/BranchPicker.jsx';
 import { openPrintable, tableHtml, chipsHtml } from '../utils/pdfReport.js';
 import Avatar from '../components/ui/Avatar.jsx';
 import { useAddButton } from '../hooks/useMedia.js';
+import DateField from '../components/ui/DateField.jsx';
 
 /**
  * Task manager (Linear / Asana style).
@@ -504,7 +505,7 @@ function TaskPanel({ id, authFetch, people, canAssign, meKey, showToast, onClose
                 ))}
                 {form.dueAt && canEdit && <button type="button" onClick={() => set('dueAt', null)} className="min-h-[32px] px-3 rounded-lg text-[12px] font-semibold text-rose-600 hover:bg-rose-50">No due date</button>}
               </div>
-              <input id="task-due" type="datetime-local" value={toLocalInput(form.dueAt)} onChange={(e) => set('dueAt', e.target.value ? new Date(e.target.value).toISOString() : null)} disabled={!canEdit} className={`${inp} max-w-xs`} />
+              <DateField id="task-due" withTime value={toLocalInput(form.dueAt)} onChange={(v) => set('dueAt', v ? new Date(v).toISOString() : null)} disabled={!canEdit} className={`${inp} max-w-xs`} />
             </div>
 
             {(task?.leadName || task?.customerName) && (

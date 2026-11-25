@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useAddButton } from '../hooks/useMedia.js';
+import DateField from '../components/ui/DateField.jsx';
 import Avatar from '../components/ui/Avatar.jsx';
 import { 
   FileText, 
@@ -981,11 +982,12 @@ export default function Quotations({
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Quotation Date
               </label>
-              <input
-                type="date"
+              <DateField
                 value={form.date}
-                onChange={(e) => setForm({ ...form, date: e.target.value })}
-                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg px-3 py-2.5 focus:bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500 transition"
+                onChange={(v) => setForm({ ...form, date: v })}
+                allowClear={false}
+                aria-label="Quotation date"
+                className="w-full text-xs bg-slate-50 border border-slate-300 rounded-lg px-3 min-h-[40px] focus:bg-white"
               />
             </div>
 

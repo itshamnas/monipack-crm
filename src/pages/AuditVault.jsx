@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import DateField from '../components/ui/DateField.jsx';
 import { Lock, ShieldCheck, ShieldAlert, Search, Loader2, KeyRound, LogOut, RefreshCw, FileText, Download, ChevronDown, X } from 'lucide-react';
 import { openPrintable, tableHtml, chipsHtml } from '../utils/pdfReport.js';
 
@@ -194,8 +195,8 @@ function VaultView({ token, left, authFetch, showToast, onLock }) {
           <option value="">All people</option>
           {(sum?.actors || []).map((a) => <option key={a.key} value={a.key}>{a.name}{a.role ? ` · ${ROLE[a.role] || a.role}` : ''} ({a.n})</option>)}
         </select>
-        <input type="date" value={from} onChange={(e) => setFrom(e.target.value)} className="h-10 px-3 rounded-xl border border-slate-200 text-sm" aria-label="From date" />
-        <input type="date" value={to} onChange={(e) => setTo(e.target.value)} className="h-10 px-3 rounded-xl border border-slate-200 text-sm" aria-label="To date" />
+        <DateField value={from} max={to || undefined} onChange={setFrom} placeholder="From date" aria-label="From date" className="!w-auto h-10 px-3 rounded-xl border border-slate-200 text-sm" />
+        <DateField value={to} min={from || undefined} onChange={setTo} placeholder="To date" aria-label="To date" className="!w-auto h-10 px-3 rounded-xl border border-slate-200 text-sm" />
         <button type="button" onClick={load} className="h-10 w-10 grid place-items-center rounded-xl border border-slate-200" aria-label="Refresh"><RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} /></button>
         {(q || cat || actor || from || to) && <button type="button" onClick={() => { setQ(''); setCat(''); setActor(''); setFrom(''); setTo(''); }} className="h-10 px-3 rounded-xl text-sm text-slate-600 hover:bg-slate-100 inline-flex items-center gap-1"><X className="w-4 h-4" /> Clear</button>}
       </div>

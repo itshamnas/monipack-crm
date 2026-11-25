@@ -5,8 +5,9 @@ import {
 } from 'lucide-react';
 import { getApiUrl } from '../api/config.js';
 import SponsorDocument, { fmtDate, fmtDateTime, omr, whenText } from '../components/sponsorship/SponsorDoc.jsx';
-import { openPrintable, tableHtml, kvHtml, esc } from '../utils/pdfReport.js';
+import { printSponsorship } from '../utils/sponsorPdf.js';
 import { useAddButton } from '../hooks/useMedia.js';
+import DateField from '../components/ui/DateField.jsx';
 
 /**
  * Super admin → Sponsorships: prepare a co-sponsored event, send personal PIN links to the Monipack MD and then
@@ -138,9 +139,9 @@ function Editor({ initial, meta, authFetch, showToast, onSaved, onCancel }) {
               <label className="block sm:col-span-2"><span className="block text-[12.5px] font-bold text-slate-600 mb-1">Event name</span>
                 <input className={input} value={f.title} onChange={(e) => set('title', e.target.value)} placeholder="e.g. Nizwa Winter Festival 2026" /></label>
               <label className="block"><span className="block text-[12.5px] font-bold text-slate-600 mb-1">Starts (Oman time)</span>
-                <input type="datetime-local" className={input} value={toLocal(f.startsAt)} onChange={(e) => set('startsAt', fromLocal(e.target.value))} /></label>
+                <DateField withTime aria-label="Starts" className={input} value={toLocal(f.startsAt)} onChange={(v) => set('startsAt', fromLocal(v))} /></label>
               <label className="block"><span className="block text-[12.5px] font-bold text-slate-600 mb-1">Ends (Oman time)</span>
-                <input type="datetime-local" className={input} value={toLocal(f.endsAt)} onChange={(e) => set('endsAt', fromLocal(e.target.value))} /></label>
+                <DateField withTime aria-label="Ends" className={input} min={toLocal(f.startsAt)} value={toLocal(f.endsAt)} onChange={(v) => set('endsAt', fromLocal(v))} /></label>
               <label className="block sm:col-span-2"><span className="block text-[12.5px] font-bold text-slate-600 mb-1">Time note (optional)</span>
                 <input className={input} value={f.timeNote} onChange={(e) => set('timeNote', e.target.value)} placeholder="e.g. Daily 4 pm to 11 pm" /></label>
               <label className="block"><span className="block text-[12.5px] font-bold text-slate-600 mb-1">Approximate audience</span>
@@ -354,29 +355,19 @@ function LinkRow({ l, ev, authFetch, showToast, onChanged, onPin }) {
 }
 
 // ---------------------------------------------------------------- certificate
+const deviceOf = (ua = '') => {
+  const os = /Android/i.test(ua) ? 'Android' : /iPhone|iPad/i.test(ua) ? 'iPhone/iPad' : /Windows/i.test(ua) ? 'Windows' : /Mac OS/i.test(ua) ? 'Mac' : 'Other';
+  const br = /Edg\//.test(ua) ? 'Edge' : /Chrome\//.test(ua) ? 'Chrome' : /Firefox\//.test(ua) ? 'Firefox' : /Safari\//.test(ua) ? 'Safari' : 'Browser';
+  return `${br} on ${os}`;
+};
 function printCertificate(ev) {
-  const linkById = new Map(ev.links.map((l) => [l.id, l]));
-  const approvals = ev.decisions.filter((d) => d.version === ev.version && d.decision === 'approved');
-  const signBlocks = approvals.map((d) => {
-    const l = linkById.get(d.linkId) || {};
-    const company = l.role === 'md' ? 'Monipack' : (ev.parties.find((p) => p.id === l.partyId)?.company || '');
-    return `<div style="border:1px solid #ddd;border-radius:10px;padding:12px;break-inside:avoid;margin:8px 0">
-      <div style="display:flex;gap:14px;align-items:center">
-        <img src="${d.signature}" style="width:200px;height:70px;object-fit:contain;border-bottom:1px solid #999" alt="">
-        <div><b>${esc(d.typedName)}</b><br>${esc(l.designation || '')}${company ? ` · ${esc(company)}` : ''}<br>
-        <span style="color:#555;font-size:11px">Approved ${esc(fmtDateTime(d.createdAt))} (Oman) · version ${d.version} · IP ${esc(d.ip)} · ${esc(d.userAgent.slice(0, 80))}</span></div>
-      </div></div>`;
-  }).join('');
-  const body = `
-    ${kvHtml([['Event', ev.title], ['Date and time', whenText(ev)], ['Place', [ev.venue, ev.venueAddress].filter(Boolean).join(', ')], ['Map', ev.mapUrl], ['Approximate audience', [ev.audience, ev.audienceNote].filter(Boolean).join(' · ')], ['Event coordinator', [ev.coordinatorName, ev.coordinatorPhone].filter(Boolean).join(' · ')], ['Status', (STATUS[ev.status] || [])[0]], ['Version / reference', `${ev.version} / ${String(ev.fingerprint || '').toUpperCase()}`]])}
-    <h2>Sponsorship amount: ${esc(omr(ev.totalAmount, ev.currency))}</h2>
-    ${tableHtml([{ label: 'Party' }, { label: 'Share %', num: true }, { label: 'Amount', num: true }], ev.parties.map((p) => [p.company, `${p.sharePct}%`, omr(p.amount, ev.currency)]))}
-    <h2>Marketing materials</h2>
-    ${tableHtml([{ label: 'Item' }, { label: 'Qty', num: true }, { label: 'Provided by' }, { label: 'Note' }], ev.materials.map((m) => [m.name, m.qty, m.providedBy, m.note]))}
-    ${ev.promotion ? `<h2>How the brands will be promoted</h2><p style="white-space:pre-line">${esc(ev.promotion)}</p>` : ''}
-    <h2>Approvals</h2>${signBlocks || '<p>No approvals on this version yet.</p>'}
-    <h2>Terms and conditions</h2><div style="white-space:pre-line;font-size:11.5px;line-height:1.55">${esc(ev.terms)}</div>`;
-  return openPrintable({ docType: 'Sponsorship approval', title: ev.title, subtitle: ev.status === 'approved' ? `Approved by all parties on ${fmtDateTime(ev.approvedAt)}` : 'Approval record (not yet complete)', meta: [['Total', omr(ev.totalAmount, ev.currency)]], bodyHtml: body });
+  const live = ev.links.filter((l) => !l.revokedAt || l.status === 'approved');
+  const approvals = live.map((l) => {
+    const d = [...ev.decisions].reverse().find((x) => x.linkId === l.id && x.version === ev.version);
+    const company = l.role === 'md' ? (ev.parties.find((p) => p.kind === 'monipack')?.company || 'Monipack') : (ev.parties.find((p) => p.id === l.partyId)?.company || '');
+    return { name: l.personName, designation: l.designation, company, decision: d?.decision || 'pending', at: d?.createdAt, typedName: d?.typedName, signature: d?.signature, ip: d?.ip, device: d ? deviceOf(d.userAgent) : '', version: d?.version };
+  });
+  return printSponsorship(ev, approvals, { kind: 'certificate' });
 }
 
 // ---------------------------------------------------------------- detail
