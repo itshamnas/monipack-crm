@@ -19,6 +19,7 @@ import Tasks from './pages/Tasks.jsx';
 import AuditVault from './pages/AuditVault.jsx';
 import SecurityCard from './components/SecurityCard.jsx';
 import TeamSetup from './pages/TeamSetup.jsx';
+import Sponsorships from './pages/Sponsorships.jsx';
 import LostReasonModal from './components/LostReasonModal.jsx';
 import Celebration from './components/ui/Celebration.jsx';
 import TodayFocus from './components/TodayFocus.jsx';
@@ -312,6 +313,9 @@ export default function App() {
       setActiveTab('dashboard');
     }
     if (activeTab === 'settings-vault' && currentUser && currentUser.role !== 'super_admin') {
+      setActiveTab('dashboard');
+    }
+    if (activeTab === 'sponsorships' && currentUser && currentUser.role !== 'super_admin') {
       setActiveTab('dashboard');
     }
     if (activeTab === 'settings-team' && currentUser && currentUser.role !== 'super_admin') {
@@ -651,6 +655,7 @@ export default function App() {
     customers: { title: 'Customers', shortTitle: 'Customers', subtitle: 'Every customer, enquiry, quotation and document in one place' },
     quotations: { title: 'Quotations', shortTitle: 'Quotations', subtitle: 'Create, send and track price quotations' },
     tasks: { title: 'Tasks', shortTitle: 'Tasks', subtitle: 'To-dos for you and the team' },
+    sponsorships: { title: 'Sponsorships', shortTitle: 'Sponsorships', subtitle: 'Co-sponsored events and their approvals' },
     'settings-team': { title: 'Team setup', shortTitle: 'Team setup', subtitle: 'Add branches, salesmen and staff logins from Excel in one go' },
     'settings-links': { title: 'Salesmen & links', shortTitle: 'Salesmen', subtitle: "Each salesman's secret link, type and PIN" },
     'settings-staff': { title: 'Staff logins', shortTitle: 'Staff', subtitle: 'Who can sign in, their role and password' },
@@ -917,6 +922,10 @@ export default function App() {
 
         {activeTab === 'settings-vault' && currentUser?.role === 'super_admin' && (
           <AuditVault authFetch={authFetch} showToast={showToast} />
+        )}
+
+        {activeTab === 'sponsorships' && currentUser?.role === 'super_admin' && (
+          <div className="p-3 sm:p-6 lg:p-8 max-w-7xl mx-auto pb-24 md:pb-8"><Sponsorships authFetch={authFetch} showToast={showToast} /></div>
         )}
 
         {activeTab === 'settings-team' && currentUser?.role === 'super_admin' && (

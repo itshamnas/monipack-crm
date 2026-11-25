@@ -24,7 +24,8 @@ import {
   ContactRound,
   ListChecks,
   Inbox,
-  Kanban
+  Kanban,
+  Megaphone
 } from 'lucide-react';
 
 /**
@@ -49,7 +50,7 @@ export default function Sidebar({
 }) {
   const [photoOpen, setPhotoOpen] = useState(false);
   // Simplified menu: Home · Customers · Leads · Quotations · Settings
-  const ICONS = { home: LayoutDashboard, inbox: Inbox, leads: Kanban, customers: ContactRound, quotations: FileText, tasks: ListChecks, settings: Settings };
+  const ICONS = { home: LayoutDashboard, inbox: Inbox, leads: Kanban, customers: ContactRound, quotations: FileText, tasks: ListChecks, sponsorships: Megaphone, settings: Settings };
   const BADGES = { inbox: stats?.newLeads || 0, quotations: 0, tasks: taskDue || 0 };
   const mainItems = navFor(currentUser).map((sec) => ({
     id: sec.pages[0].id,

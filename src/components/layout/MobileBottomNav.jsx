@@ -50,7 +50,7 @@ export default function MobileBottomNav({
     window.dispatchEvent(ev);
     if (!ev.defaultPrevented) onNewLead?.();
   };
-  const addLabel = { customers: 'Add customer', quotations: 'New quotation', tasks: 'New task' }[activeTab] || 'New enquiry';
+  const addLabel = { customers: 'Add customer', quotations: 'New quotation', tasks: 'New task', sponsorships: 'New sponsorship event' }[activeTab] || 'New enquiry';
 
   const Tab = ({ id }) => {
     const it = ITEMS[id];

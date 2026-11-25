@@ -13,11 +13,21 @@ import { query, getClient } from '../db/pool.js';
  */
 
 const VAULT_TTL = '15m';
-const SECRET_FIELDS = /pass(word)?|pin|token|secret|session|authorization|base64|content|data$|image|file|photo/i;
+const SECRET_FIELDS = /pass(word)?|pin|token|secret|session|authorization|base64|content|data$|dataurl|signature|image|file|photo/i;
 const ZERO = '0'.repeat(64);
 
 // ---------- what happened, in plain words ----------
 const RULES = [
+  ['POST', /^\/api\/sponsorships$/, 'sponsorship', () => 'Created a sponsorship event'],
+  ['PUT', /^\/api\/sponsorships\/\d+$/, 'sponsorship', () => 'Edited a sponsorship event'],
+  ['PUT', /^\/api\/sponsorships\/\d+\/image$/, 'sponsorship', () => 'Changed a sponsorship picture'],
+  ['POST', /^\/api\/sponsorships\/\d+\/links$/, 'sponsorship', (r) => `Made a sponsorship approval link${r.body.personName ? ` for ${r.body.personName}` : ''}`],
+  ['POST', /^\/api\/sponsorship-links\/\d+\/pin$/, 'sponsorship', () => 'Made a new sponsorship PIN'],
+  ['POST', /^\/api\/sponsorship-links\/\d+\/revoke$/, 'sponsorship', () => 'Removed a sponsorship link'],
+  ['POST', /^\/api\/sponsorships\/\d+\/cancel$/, 'sponsorship', () => 'Cancelled a sponsorship event'],
+  ['DELETE', /^\/api\/sponsorships\/\d+$/, 'sponsorship', () => 'Deleted a sponsorship draft'],
+  ['POST', /^\/api\/sp\/[^/]+\/unlock$/, 'sponsorship', (r) => (r.ok ? 'Opened a sponsorship link with the PIN' : 'Wrong PIN on a sponsorship link')],
+  ['POST', /^\/api\/sp\/[^/]+\/decide$/, 'sponsorship', (r) => (r.body.decision === 'changes_requested' ? 'Asked for changes on a sponsorship' : 'Approved a sponsorship')],
   ['POST', /^\/api\/auth\/login$/, 'security', (r) => (r.ok ? 'Signed in' : 'Failed sign-in attempt')],
   ['POST', /^\/api\/auth\/change-password$/, 'security', () => 'Changed own password'],
   ['POST', /^\/api\/users$/, 'staff', () => 'Created a staff login'],
@@ -86,7 +96,7 @@ const RULES = [
   ['GET', /^\/api\/audit-logs$/, 'security', () => 'Viewed the audit trail'],
 ];
 
-const cleanPath = (p) => String(p || '').replace(/^\/api\/link\/[^/]+/, '/api/link/•••').slice(0, 300);
+const cleanPath = (p) => String(p || '').replace(/^\/api\/link\/[^/]+/, '/api/link/•••').replace(/^\/api\/sp\/[^/]+/, '/api/sp/•••').slice(0, 300);
 
 function redact(value, depth = 0) {
   if (value == null || depth > 3) return undefined;

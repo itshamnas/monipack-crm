@@ -305,3 +305,16 @@ html.dark .mp-chip.on { background: #E5EAF5; color: #0B1430; }
 }
 :root { --mp-dock-w: min(560px, 44vw); }
 @keyframes mp-dock-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+/* ---------- Sponsorship approval page ---------- */
+.mp-sp-fade { animation: mp-fade .2s ease; }
+.mp-sp-pop { animation: mp-sp-pop .45s cubic-bezier(.34,1.56,.64,1); }
+@keyframes mp-sp-pop { from { transform: scale(.85); opacity: 0; } to { transform: none; opacity: 1; } }
+.mp-sp-ring { stroke-dasharray: 230; stroke-dashoffset: 230; animation: mp-sp-draw .6s ease-out .1s forwards; }
+.mp-sp-tick { stroke-dasharray: 60; stroke-dashoffset: 60; animation: mp-sp-draw .45s ease-out .55s forwards; }
+@keyframes mp-sp-draw { to { stroke-dashoffset: 0; } }
+.mp-sp-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+.mp-sp-confetti span { position: absolute; top: -12px; width: 8px; height: 14px; border-radius: 2px; opacity: 0; animation: mp-sp-fall 1.6s ease-in forwards; }
+@keyframes mp-sp-fall { 0% { opacity: 1; transform: translateY(0) rotate(0); } 100% { opacity: 0; transform: translateY(460px) rotate(540deg); } }
+@media (prefers-reduced-motion: reduce) { .mp-sp-pop, .mp-sp-fade, .mp-sp-confetti span { animation: none; } .mp-sp-ring, .mp-sp-tick { animation: none; stroke-dashoffset: 0; } }
+@media print { .mp-sp-page .no-print { display: none !important; } .mp-sp-page section { break-inside: avoid; } }
