@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import DateField from '../components/ui/DateField.jsx';
 import { ChevronLeft, ChevronRight, FileDown, TrendingUp, TrendingDown, Trophy, XCircle, Wallet, Percent, Timer, Coins, FileText, Send, CheckCircle2, Ban } from 'lucide-react';
 import { Seg } from './Home.jsx';
 import Avatar from '../components/ui/Avatar.jsx';
@@ -228,10 +229,10 @@ export default function Money({ authFetch, currentUser, showToast }) {
           ) : (
             <span className="inline-flex items-center gap-1.5 text-[12px]">
               <label className="sr-only" htmlFor="m-from">From</label>
-              <input id="m-from" type="date" value={custom.from} max={custom.to} onChange={(e) => setCustom((c) => ({ ...c, from: e.target.value }))} className="mpd-chip" />
+              <DateField id="m-from" value={custom.from} max={custom.to} allowClear={false} onChange={(v) => setCustom((c) => ({ ...c, from: v }))} className="mpd-chip !w-auto !min-h-[36px] !text-[12.5px]" />
               <span className="mpd-mute">to</span>
               <label className="sr-only" htmlFor="m-to">To</label>
-              <input id="m-to" type="date" value={custom.to} min={custom.from} onChange={(e) => setCustom((c) => ({ ...c, to: e.target.value }))} className="mpd-chip" />
+              <DateField id="m-to" value={custom.to} min={custom.from} allowClear={false} onChange={(v) => setCustom((c) => ({ ...c, to: v }))} className="mpd-chip !w-auto !min-h-[36px] !text-[12.5px]" />
             </span>
           )}
           {canExport && (

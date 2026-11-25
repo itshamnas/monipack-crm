@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import DateField from '../ui/DateField.jsx';
 import { MapPin, Loader2, Lock, Check } from 'lucide-react';
 import { GOVERNORATES, OMAN_LOCATIONS } from '../../../shared/omanLocations.js';
 
@@ -141,7 +142,7 @@ export default function CustomerFieldInput({ field, value, onChange, error, requ
       control = <input id={id} type="text" inputMode="numeric" value={v} onChange={(e) => onChange(e.target.value)} className={inputClass(error)} />;
       break;
     case 'date':
-      control = <input id={id} type="date" value={v} onChange={(e) => onChange(e.target.value)} className={inputClass(error)} />;
+      control = <DateField id={id} value={v} onChange={onChange} className={inputClass(error)} />;
       break;
     case 'location':
       control = (
