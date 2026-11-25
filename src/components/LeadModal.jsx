@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import DateField from './ui/DateField.jsx';
 import { X, Save, Building, Phone, Mail, MapPin, Tag, DollarSign, FileText, Trash2, UserCheck, CalendarClock, MessageSquare, PhoneCall, StickyNote, ArrowRightLeft, Send, AlertTriangle } from 'lucide-react';
 import CustomerPicker from './customers/CustomerPicker.jsx';
 import BranchPicker from './ui/BranchPicker.jsx';
@@ -455,10 +456,7 @@ export default function LeadModal({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
               <div>
                 <label className={lbl}>Date & time</label>
-                <div className="relative">
-                  <CalendarClock className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input type="datetime-local" value={toLocalInput(formData.nextFollowUpAt)} onChange={(e) => setFormData({ ...formData, nextFollowUpAt: fromLocalInput(e.target.value) })} className={`${inp} pl-9`} />
-                </div>
+                <DateField withTime aria-label="Next follow-up" value={toLocalInput(formData.nextFollowUpAt)} onChange={(v) => setFormData({ ...formData, nextFollowUpAt: fromLocalInput(v) })} className={inp} placeholder="Choose date and time" />
               </div>
               <div>
                 <label className={lbl}>What to do</label>

@@ -3,6 +3,7 @@ import { Lock, Loader2, CheckCircle2, AlertTriangle, PenLine, MessageSquareWarni
 import { getApiUrl } from '../api/config.js';
 import SponsorDocument, { fmtDateTime, omr } from '../components/sponsorship/SponsorDoc.jsx';
 import SignaturePad from '../components/ui/SignaturePad.jsx';
+import { printSponsorship } from '../utils/sponsorPdf.js';
 
 /**
  * /s/<token>: the personal approval page for the Monipack MD or a partner brand's representative.
@@ -247,7 +248,7 @@ export default function SponsorshipLink() {
       <main className="max-w-6xl mx-auto px-3 sm:px-5 py-5 sm:py-8 space-y-5">
         <div className="flex flex-wrap items-center gap-2 justify-between">
           <p className="text-[13.5px] text-slate-600">For <b className="text-slate-900">{d.me.name}</b>{d.me.designation ? `, ${d.me.designation}` : ''}{d.me.company ? ` · ${d.me.company}` : ''}</p>
-          <button type="button" onClick={() => window.print()} className="no-print inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-full border border-slate-300 bg-white text-[13px] font-semibold"><Printer className="w-4 h-4" /> Save a copy (PDF)</button>
+          <button type="button" onClick={() => { if (!printSponsorship(d.doc, d.approvals, { kind: 'copy', forName: d.me.name })) alert('Please allow pop-ups to save the PDF.'); }} className="no-print inline-flex items-center gap-1.5 min-h-[40px] px-3.5 rounded-full border border-slate-300 bg-white text-[13px] font-semibold"><Printer className="w-4 h-4" /> Save a copy (PDF)</button>
         </div>
 
         {d.doc.status === 'approved' && (
