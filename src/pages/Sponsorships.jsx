@@ -8,6 +8,7 @@ import SponsorDocument, { fmtDate, fmtDateTime, omr, whenText } from '../compone
 import { printSponsorship } from '../utils/sponsorPdf.js';
 import { useAddButton } from '../hooks/useMedia.js';
 import DateField from '../components/ui/DateField.jsx';
+import EventPhotos from '../components/sponsorship/EventPhotos.jsx';
 
 /**
  * Super admin → Sponsorships: prepare a co-sponsored event, send personal PIN links to the Monipack MD and then
@@ -463,6 +464,8 @@ function Detail({ id, authFetch, showToast, onBack, onEdit, onOpen }) {
           })}
         </section>
       </div>
+
+      <EventPhotos ev={ev} authFetch={authFetch} showToast={showToast} />
 
       <div className="grid lg:grid-cols-2 gap-4">
         <section className={`${card} p-5`}>

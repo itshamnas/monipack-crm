@@ -35,7 +35,8 @@ import { registerTwoFactorRoutes, twoFactorRequired, issueChallenge } from './au
 import { registerBackupRoutes, startBackupSchedule } from './backup/daily.js';
 import { recordMiddleware, registerVaultRoutes } from './audit/vault.js';
 import { query as dbQuery } from './db/pool.js';
-import { registerSponsorshipRoutes, startSponsorshipReminders } from './sponsorships/index.js';
+import { registerSponsorshipRoutes, startSponsorshipReminders, superAdmins as sponsorshipAdmins } from './sponsorships/index.js';
+import { registerSponsorshipPhotoRoutes } from './sponsorships/photos.js';
 import { registerTeamSetupRoutes } from './settings/teamSetup.js';
 import { registerReportRoutes } from './reports/value.js';
 import * as quotePipe from './quotes/pipeline.js';
@@ -134,6 +135,8 @@ const LARGE_BODY_ROUTES = [
   /^\/api\/customers\/[^/]+\/files$/,
   /^\/api\/link\/[^/]+\/customers\/[^/]+\/files$/,
   /^\/api\/sponsorships\/\d+\/image$/,
+  /^\/api\/sponsorships\/\d+\/photos$/,
+  /^\/api\/up\/[^/]+\/photos$/,
 ];
 const smallJsonParser = express.json({ limit: '1mb' });
 app.use((req, res, next) => (LARGE_BODY_ROUTES.some((re) => re.test(req.path)) ? next() : smallJsonParser(req, res, next)));
@@ -1365,6 +1368,7 @@ app.delete('/api/settings/branches/:id', authMiddleware, requirePermission('sett
 // ---- Profile photos ----
 registerWhatsAppRoutes(app, { authMiddleware, requirePermission, asyncHandler, linkLimiter: viewLimiter });
 registerSponsorshipRoutes(app, { authMiddleware, superAdminOnly, viewLimiter, largeJsonParser, jwtSecret: JWT_SECRET || 'dev-only-secret' });
+registerSponsorshipPhotoRoutes(app, { authMiddleware, superAdminOnly, viewLimiter, largeJsonParser, jwtSecret: JWT_SECRET || 'dev-only-secret', superAdmins: sponsorshipAdmins });
 registerTeamSetupRoutes(app, { authMiddleware, superAdminOnly, asyncHandler, audit: userAudit });
 registerReportRoutes(app, { authMiddleware, requirePermission, asyncHandler, audit: (req, d) => db.addAuditEntry({ type: 'export', userId: req.user.id, userName: req.user.name, description: `${d} by ${req.user.email}` }) });
 registerPhotoRoutes(app, { authMiddleware, asyncHandler, photoJsonParser: (req, res, next) => next() });

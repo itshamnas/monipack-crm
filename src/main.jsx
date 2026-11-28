@@ -4,6 +4,7 @@ import App from './App.jsx';
 import CustomerLink from './pages/CustomerLink.jsx';
 import ViewLink from './pages/ViewLink.jsx';
 import SponsorshipLink from './pages/SponsorshipLink.jsx';
+import SponsorshipUpload from './pages/SponsorshipUpload.jsx';
 import './index.css';
 import { registerServiceWorker } from './pwa/registerServiceWorker.js';
 import { initTheme } from './utils/theme.js';
@@ -32,7 +33,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     {/* Salesman customer links (/c/...) open without a CRM login */}
     {/* Read-only links from WhatsApp alerts (/v/...) also open without a login */}
     {/* Sponsorship approval links (/s/...) open with their PIN */}
-    {window.location.pathname.startsWith('/c/') ? <CustomerLink /> : window.location.pathname.startsWith('/v/') ? <ViewLink /> : window.location.pathname.startsWith('/s/') ? <SponsorshipLink /> : <App />}
+    {window.location.pathname.startsWith('/c/') ? <CustomerLink /> : window.location.pathname.startsWith('/v/') ? <ViewLink /> : window.location.pathname.startsWith('/s/') ? <SponsorshipLink /> : window.location.pathname.startsWith('/u/') ? <SponsorshipUpload /> : <App />}
   </React.StrictMode>
 );
 
