@@ -20,6 +20,7 @@ import pool, { query } from '../db/pool.js';
 import { uploadRoot } from '../customers/storage.js';
 import { notify } from '../notify/notify.js';
 import { DEFAULT_TERMS } from './terms.js';
+import { dropEventPhotoFiles } from './photos.js';
 
 const PIN_TRIES = 5;
 const LOCK_MINUTES = 15;
@@ -155,7 +156,7 @@ async function recompute(client, eventId) {
   return status;
 }
 
-async function superAdmins() {
+export async function superAdmins() {
   const { rows } = await query("SELECT id FROM users WHERE role = 'super_admin' AND archived_at IS NULL AND is_active");
   return rows.map((r) => r.id);
 }
@@ -425,6 +426,7 @@ export function registerSponsorshipRoutes(app, { authMiddleware, superAdminOnly,
     const id = parseInt(req.params.id, 10);
     const { rows: d } = await query('SELECT 1 FROM sponsorship_decisions WHERE event_id = $1 LIMIT 1', [id]);
     if (d.length) return res.status(409).json({ error: 'Someone has already responded to this event, so it is kept as a record. Cancel it instead.' });
+    await dropEventPhotoFiles(id);
     const { rows: [e] } = await query('DELETE FROM sponsorship_events WHERE id = $1 RETURNING poster_key, banner_key', [id]);
     if (!e) return res.status(404).json({ error: 'Event not found.' });
     await dropImage(e.poster_key); await dropImage(e.banner_key);
