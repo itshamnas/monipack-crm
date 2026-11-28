@@ -13,11 +13,16 @@ import { query, getClient } from '../db/pool.js';
  */
 
 const VAULT_TTL = '15m';
-const SECRET_FIELDS = /pass(word)?|pin|token|secret|session|authorization|base64|content|data$|dataurl|signature|image|file|photo/i;
+const SECRET_FIELDS = /pass(word)?|pin|token|secret|session|authorization|base64|content|data$|dataurl|signature|image|file|photo|full|thumb/i;
 const ZERO = '0'.repeat(64);
 
 // ---------- what happened, in plain words ----------
 const RULES = [
+  ['POST', /^\/api\/sponsorships\/\d+\/upload-links$/, 'sponsorship', (r) => `Made a photo upload link${r.body.label ? ` "${r.body.label}"` : ''}`],
+  ['POST', /^\/api\/sponsorship-upload-links\/\d+\/revoke$/, 'sponsorship', () => 'Closed a photo upload link'],
+  ['POST', /^\/api\/sponsorships\/\d+\/photos$/, 'sponsorship', () => 'Added an event photo'],
+  ['DELETE', /^\/api\/sponsorship-photos\/\d+$/, 'sponsorship', () => 'Deleted an event photo'],
+  ['POST', /^\/api\/up\/[^/]+\/photos$/, 'sponsorship', (r) => `Event photo uploaded${r.body.name ? ` by ${r.body.name}` : ''}`],
   ['POST', /^\/api\/sponsorships$/, 'sponsorship', () => 'Created a sponsorship event'],
   ['PUT', /^\/api\/sponsorships\/\d+$/, 'sponsorship', () => 'Edited a sponsorship event'],
   ['PUT', /^\/api\/sponsorships\/\d+\/image$/, 'sponsorship', () => 'Changed a sponsorship picture'],
@@ -96,7 +101,7 @@ const RULES = [
   ['GET', /^\/api\/audit-logs$/, 'security', () => 'Viewed the audit trail'],
 ];
 
-const cleanPath = (p) => String(p || '').replace(/^\/api\/link\/[^/]+/, '/api/link/•••').replace(/^\/api\/sp\/[^/]+/, '/api/sp/•••').slice(0, 300);
+const cleanPath = (p) => String(p || '').replace(/^\/api\/link\/[^/]+/, '/api/link/•••').replace(/^\/api\/sp\/[^/]+/, '/api/sp/•••').replace(/^\/api\/up\/[^/]+/, '/api/up/•••').slice(0, 300);
 
 function redact(value, depth = 0) {
   if (value == null || depth > 3) return undefined;
